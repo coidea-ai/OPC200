@@ -2,6 +2,15 @@
 
 This module handles the initialization of the milestone tracker skill.
 """
+
+# Add project root to path for imports
+import sys
+from pathlib import Path
+_script_dir = Path(__file__).parent
+_project_root = _script_dir.parent.parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 import json
 from pathlib import Path
 from typing import Any

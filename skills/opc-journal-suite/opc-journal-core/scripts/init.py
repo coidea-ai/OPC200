@@ -6,8 +6,15 @@ including configuration loading and database setup.
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any, Optional
+
+# Add project root to path for imports
+_script_dir = Path(__file__).parent
+_project_root = _script_dir.parent.parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from src.journal.core import JournalManager
 from src.journal.storage import SQLiteStorage
