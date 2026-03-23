@@ -48,7 +48,6 @@ ipython>=8.14.0
 ipdb>=0.13.0
 
 # Database testing
-pytest-sqlite>=0.1.0
 
 # Async testing
 anyio>=3.7.0
