@@ -1,0 +1,29 @@
+# Bandit security scanner configuration
+# https://bandit.readthedocs.io/en/latest/config.html
+
+skips:
+  # Skip assert warnings (used in tests and for internal validation)
+  - B101
+  # Skip hardcoded password warnings (test fixtures and mock data)
+  - B105
+  # Skip hardcoded temp directory warnings
+  - B108
+  # Skip flask debug mode warnings (not using flask)
+  - B201
+
+# Severity levels to report
+# LOW, MEDIUM, HIGH
+level: LOW
+
+# Confidence levels to report
+# LOW, MEDIUM, HIGH
+confidence: LOW
+
+# Files/paths to exclude
+exclude_dirs:
+  - tests
+  - .git
+  - __pycache__
+  - .pytest_cache
+  - venv
+  - .venv

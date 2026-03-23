@@ -18,6 +18,17 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
+
+# 执行或模拟命令
+run_or_simulate() {
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry_run "将执行: $*"
+        return 0
+    else
+        "$@"
+    fi
+}
 
 # 默认配置
 OPC_ID=""
@@ -26,6 +37,7 @@ BACKUP_NAME=""
 RETENTION_DAYS=7
 ENCRYPT=true
 REMOTE_UPLOAD=false
+DRY_RUN=false
 
 show_help() {
     cat << EOF
@@ -45,11 +57,15 @@ OPTIONS:
     --retention DAYS    保留天数 (默认: 7)
     --no-encrypt        不加密备份
     --upload            上传到远程存储
+    --dry-run          模拟运行，不实际执行
     -h, --help         显示此帮助
 
 示例:
     # 创建备份
     $0 --id OPC-001 backup
+
+    # 模拟创建备份 (不实际执行)
+    $0 --id OPC-001 --dry-run backup
 
     # 恢复备份
     $0 --id OPC-001 restore --name auto-2026-03-21-120000
@@ -84,6 +100,10 @@ parse_args() {
                 ;;
             --upload)
                 REMOTE_UPLOAD=true
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=true
                 shift
                 ;;
             -h|--help)
@@ -123,6 +143,14 @@ create_backup() {
     local backup_path="${backup_dir}/${backup_name}"
     
     log_info "创建备份: $backup_name"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        log_dry_run "备份目录: $backup_path"
+        log_dry_run "数据目录: $data_dir"
+        log_dry_run "将创建: data.tar.gz, config.tar.gz, skills.tar.gz"
+        log_success "模拟备份完成"
+        return 0
+    fi
     
     # 确保备份目录存在
     mkdir -p "$backup_path"

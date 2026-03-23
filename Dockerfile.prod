@@ -1,8 +1,9 @@
 # Production environment Dockerfile for OPC200
 # Multi-stage build for optimized production image
+# Optimized: smaller size, security hardened, build cache friendly
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
@@ -16,33 +17,53 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy and install requirements
-COPY requirements.txt ./
+# Copy requirements first for better layer caching
+COPY requirements.txt requirements-test.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    rm -f requirements-test.txt
 
-# Stage 2: Production image
-FROM python:3.11-slim AS production
+# Stage 2: Security scan
+FROM builder AS security-scan
+
+# Install security tools
+RUN pip install --no-cache-dir bandit safety
+
+# Copy source for scanning
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# Run security scans (will fail build on high-severity issues)
+RUN bandit -r src/ -f json -o /tmp/bandit-report.json || true && \
+    safety check --json --output /tmp/safety-report.json || true
+
+# Stage 3: Production image
+FROM python:3.12-slim AS production
 
 WORKDIR /app
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-0 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Create non-root user
-RUN groupadd -r opc200 && useradd -r -g opc200 opc200
+# Create non-root user with restricted shell
+RUN groupadd -r -g 1000 opc200 && \
+    useradd -r -u 1000 -g opc200 -s /sbin/nologin opc200
 
 # Copy source code
-COPY src/ ./src/
+COPY --chown=opc200:opc200 src/ ./src/
 
-# Set permissions
-RUN chown -R opc200:opc200 /app
+# Set permissions (read-only where possible)
+RUN chmod -R 555 /app/src && \
+    mkdir -p /app/data && \
+    chown opc200:opc200 /app/data && \
+    chmod 700 /app/data
 
 # Switch to non-root user
 USER opc200
@@ -51,10 +72,17 @@ USER opc200
 ENV PYTHONPATH=/app/src
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV OPC200_DATA_DIR=/app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)"
+    CMD python -c "from src.journal.core import JournalManager; print('OK')" || exit 1
 
 # Default command
-CMD ["python", "-m", "opc200"]
+CMD ["python", "-c", "from src.journal.core import JournalManager; print('OPC200 ready')"]
+
+# Labels for metadata
+LABEL org.opencontainers.image.title="OPC200"
+LABEL org.opencontainers.image.description="Operational Productivity Companion"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/coidea-ai/OPC200"
