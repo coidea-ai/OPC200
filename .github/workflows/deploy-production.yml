@@ -49,19 +49,19 @@ jobs:
           docker build -f Dockerfile.prod -t opc200:${{ github.sha }} .
           docker tag opc200:${{ github.sha }} opc200:latest
 
-      - name: Push to production registry
+      - name: Push to GitHub Packages
         run: |
-          echo "${{ secrets.PROD_REGISTRY_PASSWORD }}" | docker login ${{ secrets.PROD_REGISTRY }} -u ${{ secrets.PROD_REGISTRY_USERNAME }} --password-stdin
-          docker tag opc200:${{ github.sha }} ${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
-          docker tag opc200:${{ github.sha }} ${{ secrets.PROD_REGISTRY }}/opc200:latest
-          docker push ${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
-          docker push ${{ secrets.PROD_REGISTRY }}/opc200:latest
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag opc200:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/opc200:${{ github.sha }}
+          docker tag opc200:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/opc200:latest
+          docker push ghcr.io/${{ github.repository_owner }}/opc200:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository_owner }}/opc200:latest
 
       - name: Deploy to production
         run: |
           echo "Deploying to production environment..."
           # Add actual production deployment commands
-          # kubectl set image deployment/opc200 opc200=${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
+          # kubectl set image deployment/opc200 opc200=ghcr.io/${{ github.repository_owner }}/opc200:${{ github.sha }}
 
       - name: Run production health check
         run: |
