@@ -3,10 +3,19 @@ Journal Core Module - JournalEntry class and JournalManager.
 Implements the core journal functionality with CRUD operations.
 """
 import json
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
+
+from src.utils.validation import InputValidator, ValidationError
+
+# Type aliases for better code clarity
+EntryId = str
+Tag = str
+Metadata = dict[str, Any]
+EntryDict = dict[str, Any]
 
 
 @dataclass
@@ -20,10 +29,17 @@ class JournalEntry:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate entry after initialization."""
-        if not self.content or not self.content.strip():
+        if not isinstance(self.content, str) or not self.content.strip():
             raise ValueError("Content cannot be empty")
+        
+        # Validate other fields
+        try:
+            self.tags = InputValidator.validate_tags(self.tags)
+            self.metadata = InputValidator.validate_metadata(self.metadata)
+        except ValidationError as e:
+            raise ValueError(f"Validation failed: {e}") from e
     
     def to_dict(self) -> dict[str, Any]:
         """Convert entry to dictionary."""
@@ -39,13 +55,31 @@ class JournalEntry:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "JournalEntry":
         """Create entry from dictionary."""
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict, got {type(data).__name__}")
+        
+        required_fields = ["content"]
+        for field_name in required_fields:
+            if field_name not in data:
+                raise ValueError(f"Missing required field: {field_name}")
+        
+        try:
+            created_at = datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now()
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid created_at format: {e}") from e
+        
+        try:
+            updated_at = datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now()
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid updated_at format: {e}") from e
+        
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             content=data["content"],
             tags=data.get("tags", []),
             metadata=data.get("metadata", {}),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now(),
+            created_at=created_at,
+            updated_at=updated_at,
         )
     
     def to_json(self) -> str:
@@ -112,17 +146,16 @@ class JournalEntry:
 class JournalManager:
     """Manages journal entries with CRUD operations."""
     
-    def __init__(self, connection):
+    def __init__(self, connection: sqlite3.Connection) -> None:
         """Initialize with database connection."""
-        self.connection = connection
+        self.connection: sqlite3.Connection = connection
         # Ensure row factory is set for dictionary-style access
         if hasattr(self.connection, 'row_factory') and self.connection.row_factory is None:
-            import sqlite3
             self.connection.row_factory = sqlite3.Row
     
     def create_table(self) -> None:
         """Create journal entries table."""
-        cursor = self.connection.cursor()
+        cursor: sqlite3.Cursor = self.connection.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS journal_entries (
                 id TEXT PRIMARY KEY,
@@ -137,7 +170,7 @@ class JournalManager:
     
     def create_entry(self, entry: JournalEntry) -> JournalEntry:
         """Create a new journal entry."""
-        cursor = self.connection.cursor()
+        cursor: sqlite3.Cursor = self.connection.cursor()
         cursor.execute("""
             INSERT INTO journal_entries (id, content, tags, metadata, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -154,16 +187,24 @@ class JournalManager:
     
     def get_entry(self, entry_id: str) -> Optional[JournalEntry]:
         """Get a journal entry by ID."""
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,))
-        row = cursor.fetchone()
+        # Validate input
+        entry_id = InputValidator.validate_entry_id(entry_id)
+        
+        cursor: sqlite3.Cursor = self.connection.cursor()
+        
+        # Use parameterized query to prevent SQL injection
+        cursor.execute(
+            "SELECT * FROM journal_entries WHERE id = ?",
+            (entry_id,)
+        )
+        row: Optional[sqlite3.Row] = cursor.fetchone()
         
         if row is None:
             return None
         
         return JournalEntry(
-            id=row["id"],
-            content=row["content"],
+            id=str(row["id"]),
+            content=str(row["content"]),
             tags=json.loads(row["tags"]) if row["tags"] else [],
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
             created_at=datetime.fromisoformat(row["created_at"]),
@@ -172,7 +213,7 @@ class JournalManager:
     
     def update_entry(self, entry: JournalEntry) -> bool:
         """Update an existing journal entry."""
-        cursor = self.connection.cursor()
+        cursor: sqlite3.Cursor = self.connection.cursor()
         entry.updated_at = datetime.now()
         
         cursor.execute("""
@@ -192,27 +233,32 @@ class JournalManager:
     
     def delete_entry(self, entry_id: str) -> bool:
         """Delete a journal entry."""
-        cursor = self.connection.cursor()
+        cursor: sqlite3.Cursor = self.connection.cursor()
         cursor.execute("DELETE FROM journal_entries WHERE id = ?", (entry_id,))
         self.connection.commit()
         return cursor.rowcount > 0
     
     def list_entries(self, limit: int = 100, offset: int = 0) -> list[JournalEntry]:
         """List all journal entries with pagination."""
-        cursor = self.connection.cursor()
+        # Validate pagination parameters
+        limit, offset = InputValidator.validate_limit_offset(limit, offset)
+        
+        cursor: sqlite3.Cursor = self.connection.cursor()
+        
+        # Use parameterized query for pagination
         cursor.execute("""
             SELECT * FROM journal_entries
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         """, (limit, offset))
         
-        rows = cursor.fetchall()
-        entries = []
+        rows: list[sqlite3.Row] = cursor.fetchall()
+        entries: list[JournalEntry] = []
         
         for row in rows:
             entries.append(JournalEntry(
-                id=row["id"],
-                content=row["content"],
+                id=str(row["id"]),
+                content=str(row["content"]),
                 tags=json.loads(row["tags"]) if row["tags"] else [],
                 metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 created_at=datetime.fromisoformat(row["created_at"]),
@@ -223,25 +269,35 @@ class JournalManager:
     
     def list_entries_by_tag(self, tag: str) -> list[JournalEntry]:
         """List entries filtered by tag."""
+        # Validate tag
+        tag = InputValidator.validate_tag(tag)
+        
         entries = self.list_entries(limit=10000)
         return [e for e in entries if tag in e.tags]
     
     def search_entries(self, query: str) -> list[JournalEntry]:
         """Search entries by content."""
-        cursor = self.connection.cursor()
+        # Validate search query
+        query = InputValidator.validate_search_query(query)
+        
+        cursor: sqlite3.Cursor = self.connection.cursor()
+        
+        # Use parameterized query to prevent SQL injection
+        # The LIKE pattern is safely parameterized
+        search_pattern = f"%{query}%"
         cursor.execute("""
             SELECT * FROM journal_entries
             WHERE content LIKE ?
             ORDER BY created_at DESC
-        """, (f"%{query}%",))
+        """, (search_pattern,))
         
-        rows = cursor.fetchall()
-        entries = []
+        rows: list[sqlite3.Row] = cursor.fetchall()
+        entries: list[JournalEntry] = []
         
         for row in rows:
             entries.append(JournalEntry(
-                id=row["id"],
-                content=row["content"],
+                id=str(row["id"]),
+                content=str(row["content"]),
                 tags=json.loads(row["tags"]) if row["tags"] else [],
                 metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 created_at=datetime.fromisoformat(row["created_at"]),
@@ -253,13 +309,17 @@ class JournalManager:
     def get_all_tags(self) -> list[str]:
         """Get all unique tags across entries."""
         entries = self.list_entries(limit=10000)
-        tags = set()
+        tags: set[str] = set()
         for entry in entries:
             tags.update(entry.tags)
         return sorted(list(tags))
     
     def rename_tag(self, old_name: str, new_name: str) -> bool:
         """Rename a tag across all entries."""
+        # Validate tags
+        old_name = InputValidator.validate_tag(old_name)
+        new_name = InputValidator.validate_tag(new_name)
+        
         entries = self.list_entries_by_tag(old_name)
         
         for entry in entries:
@@ -271,6 +331,9 @@ class JournalManager:
     
     def delete_tag(self, tag: str) -> bool:
         """Delete a tag from all entries."""
+        # Validate tag
+        tag = InputValidator.validate_tag(tag)
+        
         entries = self.list_entries_by_tag(tag)
         
         for entry in entries:

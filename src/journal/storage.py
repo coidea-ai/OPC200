@@ -269,15 +269,67 @@ class SQLiteStorage:
         return True
     
     def import_from_json(self, import_path: Path) -> bool:
-        """Import entries from JSON."""
+        """Import entries from JSON with validation."""
         from src.journal.core import JournalEntry
         
-        with open(import_path) as f:
-            data = json.load(f)
+        import_path = Path(import_path)
+        if not import_path.exists():
+            raise FileNotFoundError(f"Import file not found: {import_path}")
         
-        for entry_data in data:
-            entry = JournalEntry.from_dict(entry_data)
-            self.insert_entry(entry)
+        if not import_path.suffix.lower() == '.json':
+            raise ValueError(f"Expected .json file, got: {import_path.suffix}")
+        
+        try:
+            with open(import_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if not content.strip():
+                    raise ValueError("Import file is empty")
+                data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}") from e
+        
+        if not isinstance(data, list):
+            raise ValueError(f"Expected JSON array, got: {type(data).__name__}")
+        
+        # Validate entries before import
+        validated_entries: list[JournalEntry] = []
+        errors: list[tuple[int, str]] = []
+        
+        for idx, entry_data in enumerate(data):
+            try:
+                if not isinstance(entry_data, dict):
+                    errors.append((idx, f"Expected dict, got {type(entry_data).__name__}"))
+                    continue
+                
+                # Required fields check
+                if 'content' not in entry_data:
+                    errors.append((idx, "Missing required field: 'content'"))
+                    continue
+                
+                if not isinstance(entry_data['content'], str) or not entry_data['content'].strip():
+                    errors.append((idx, "Field 'content' must be a non-empty string"))
+                    continue
+                
+                entry = JournalEntry.from_dict(entry_data)
+                validated_entries.append(entry)
+            except (ValueError, TypeError) as e:
+                errors.append((idx, str(e)))
+        
+        # Import validated entries
+        imported_count = 0
+        for entry in validated_entries:
+            try:
+                self.insert_entry(entry)
+                imported_count += 1
+            except Exception as e:
+                errors.append((validated_entries.index(entry), f"Database insert failed: {e}"))
+        
+        # Report results
+        if errors:
+            error_summary = "\n".join([f"  Entry {i}: {msg}" for i, msg in errors[:5]])
+            if len(errors) > 5:
+                error_summary += f"\n  ... and {len(errors) - 5} more errors"
+            raise ValueError(f"Import completed with {len(errors)} errors:\n{error_summary}")
         
         return True
     

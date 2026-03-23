@@ -1,0 +1,59 @@
+# OPC Journal Suite Configuration
+# Version: 2.2.0
+
+journal:
+  storage_path: "customers/{customer_id}/journal/"
+  retention_days: 365
+  privacy_level: "standard"  # standard / sensitive / vault
+  
+  # Auto-compaction settings
+  compaction:
+    enabled: true
+    reserve_tokens_floor: 40000
+    memory_flush:
+      soft_threshold_tokens: 4000
+      system_prompt: "Session nearing compaction. Store durable memories now."
+      prompt: "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store."
+
+pattern_recognition:
+  analysis_frequency: "weekly"
+  insight_depth: "detailed"  # brief / detailed / deep
+  dimensions:
+    - work_hours
+    - decision_style
+    - stress_triggers
+    - productivity_patterns
+
+milestone:
+  auto_detect: true
+  celebration_enabled: true
+  min_confidence: 0.7
+  
+  # Milestone types
+  types:
+    - product_launch
+    - first_customer
+    - revenue_milestone
+    - team_expansion
+    - feature_completion
+
+async_task:
+  max_concurrent: 5
+  default_timeout: "8h"
+  retry_policy:
+    max_retries: 3
+    backoff: "exponential"
+  notification_channels:
+    - feishu
+    - email
+
+insight:
+  generation_frequency: "daily"
+  include_recommendations: true
+  personalization_enabled: true
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+  retention_days: 30

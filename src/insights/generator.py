@@ -5,17 +5,51 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NotRequired, Optional, TypedDict
+
+
+# TypedDict definitions for structured parameters
+class DailySummaryParams(TypedDict):
+    """Parameters for daily summary generation."""
+    activities: list[dict]
+    date: NotRequired[Optional[datetime]]
+
+
+class WeeklyReviewParams(TypedDict):
+    """Parameters for weekly review generation."""
+    daily_summaries: list[dict]
+    week_start: datetime
+
+
+class MilestoneParams(TypedDict):
+    """Parameters for milestone insight generation."""
+    name: str
+    date_achieved: datetime | str
+    metrics: NotRequired[dict]
+
+
+class ProductivityData(TypedDict):
+    """Productivity data structure for recommendations."""
+    peak_hours: list[int]
+    avg_focus_session: float
+    interruption_frequency: str
+
+
+class WorkPatterns(TypedDict):
+    """Work patterns structure for recommendations."""
+    avg_daily_hours: float
+    weekend_work_frequency: float
+    break_frequency: str
 
 
 @dataclass
 class InsightGenerator:
     """Generate insights from journal data."""
     
-    def generate_daily_summary(self, activities: list[dict], date: Optional[datetime] = None) -> dict:
+    def generate_daily_summary(self, params: DailySummaryParams) -> dict[str, Any]:
         """Generate daily summary insight."""
-        if date is None:
-            date = datetime.now()
+        activities: list[dict] = params["activities"]
+        date: datetime = params.get("date") or datetime.now()
         
         tasks_completed = sum(1 for a in activities if a.get("type") == "task_completed")
         meetings = sum(1 for a in activities if a.get("type") == "meeting")
@@ -29,8 +63,11 @@ class InsightGenerator:
             "summary": f"Completed {tasks_completed} tasks and attended {meetings} meetings today."
         }
     
-    def generate_weekly_review(self, daily_summaries: list[dict], week_start: datetime) -> dict:
+    def generate_weekly_review(self, params: WeeklyReviewParams) -> dict[str, Any]:
         """Generate weekly review insight."""
+        daily_summaries: list[dict] = params["daily_summaries"]
+        week_start: datetime = params["week_start"]
+        
         total_tasks = sum(d.get("tasks_completed", 0) for d in daily_summaries)
         total_focus_hours = sum(d.get("focus_hours", 0) for d in daily_summaries)
         
@@ -57,7 +94,7 @@ class InsightGenerator:
             "summary": f"This week you completed {total_tasks} tasks with a {trend} trend."
         }
     
-    def generate_milestone_insight(self, milestone: dict) -> dict:
+    def generate_milestone_insight(self, milestone: MilestoneParams) -> dict[str, Any]:
         """Generate milestone achievement insight."""
         metrics = milestone.get("metrics", {})
         

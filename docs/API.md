@@ -1,114 +1,128 @@
 # OPC200 API 文档
 
-> 版本: 2026.1  
-> Base URL: `https://api.opc200.co/v1` 或 Gateway 本地地址
+## 概述
 
----
+OPC200 提供 RESTful API 用于与核心功能交互。
 
-## 认证
+**Base URL**: `http://localhost:8080/api/v1`
 
-所有 API 请求需要包含认证 Token:
+**认证**: Bearer Token
 
-```http
-Authorization: Bearer {token}
-```
+## 端点
 
----
+### Journal API
 
-## 核心 API
-
-### Gateway 状态
-
-```http
-GET /health
-```
-
-**响应**:
-```json
-{
-  "status": "healthy",
-  "version": "2026.3.12",
-  "uptime": 86400,
-  "timestamp": "2026-03-24T10:00:00Z"
-}
-```
-
----
-
-### Journal 管理
-
-#### 获取今日 Journal
-
-```http
-GET /journal/today
-```
-
-**响应**:
-```json
-{
-  "date": "2026-03-24",
-  "entries": [
-    {
-      "id": "entry-001",
-      "time": "09:00:00",
-      "type": "task",
-      "content": "完成产品需求文档",
-      "metadata": {
-        "status": "completed",
-        "duration_minutes": 120
-      }
-    }
-  ],
-  "summary": {
-    "tasks_completed": 5,
-    "tasks_pending": 2,
-    "insights": ["上午效率最高"]
-  }
-}
-```
-
-#### 创建 Journal 条目
+#### 创建日志条目
 
 ```http
 POST /journal/entries
 Content-Type: application/json
+Authorization: Bearer {token}
 
 {
-  "type": "note",
-  "content": "重要想法记录",
-  "tags": ["idea", "product"],
+  "content": "今天完成了产品原型的设计",
+  "tags": ["产品设计", "里程碑"],
   "metadata": {
-    "priority": "high"
+    "mood": "productive",
+    "energy_level": 8
   }
 }
 ```
 
----
+**响应**:
+```json
+{
+  "id": "JE-20260324-001",
+  "content": "今天完成了产品原型的设计",
+  "tags": ["产品设计", "里程碑"],
+  "metadata": {
+    "mood": "productive",
+    "energy_level": 8
+  },
+  "created_at": "2026-03-24T10:30:00Z",
+  "updated_at": "2026-03-24T10:30:00Z"
+}
+```
 
-### 任务管理
+#### 获取日志条目
+
+```http
+GET /journal/entries/{entry_id}
+Authorization: Bearer {token}
+```
+
+**响应**:
+```json
+{
+  "id": "JE-20260324-001",
+  "content": "今天完成了产品原型的设计",
+  "tags": ["产品设计", "里程碑"],
+  "metadata": {...},
+  "created_at": "2026-03-24T10:30:00Z",
+  "updated_at": "2026-03-24T10:30:00Z"
+}
+```
+
+#### 列出日志条目
+
+```http
+GET /journal/entries?limit=10&offset=0&tag=里程碑
+Authorization: Bearer {token}
+```
+
+**响应**:
+```json
+{
+  "items": [...],
+  "total": 100,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+#### 搜索日志
+
+```http
+GET /journal/search?q=产品原型&limit=5
+Authorization: Bearer {token}
+```
+
+### Vector Store API
+
+#### 语义搜索
+
+```http
+POST /vectors/search
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+  "query": "如何提高工作效率",
+  "limit": 10,
+  "tags": ["效率", "时间管理"]
+}
+```
+
+#### 查找相似条目
+
+```http
+GET /vectors/similar/{entry_id}?limit=5
+Authorization: Bearer {token}
+```
+
+### Tasks API
 
 #### 创建异步任务
 
 ```http
 POST /tasks
 Content-Type: application/json
+Authorization: Bearer {token}
 
 {
-  "title": "竞品分析",
-  "description": "分析竞争对手 X 的定价策略",
-  "agent": "research",
-  "priority": "normal",
-  "due_time": "2026-03-25T09:00:00Z"
-}
-```
-
-**响应**:
-```json
-{
-  "task_id": "TASK-20260324-001",
-  "status": "queued",
-  "estimated_duration": "30m",
-  "created_at": "2026-03-24T10:00:00Z"
+  "type": "research",
+  "description": "竞品分析报告",
+  "deadline": "2026-03-25T08:00:00Z"
 }
 ```
 
@@ -116,336 +130,137 @@ Content-Type: application/json
 
 ```http
 GET /tasks/{task_id}
+Authorization: Bearer {token}
 ```
 
-**响应**:
-```json
-{
-  "task_id": "TASK-20260324-001",
-  "status": "completed",
-  "progress": 100,
-  "result": {
-    "summary": "分析完成",
-    "details_url": "/tasks/TASK-20260324-001/result"
-  },
-  "completed_at": "2026-03-24T10:25:00Z"
-}
-```
+### Insights API
 
----
-
-### Agent 管理
-
-#### 列出可用 Agents
+#### 获取每日摘要
 
 ```http
-GET /agents
+GET /insights/daily?date=2026-03-24
+Authorization: Bearer {token}
 ```
 
-**响应**:
-```json
-{
-  "agents": [
-    {
-      "id": "primary",
-      "name": "主 Agent",
-      "status": "active",
-      "capabilities": ["conversation", "task_management"]
-    },
-    {
-      "id": "research",
-      "name": "Research Agent",
-      "status": "idle",
-      "capabilities": ["web_search", "data_analysis"]
-    }
-  ]
-}
-```
-
-#### 切换 Agent
+#### 获取每周回顾
 
 ```http
-POST /session/agent
+GET /insights/weekly?week_start=2026-03-17
+Authorization: Bearer {token}
+```
+
+#### 获取建议
+
+```http
+POST /insights/recommendations
 Content-Type: application/json
+Authorization: Bearer {token}
 
 {
-  "agent_id": "research"
-}
-```
-
----
-
-### 记忆管理
-
-#### 搜索记忆
-
-```http
-POST /memory/search
-Content-Type: application/json
-
-{
-  "query": "上周的营销策略",
-  "type": "all",
-  "limit": 10
-}
-```
-
-**响应**:
-```json
-{
-  "results": [
-    {
-      "id": "mem-001",
-      "type": "structured",
-      "content": "讨论了内容营销 vs 付费广告",
-      "relevance": 0.95,
-      "created_at": "2026-03-18T14:00:00Z"
-    }
-  ],
-  "total": 5
-}
-```
-
-#### 存储事实
-
-```http
-POST /memory/facts
-Content-Type: application/json
-
-{
-  "key": "user_preferred_working_hours",
-  "value": {
-    "start": "09:00",
-    "end": "18:00",
-    "timezone": "Asia/Shanghai"
-  },
-  "ttl_days": 365
-}
-```
-
----
-
-### 模式识别
-
-#### 获取工作模式
-
-```http
-GET /patterns/work-style
-```
-
-**响应**:
-```json
-{
-  "patterns": {
-    "productive_hours": ["09:00-11:00", "14:00-16:00"],
-    "work_style": "deep_focus",
-    "stress_signals": ["连续会议 > 3h"],
-    "preferences": {
-      "break_interval": 120,
-      "communication_style": "direct"
-    }
-  },
-  "confidence": 0.87,
-  "based_on_days": 30
-}
-```
-
----
-
-### 里程碑
-
-#### 列出里程碑
-
-```http
-GET /milestones
-```
-
-**响应**:
-```json
-{
-  "milestones": [
-    {
-      "id": "ms-001",
-      "name": "首周成就",
-      "description": "连续使用 7 天",
-      "achieved_at": "2026-03-07T00:00:00Z",
-      "badge": "🥉"
-    },
-    {
-      "id": "ms-002",
-      "name": "百日指挥官",
-      "description": "连续使用 100 天",
-      "achieved_at": null,
-      "progress": 75,
-      "badge": "💎"
-    }
-  ]
-}
-```
-
----
-
-### 洞察生成
-
-#### 获取周洞察
-
-```http
-GET /insights/weekly
-```
-
-**响应**:
-```json
-{
-  "period": "2026-03-17 to 2026-03-24",
-  "summary": "本周工作效率提升 15%",
-  "highlights": [
-    "完成了 3 个重要项目",
-    "深度工作时间增加"
-  ],
-  "recommendations": [
-    "继续保持上午深度工作习惯",
-    "考虑减少下午会议数量"
-  ],
-  "metrics": {
-    "tasks_completed": 25,
-    "deep_work_hours": 18,
-    "avg_response_time_minutes": 5
+  "type": "productivity",
+  "context": {
+    "current_workload": "high",
+    "upcoming_deadlines": ["产品发布"]
   }
 }
 ```
 
----
+## 数据模型
 
-## WebSocket API
+### JournalEntry
 
-### 实时会话
-
-```javascript
-const ws = new WebSocket('wss://opc-xxx.opc200.co/ws');
-
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: 'auth',
-    token: 'your-token'
-  }));
-};
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log(data);
-};
-
-// 发送消息
-ws.send(JSON.stringify({
-  type: 'message',
-  content: '帮我分析今天的任务',
-  context: {
-    agent: 'primary'
-  }
-}));
+```typescript
+interface JournalEntry {
+  id: string;
+  content: string;
+  tags: string[];
+  metadata: Record<string, any>;
+  created_at: string;  // ISO 8601
+  updated_at: string;  // ISO 8601
+}
 ```
 
----
+### Task
 
-## 错误处理
+```typescript
+interface Task {
+  id: string;
+  type: string;
+  description: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  created_at: string;
+  deadline?: string;
+  result?: any;
+}
+```
 
-### 错误响应格式
+## 错误码
+
+| 状态码 | 含义 | 说明 |
+|--------|------|------|
+| 200 | OK | 请求成功 |
+| 400 | Bad Request | 请求参数错误 |
+| 401 | Unauthorized | 未授权，token 无效 |
+| 403 | Forbidden | 权限不足 |
+| 404 | Not Found | 资源不存在 |
+| 429 | Too Many Requests | 请求频率超限 |
+| 500 | Internal Server Error | 服务器内部错误 |
+
+## 错误响应格式
 
 ```json
 {
   "error": {
-    "code": "INVALID_TOKEN",
-    "message": "认证令牌无效或已过期",
+    "code": "VALIDATION_ERROR",
+    "message": "Content cannot be empty",
     "details": {
-      "token_expired_at": "2026-03-24T00:00:00Z"
+      "field": "content",
+      "constraint": "required"
     }
   }
 }
 ```
 
-### 错误码
-
-| 错误码 | HTTP 状态 | 说明 |
-|--------|----------|------|
-| `INVALID_TOKEN` | 401 | 认证令牌无效 |
-| `FORBIDDEN` | 403 | 权限不足 |
-| `NOT_FOUND` | 404 | 资源不存在 |
-| `RATE_LIMITED` | 429 | 请求过于频繁 |
-| `INTERNAL_ERROR` | 500 | 服务器内部错误 |
-
----
-
 ## 限流
 
 - 默认: 60 请求/分钟
+- 搜索: 30 请求/分钟
 - 批量操作: 10 请求/分钟
-- WebSocket: 100 消息/分钟
-
----
 
 ## SDK
 
-### JavaScript/TypeScript
-
-```bash
-npm install @opc200/sdk
-```
-
-```typescript
-import { OPC200Client } from '@opc200/sdk';
-
-const client = new OPC200Client({
-  gatewayUrl: 'https://opc-xxx.opc200.co',
-  token: 'your-token'
-});
-
-// 获取今日 Journal
-const journal = await client.journal.getToday();
-
-// 创建任务
-const task = await client.tasks.create({
-  title: '竞品分析',
-  agent: 'research'
-});
-
-// 监听实时消息
-client.onMessage((message) => {
-  console.log(message);
-});
-```
-
 ### Python
-
-```bash
-pip install opc200
-```
 
 ```python
 from opc200 import Client
 
-client = Client(
-    gateway_url='https://opc-xxx.opc200.co',
-    token='your-token'
+client = Client("http://localhost:8080", token="your-token")
+
+# 创建日志条目
+entry = client.journal.create(
+    content="今天完成了产品原型的设计",
+    tags=["产品设计"]
 )
 
-# 获取今日 Journal
-journal = client.journal.get_today()
-
-# 创建任务
-task = client.tasks.create(
-    title='竞品分析',
-    agent='research'
-)
+# 搜索
+results = client.journal.search("产品原型")
 ```
 
----
+### JavaScript
 
-## 变更日志
+```javascript
+import { OPC200Client } from '@coidea/opc200-sdk';
 
-| 版本 | 日期 | 变更 |
-|------|------|------|
-| 2026.1 | 2026-03-24 | 初始版本 |
+const client = new OPC200Client('http://localhost:8080', {
+  token: 'your-token'
+});
 
----
+// 创建日志条目
+const entry = await client.journal.create({
+  content: '今天完成了产品原型的设计',
+  tags: ['产品设计']
+});
 
-*详细实现请参考 [GitHub](https://github.com/coidea/opc200)*
+// 搜索
+const results = await client.journal.search('产品原型');
+```

@@ -15,11 +15,35 @@ class DataVault:
     
     base_path: Path
     encryption_service: Any = None
+    _access_control: Optional["VaultAccessControl"] = field(default=None, init=False, repr=False)
+    _current_user_id: Optional[str] = field(default=None, init=False, repr=False)
     
     def __post_init__(self):
         """Create vault directories."""
         self.base_path = Path(self.base_path)
         self._create_directories()
+        # Initialize access control
+        self._access_control = VaultAccessControl(self.base_path)
+    
+    def set_user_context(self, user_id: str) -> "DataVault":
+        """Set the current user context for permission checks."""
+        self._current_user_id = user_id
+        return self
+    
+    def _check_permission(self, resource: str, permission: str) -> bool:
+        """Check if current user has permission for resource."""
+        if self._access_control is None or self._current_user_id is None:
+            # No access control configured, allow by default (for backward compatibility)
+            return True
+        return self._access_control.check_access(self._current_user_id, resource, permission)
+    
+    def _require_permission(self, resource: str, permission: str) -> None:
+        """Require permission or raise PermissionError."""
+        if not self._check_permission(resource, permission):
+            raise PermissionError(
+                f"User '{self._current_user_id}' does not have '{permission}' "
+                f"permission for resource '{resource}'"
+            )
     
     def _create_directories(self) -> None:
         """Create vault directory structure."""
@@ -28,8 +52,12 @@ class DataVault:
         (self.base_path / "audit").mkdir(parents=True, exist_ok=True)
         (self.base_path / "temp").mkdir(parents=True, exist_ok=True)
     
-    def store_encrypted(self, filename: str, content: bytes) -> bool:
+    def store_encrypted(self, filename: str, content: bytes, user_id: Optional[str] = None) -> bool:
         """Store encrypted file in vault."""
+        if user_id:
+            self.set_user_context(user_id)
+        self._require_permission(filename, "write")
+        
         encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
         
         if self.encryption_service:
@@ -40,8 +68,12 @@ class DataVault:
         encrypted_path.write_bytes(encrypted_content)
         return True
     
-    def retrieve_decrypted(self, filename: str) -> Optional[bytes]:
+    def retrieve_decrypted(self, filename: str, user_id: Optional[str] = None) -> Optional[bytes]:
         """Retrieve and decrypt file from vault."""
+        if user_id:
+            self.set_user_context(user_id)
+        self._require_permission(filename, "read")
+        
         encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
         
         if not encrypted_path.exists():
@@ -54,8 +86,12 @@ class DataVault:
         
         return encrypted_content
     
-    def delete(self, filename: str) -> bool:
+    def delete(self, filename: str, user_id: Optional[str] = None) -> bool:
         """Delete encrypted file from vault."""
+        if user_id:
+            self.set_user_context(user_id)
+        self._require_permission(filename, "delete")
+        
         encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
         
         if encrypted_path.exists():
@@ -64,8 +100,12 @@ class DataVault:
         
         return False
     
-    def list_files(self) -> list[str]:
+    def list_files(self, user_id: Optional[str] = None) -> list[str]:
         """List all encrypted files."""
+        if user_id:
+            self.set_user_context(user_id)
+        self._require_permission("*", "list")
+        
         encrypted_dir = self.base_path / "encrypted"
         files = []
         

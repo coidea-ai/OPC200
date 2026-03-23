@@ -208,14 +208,33 @@ class SemanticSearch:
         return results
     
     def find_similar(self, entry_id: str, limit: int = 5):
-        """Find entries similar to a given entry."""
+        """Find entries similar to a given entry using stored vector.
+        
+        Uses the vector stored in Qdrant rather than regenerating from content,
+        ensuring consistency with the indexed representation.
+        """
         entry = self.vector_store.get_by_id(entry_id)
         if entry is None:
             return []
         
-        # Note: In real implementation, we'd retrieve the stored vector
-        # For now, use the entry content to generate a new vector
-        query_vector = self.embedder.generate(entry.payload.get("text", ""))
+        # Use stored vector from Qdrant (not regenerated)
+        # Qdrant's retrieve returns points that may have vectors disabled by default
+        # We need to check if vector is available, otherwise fall back to regeneration
+        stored_vector = None
+        if hasattr(entry, 'vector') and entry.vector is not None:
+            stored_vector = entry.vector
+        
+        if stored_vector:
+            query_vector = stored_vector
+        else:
+            # Fallback: regenerate vector if not stored (with warning)
+            import warnings
+            warnings.warn(
+                f"Stored vector not available for entry {entry_id}, "
+                "regenerating from content. Consider enabling vector storage in Qdrant.",
+                UserWarning
+            )
+            query_vector = self.embedder.generate(entry.payload.get("text", ""))
         
         results = self.vector_store.search(
             vector=query_vector,

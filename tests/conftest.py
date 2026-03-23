@@ -1,80 +1,99 @@
 """
-Mock Qdrant client for testing purposes.
+pytest configuration and fixtures.
 """
+import asyncio
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Generator
 from unittest.mock import Mock
 
-
-class MockQdrantClient:
-    """Mock Qdrant client for testing."""
-    
-    def __init__(self):
-        self.collections = {}
-        self.vectors = {}
-    
-    def create_collection(self, collection_name: str, vectors_config) -> None:
-        self.collections[collection_name] = {"vectors_config": vectors_config}
-        self.vectors[collection_name] = {}
-    
-    def delete_collection(self, collection_name: str) -> None:
-        if collection_name in self.collections:
-            del self.collections[collection_name]
-            del self.vectors[collection_name]
-    
-    def collection_exists(self, collection_name: str) -> bool:
-        return collection_name in self.collections
-    
-    def upsert(self, collection_name: str, points) -> None:
-        if collection_name not in self.vectors:
-            self.vectors[collection_name] = {}
-        for point in points:
-            self.vectors[collection_name][point.id] = point
-    
-    def search(self, collection_name: str, query_vector, limit: int = 10, score_threshold: float = 0.0, query_filter=None):
-        results = []
-        for i in range(min(limit, 2)):
-            mock = Mock()
-            mock.id = f"doc{i+1}"
-            mock.score = 0.95 - (i * 0.1)
-            mock.payload = {"text": f"result{i+1}"}
-            results.append(mock)
-        return results
-    
-    def delete(self, collection_name: str, points_selector) -> None:
-        if collection_name in self.vectors:
-            for point_id in points_selector:
-                if point_id in self.vectors[collection_name]:
-                    del self.vectors[collection_name][point_id]
-    
-    def retrieve(self, collection_name: str, ids: list):
-        results = []
-        for id in ids:
-            if collection_name in self.vectors and id in self.vectors[collection_name]:
-                results.append(self.vectors[collection_name][id])
-            else:
-                mock = Mock()
-                mock.id = id
-                mock.payload = {"text": "Test"}
-                results.append(mock)
-        return results
-    
-    def count(self, collection_name: str):
-        mock = Mock()
-        mock.count = len(self.vectors.get(collection_name, {}))
-        return mock
-    
-    def scroll(self, collection_name: str, limit: int = 100, offset=None):
-        vectors = self.vectors.get(collection_name, {})
-        results = list(vectors.values())[:limit]
-        return results, None
+import pytest
 
 
-class MockModel:
-    """Mock embedding model for testing."""
-    
-    def encode(self, texts):
-        """Mock encode method."""
-        import numpy as np
-        
-        if isinstance(texts, str):
-            return np.array([0.1] * 384)
-        return [np.array([0.1] * 384) for _ in texts]
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for the test session."""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest.fixture
+def temp_dir(tmp_path: Path) -> Path:
+    """Provide a temporary directory for tests."""
+    return tmp_path
+
+
+@pytest.fixture
+def in_memory_db() -> Generator[sqlite3.Connection, None, None]:
+    """Create an in-memory SQLite database for testing."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    yield conn
+    conn.close()
+
+
+@pytest.fixture
+def sample_journal_entry_data() -> dict:
+    """Sample journal entry data for testing."""
+    return {
+        "id": "entry-001",
+        "content": "Test journal entry content",
+        "tags": ["test", "example"],
+        "metadata": {
+            "importance": "high",
+            "source": "test"
+        },
+        "created_at": "2024-03-24T10:00:00",
+        "updated_at": "2024-03-24T10:00:00",
+    }
+
+
+@pytest.fixture
+def sample_journal_entries() -> list[dict]:
+    """Generate sample journal entries for testing."""
+    entries = []
+    for i in range(10):
+        entries.append({
+            "id": f"entry-{i:03d}",
+            "content": f"Test entry content {i}",
+            "tags": ["test"] if i % 2 == 0 else ["example"],
+            "metadata": {"index": i},
+            "created_at": f"2024-03-{i+1:02d}T10:00:00",
+            "updated_at": f"2024-03-{i+1:02d}T10:00:00",
+        })
+    return entries
+
+
+@pytest.fixture
+def fixed_datetime() -> datetime:
+    """Return a fixed datetime for testing."""
+    return datetime(2024, 3, 24, 10, 0, 0)
+
+
+@pytest.fixture
+def mock_encryption_service():
+    """Mock encryption service for testing."""
+    service = Mock()
+    service.encrypt = Mock(return_value=b"encrypted_data")
+    service.decrypt = Mock(return_value=b"decrypted_data")
+    return service
+
+
+@pytest.fixture
+def sample_embedding() -> list[float]:
+    """Generate a sample embedding vector."""
+    return [0.1] * 384
+
+
+@pytest.fixture
+def sample_embeddings() -> list[list[float]]:
+    """Generate sample embedding vectors."""
+    return [[0.1] * 384 for _ in range(5)]
+
+
+# Import mock fixtures for Qdrant
+pytest_plugins = ["tests.fixtures.mocks"]
+

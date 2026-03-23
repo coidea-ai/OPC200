@@ -100,7 +100,8 @@ check_system_resources() {
     
     # CPU
     local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
-    if (( $(echo "$cpu_usage > 80" | bc -l) )); then
+    # Use awk for comparison instead of bc
+    if awk "BEGIN {exit !($cpu_usage > 80)}"; then
         add_check "CPU" "WARNING" "使用率: ${cpu_usage}% (高)"
         ((issues++))
     else

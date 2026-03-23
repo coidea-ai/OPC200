@@ -266,10 +266,23 @@ class TaskQueue:
         return task
     
     async def execute(self, task_func: Callable, timeout: Optional[int] = None) -> Any:
-        """Execute a task with timeout."""
+        """Execute a task with timeout and precise exception handling."""
         timeout = timeout or self.default_timeout
         
-        return await asyncio.wait_for(task_func(), timeout=timeout)
+        try:
+            return await asyncio.wait_for(task_func(), timeout=timeout)
+        except asyncio.TimeoutError:
+            # Task exceeded the timeout limit
+            raise asyncio.TimeoutError(f"Task execution timed out after {timeout} seconds")
+        except asyncio.CancelledError:
+            # Task was cancelled
+            raise asyncio.CancelledError("Task was cancelled during execution")
+        except RuntimeError as e:
+            # Runtime errors (e.g., event loop issues)
+            raise RuntimeError(f"Task execution runtime error: {e}") from e
+        except Exception as e:
+            # Catch-all for other exceptions from task_func
+            raise RuntimeError(f"Task execution failed: {type(e).__name__}: {e}") from e
     
     async def cancel(self, task_id: str) -> bool:
         """Cancel a pending task."""

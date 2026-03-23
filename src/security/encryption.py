@@ -164,38 +164,106 @@ class PasswordHashing:
 
 
 class FileEncryption:
-    """Encrypt and decrypt files and directories."""
+    """Encrypt and decrypt files and directories using streaming."""
+    
+    CHUNK_OVERHEAD = 28  # 16 bytes tag + 12 bytes chunk nonce
     
     def __init__(self, key: bytes):
         self.encryption_service = EncryptionService(key=key)
+        self._key = key
     
     def encrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = 64 * 1024) -> bool:
-        """Encrypt file using streaming (for large files)."""
-        nonce = os.urandom(12)
-        aesgcm = AESGCM(self.encryption_service.key)
+        """Encrypt file using true streaming with chunked AEAD.
+        
+        Format: [file_nonce(12)] + [num_chunks(8)] + [chunk1_len(4) + chunk1_tag(16) + chunk1_nonce(12) + chunk1_data] + ...
+        """
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        import struct
+        
+        file_nonce = os.urandom(12)
+        
+        # First pass: count chunks
+        chunk_count = 0
+        with open(input_path, "rb") as f:
+            while f.read(chunk_size):
+                chunk_count += 1
         
         with open(input_path, "rb") as infile, open(output_path, "wb") as outfile:
-            outfile.write(nonce)
+            # Write file header: nonce + chunk count
+            outfile.write(file_nonce)
+            outfile.write(struct.pack("<Q", chunk_count))  # 8 bytes, little-endian
             
+            chunk_index = 0
             while chunk := infile.read(chunk_size):
-                # For simplicity, encrypt entire file at once
-                # In production, use chunked encryption with proper AEAD handling
-                encrypted = aesgcm.encrypt(nonce, chunk, None)
-                outfile.write(encrypted)
+                # Derive unique nonce for each chunk
+                chunk_nonce = self._derive_chunk_nonce(file_nonce, chunk_index)
+                aesgcm = AESGCM(self._key)
+                
+                # Encrypt chunk
+                encrypted_chunk = aesgcm.encrypt(chunk_nonce, chunk, None)
+                # encrypted_chunk = ciphertext + tag(16 bytes)
+                
+                # Write chunk header + encrypted data
+                # chunk_len includes tag but not nonce
+                outfile.write(struct.pack("<I", len(encrypted_chunk)))  # 4 bytes
+                outfile.write(chunk_nonce)  # 12 bytes
+                outfile.write(encrypted_chunk)  # len + 16 bytes tag
+                
+                chunk_index += 1
         
         return True
     
     def decrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = 64 * 1024) -> bool:
-        """Decrypt file using streaming."""
+        """Decrypt file using true streaming with chunked AEAD."""
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        import struct
+        
         with open(input_path, "rb") as infile, open(output_path, "wb") as outfile:
-            nonce = infile.read(12)
-            aesgcm = AESGCM(self.encryption_service.key)
+            # Read file header
+            file_nonce = infile.read(12)
+            if len(file_nonce) != 12:
+                raise ValueError("Invalid encrypted file: missing nonce")
             
-            ciphertext = infile.read()
-            plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-            outfile.write(plaintext)
+            chunk_count_bytes = infile.read(8)
+            if len(chunk_count_bytes) != 8:
+                raise ValueError("Invalid encrypted file: missing chunk count")
+            chunk_count = struct.unpack("<Q", chunk_count_bytes)[0]
+            
+            # Decrypt chunks
+            for chunk_index in range(chunk_count):
+                # Read chunk header
+                chunk_len_bytes = infile.read(4)
+                if len(chunk_len_bytes) != 4:
+                    raise ValueError(f"Invalid chunk header at index {chunk_index}")
+                chunk_len = struct.unpack("<I", chunk_len_bytes)[0]
+                
+                chunk_nonce = infile.read(12)
+                if len(chunk_nonce) != 12:
+                    raise ValueError(f"Invalid chunk nonce at index {chunk_index}")
+                
+                encrypted_chunk = infile.read(chunk_len)
+                if len(encrypted_chunk) != chunk_len:
+                    raise ValueError(f"Incomplete chunk data at index {chunk_index}")
+                
+                # Decrypt chunk
+                aesgcm = AESGCM(self._key)
+                try:
+                    plaintext = aesgcm.decrypt(chunk_nonce, encrypted_chunk, None)
+                except Exception as e:
+                    raise ValueError(f"Failed to decrypt chunk {chunk_index}: {e}") from e
+                
+                outfile.write(plaintext)
         
         return True
+    
+    def _derive_chunk_nonce(self, file_nonce: bytes, chunk_index: int) -> bytes:
+        """Derive a unique nonce for each chunk from file nonce and chunk index."""
+        import hashlib
+        # Combine file_nonce with chunk_index to create unique nonce
+        index_bytes = chunk_index.to_bytes(8, 'little')
+        combined = file_nonce + index_bytes
+        # Use first 12 bytes of SHA256 hash
+        return hashlib.sha256(combined).digest()[:12]
     
     def encrypt_directory(self, source_dir: Path, output_dir: Path) -> bool:
         """Encrypt all files in a directory."""
