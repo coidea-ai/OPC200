@@ -115,8 +115,8 @@ class CronParser:
         for part in field.split(","):
             if "/" in part:
                 # Step notation: */15 or 0-30/5
-                range_part, step = part.split("/")
-                step = int(step)
+                range_part, step_str = part.split("/")
+                step: int = int(step_str)
                 values.extend(self._parse_step_notation(range_part, step, min_val, max_val))
             elif "-" in part:
                 # Range notation: 1-5

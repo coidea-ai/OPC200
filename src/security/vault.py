@@ -93,10 +93,11 @@ class DataVault:
             return None
         
         with open(encrypted_path, 'rb') as f:
-            encrypted_content = f.read()
+            encrypted_content: bytes = f.read()
         
         if self.encryption_service:
-            return self.encryption_service.decrypt(encrypted_content)
+            decrypted: bytes = self.encryption_service.decrypt(encrypted_content)
+            return decrypted
         
         return encrypted_content
     
@@ -149,10 +150,11 @@ class VaultAccessControl:
             with open(self.policy_file, 'w') as f:
                 f.write(json.dumps({"grants": []}))
     
-    def _load_policy(self) -> dict:
+    def _load_policy(self) -> dict[str, Any]:
         """Load access policy."""
         with open(self.policy_file, 'r') as f:
-            return json.loads(f.read())
+            policy_data: dict[str, Any] = json.loads(f.read())
+            return policy_data
     
     def _save_policy(self, policy: dict) -> None:
         """Save access policy."""
@@ -222,9 +224,12 @@ class VaultAccessControl:
         """Get permissions for user on resource."""
         policy = self._load_policy()
         
-        for grant in policy["grants"]:
-            if grant["user_id"] == user_id and grant["resource"] == resource:
-                return grant["permissions"]
+        for grant in policy.get("grants", []):
+            if isinstance(grant, dict):
+                if grant.get("user_id") == user_id and grant.get("resource") == resource:
+                    perms = grant.get("permissions", [])
+                    if isinstance(perms, list):
+                        return [str(p) for p in perms]
         
         return []
 

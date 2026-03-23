@@ -307,14 +307,17 @@ class PatternInsightGenerator:
     
     def detect_productivity_patterns(self, work_sessions: list[dict]) -> dict:
         """Detect productivity patterns from work sessions."""
-        hour_outputs = {}
+        hour_outputs: dict[int, list[int]] = {}
         
         for session in work_sessions:
             start = session.get("start")
             if isinstance(start, str):
                 start = datetime.fromisoformat(start)
             
-            hour = start.hour if hasattr(start, "hour") else 9
+            if start is not None and hasattr(start, "hour"):
+                hour = start.hour
+            else:
+                hour = 9
             output = session.get("output", 0)
             
             if hour not in hour_outputs:
@@ -355,10 +358,10 @@ class PatternInsightGenerator:
     
     def calculate_streaks(self, activity_log: list[dict]) -> dict:
         """Calculate activity streaks."""
-        streaks = {}
+        streaks: dict[str, dict] = {}
         
         # Group by activity type
-        by_activity = {}
+        by_activity: dict[str, list[dict]] = {}
         for entry in activity_log:
             activity = entry.get("activity", "unknown")
             if activity not in by_activity:

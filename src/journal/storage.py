@@ -329,8 +329,9 @@ class SQLiteStorage:
         """Check database integrity."""
         cursor = self.connection.cursor()
         cursor.execute("PRAGMA integrity_check")
-        result = cursor.fetchone()
-        return result[0] == "ok"
+        result: sqlite3.Row = cursor.fetchone()
+        integrity_result: str = result[0]
+        return integrity_result == "ok"
     
     def rebuild_indexes(self) -> bool:
         """Rebuild database indexes."""

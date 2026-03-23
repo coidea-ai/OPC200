@@ -365,7 +365,7 @@ class EncryptionMetadata:
         
         return True
     
-    def load(self, file_id: str) -> Optional[dict]:
+    def load(self, file_id: str) -> Optional[dict[str, Any]]:
         """Load encryption metadata."""
         metadata_file = self.metadata_path / f"{file_id}.meta.json"
         
@@ -373,7 +373,7 @@ class EncryptionMetadata:
             return None
         
         with open(metadata_file, 'r') as f:
-            metadata = json.loads(f.read())
+            metadata: dict[str, Any] = json.loads(f.read())
         metadata["salt"] = base64.b64decode(metadata["salt"])
         
         if "nonce" in metadata:

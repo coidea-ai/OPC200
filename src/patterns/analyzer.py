@@ -32,7 +32,7 @@ MIN_SAMPLES_FOR_OUTLIERS = 3  # Minimum samples needed for outlier detection
 class BehaviorAnalyzer:
     """Analyze behavior patterns."""
     
-    patterns: dict = None
+    patterns: Optional[dict[str, Any]] = None
     
     def __post_init__(self):
         if self.patterns is None:
@@ -52,8 +52,9 @@ class BehaviorAnalyzer:
             if isinstance(timestamp, str):
                 timestamp = datetime.fromisoformat(timestamp)
             
-            hours.append(timestamp.hour)
-            days.append(timestamp.weekday())
+            if timestamp is not None:
+                hours.append(timestamp.hour)
+                days.append(timestamp.weekday())
         
         # Calculate patterns
         hour_counts = Counter(hours)
@@ -215,7 +216,11 @@ class AnomalyDetector:
             timestamp = activity.get("timestamp")
             if isinstance(timestamp, str):
                 timestamp = datetime.fromisoformat(timestamp)
-            hours.append(timestamp.hour)
+            if timestamp is not None and hasattr(timestamp, "hour"):
+                hours.append(timestamp.hour)
+        
+        if not hours:
+            return []
         
         mean_hour = statistics.mean(hours)
         
@@ -225,14 +230,15 @@ class AnomalyDetector:
             if isinstance(timestamp, str):
                 timestamp = datetime.fromisoformat(timestamp)
             
-            hour_diff = abs(timestamp.hour - mean_hour)
-            if hour_diff > PATTERN_BREAK_HOUR_DEVIATION:  # More than 6 hours deviation
-                breaks.append({
-                    "index": i,
-                    "timestamp": timestamp,
-                    "activity": activity,
-                    "deviation": hour_diff
-                })
+            if timestamp is not None and hasattr(timestamp, "hour"):
+                hour_diff = abs(timestamp.hour - mean_hour)
+                if hour_diff > PATTERN_BREAK_HOUR_DEVIATION:  # More than 6 hours deviation
+                    breaks.append({
+                        "index": i,
+                        "timestamp": timestamp,
+                        "activity": activity,
+                        "deviation": hour_diff
+                    })
         
         return breaks
     
@@ -260,31 +266,33 @@ class ProductivityAnalyzer:
     
     def find_peak_productivity_hours(self, sessions: list[dict]) -> dict[int, float]:
         """Find most productive hours."""
-        hour_outputs = {}
-        hour_counts = {}
+        hour_outputs: dict[int, float] = {}
+        hour_counts: dict[int, int] = {}
         
         for session in sessions:
             start = session.get("start")
             if isinstance(start, str):
                 start = datetime.fromisoformat(start)
             
-            hour = start.hour
-            output = session.get("output", 0)
-            
-            hour_outputs[hour] = hour_outputs.get(hour, 0) + output
-            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            if start is not None and hasattr(start, "hour"):
+                hour = start.hour
+                output = session.get("output", 0)
+                
+                hour_outputs[hour] = hour_outputs.get(hour, 0) + output
+                hour_counts[hour] = hour_counts.get(hour, 0) + 1
         
         # Calculate average output per hour
-        peak_hours = {}
+        peak_hours: dict[int, float] = {}
         for hour in hour_outputs:
-            avg_output = hour_outputs[hour] / hour_counts[hour]
-            peak_hours[hour] = avg_output
+            if hour_counts.get(hour, 0) > 0:
+                avg_output = hour_outputs[hour] / hour_counts[hour]
+                peak_hours[hour] = avg_output
         
         return dict(sorted(peak_hours.items(), key=lambda x: x[1], reverse=True))
     
     def analyze_completion_patterns(self, tasks: list[dict]) -> dict[str, dict]:
         """Analyze task completion patterns."""
-        type_stats = {}
+        type_stats: dict[str, dict[str, Any]] = {}
         
         for task in tasks:
             task_type = task.get("type", "unknown")
@@ -296,7 +304,10 @@ class ProductivityAnalyzer:
             if isinstance(completed, str):
                 completed = datetime.fromisoformat(completed)
             
-            duration = (completed - created).total_seconds() / MINUTES_PER_HOUR / MINUTES_PER_HOUR  # hours
+            if created is None or completed is None:
+                continue
+                
+            duration = (completed - created).total_seconds() / 3600  # hours
             
             if task_type not in type_stats:
                 type_stats[task_type] = {"durations": [], "count": 0}
@@ -305,7 +316,7 @@ class ProductivityAnalyzer:
             type_stats[task_type]["count"] += 1
         
         # Calculate averages
-        patterns = {}
+        patterns: dict[str, dict] = {}
         for task_type, stats in type_stats.items():
             durations = stats["durations"]
             patterns[task_type] = {

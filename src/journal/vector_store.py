@@ -5,17 +5,19 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 # Try to import QdrantClient at module level for patching support
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.models import Distance, VectorParams, PointStruct
+    QDRANT_AVAILABLE = True
 except ImportError:
-    QdrantClient = None
-    Distance = None
-    VectorParams = None
-    PointStruct = None
+    QdrantClient = None  # type: ignore[misc,assignment]
+    Distance = None  # type: ignore[misc,assignment]
+    VectorParams = None  # type: ignore[misc,assignment]
+    PointStruct = None  # type: ignore[misc,assignment]
+    QDRANT_AVAILABLE = False
 
 # Retry configuration constants
 DEFAULT_MAX_RETRIES = 3
@@ -126,7 +128,8 @@ class VectorStore:
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def collection_exists(self) -> bool:
         """Check if collection exists."""
-        return self.client.collection_exists(self.collection_name)
+        result: bool = self.client.collection_exists(self.collection_name)
+        return result
     
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def upsert(self, id: str, vector: list[float], payload: dict) -> bool:
@@ -196,7 +199,8 @@ class VectorStore:
     def count(self) -> int:
         """Count vectors in collection."""
         result = self.client.count(collection_name=self.collection_name)
-        return result.count
+        count_value: int = result.count if hasattr(result, 'count') else int(result)
+        return count_value
     
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def scroll(self, limit: int = 100, offset: Optional[str] = None):
@@ -239,9 +243,9 @@ class EmbeddingGenerator:
     
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
-        self.model = None
+        self.model: Any = None
     
-    def _load_model(self):
+    def _load_model(self) -> None:
         """Load the embedding model."""
         if self.model is None:
             from sentence_transformers import SentenceTransformer
@@ -250,14 +254,18 @@ class EmbeddingGenerator:
     def generate(self, text: str) -> list[float]:
         """Generate embedding for text."""
         self._load_model()
-        embedding = self.model.encode(text)
-        return embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+        if self.model is not None:
+            embedding = self.model.encode(text)
+            return embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+        return []
     
     def generate_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple texts."""
         self._load_model()
-        embeddings = self.model.encode(texts)
-        return [e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings]
+        if self.model is not None:
+            embeddings = self.model.encode(texts)
+            return [e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings]
+        return []
     
     @staticmethod
     def normalize(vector: list[float]) -> list[float]:
@@ -348,11 +356,12 @@ class VectorIndex:
             "created_at": entry.created_at.isoformat() if hasattr(entry.created_at, "isoformat") else str(entry.created_at),
         }
         
-        return self.store.upsert(
+        result: bool = self.store.upsert(
             id=entry.id,
             vector=vector,
             payload=payload
         )
+        return result
     
     def index_entries_batch(self, entries: list) -> bool:
         """Index multiple entries in batch."""
@@ -370,11 +379,13 @@ class VectorIndex:
                 }
             })
         
-        return self.store.upsert_batch(points)
+        result: bool = self.store.upsert_batch(points)
+        return result
     
     def remove_entry(self, entry_id: str) -> bool:
         """Remove an entry from the index."""
-        return self.store.delete_by_id(entry_id)
+        result: bool = self.store.delete_by_id(entry_id)
+        return result
     
     def rebuild_index(self) -> bool:
         """Rebuild the entire index."""
