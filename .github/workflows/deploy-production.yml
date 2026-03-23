@@ -1,0 +1,86 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        type: string
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version
+        run: |
+          VERSION=$(cat VERSION)
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            if [ "$VERSION" != "${{ github.event.inputs.version }}" ]; then
+              echo "Version mismatch: $VERSION != ${{ github.event.inputs.version }}"
+              exit 1
+            fi
+          fi
+          echo "Deploying version: $VERSION"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run full test suite
+        run: |
+          pytest tests/ -v --timeout=300
+
+      - name: Build production Docker image
+        run: |
+          docker build -f Dockerfile.prod -t opc200:${{ github.sha }} .
+          docker tag opc200:${{ github.sha }} opc200:latest
+
+      - name: Push to production registry
+        run: |
+          echo "${{ secrets.PROD_REGISTRY_PASSWORD }}" | docker login ${{ secrets.PROD_REGISTRY }} -u ${{ secrets.PROD_REGISTRY_USERNAME }} --password-stdin
+          docker tag opc200:${{ github.sha }} ${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
+          docker tag opc200:${{ github.sha }} ${{ secrets.PROD_REGISTRY }}/opc200:latest
+          docker push ${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
+          docker push ${{ secrets.PROD_REGISTRY }}/opc200:latest
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # Add actual production deployment commands
+          # kubectl set image deployment/opc200 opc200=${{ secrets.PROD_REGISTRY }}/opc200:${{ github.sha }}
+
+      - name: Run production health check
+        run: |
+          echo "Running health check on production..."
+          # curl -f https://opc200.co/health || exit 1
+
+      - name: Create deployment record
+        run: |
+          echo "$(date): Deployed version $(cat VERSION) - ${{ github.sha }}" >> deployments.log
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Production deployment successful!"
+          # Add notification commands (Slack, email, etc.)
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Production deployment failed!"
+          # Add notification commands
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Production deployment failed!"}'

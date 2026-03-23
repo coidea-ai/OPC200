@@ -1,0 +1,30 @@
+# Test environment Dockerfile for OPC200
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt requirements-test.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-test.txt
+
+# Copy source code
+COPY src/ ./src/
+COPY tests/ ./tests/
+COPY pytest.ini ./
+
+# Set environment variables
+ENV PYTHONPATH=/app/src
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+CMD ["pytest", "-v", "--cov=src", "--cov-report=term-missing"]

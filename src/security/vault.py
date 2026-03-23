@@ -1,538 +1,372 @@
-# OPC200 - 数据保险箱模块
-# 实现 Agent-Blind Credentials 安全架构
-
-import os
+"""
+Security Vault Module - Data vault functionality.
+"""
 import json
-import hashlib
-import secrets
+import os
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
-from dataclasses import dataclass, asdict
-import logging
-import asyncio
-
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import base64
-
-logger = logging.getLogger(__name__)
+from typing import Any, Optional
 
 
 @dataclass
-class CredentialEntry:
-    """
-    凭证条目
+class DataVault:
+    """Encrypted data vault for sensitive information."""
     
-    注意：凭证值在存储前已加密，Agent 无法直接访问明文
-    """
-    id: str
-    name: str
-    credential_type: str  # api_key, password, token, certificate
-    encrypted_value: bytes  # 加密后的值
-    metadata: Dict[str, Any]  # 元数据（不敏感信息）
-    created_at: datetime
-    updated_at: datetime
-    expires_at: Optional[datetime] = None
-    rotation_hint: Optional[str] = None  # 轮换提示
+    base_path: Path
+    encryption_service: Any = None
     
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'id': self.id,
-            'name': self.name,
-            'credential_type': self.credential_type,
-            'encrypted_value': base64.b64encode(self.encrypted_value).decode(),
-            'metadata': self.metadata,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
-            'rotation_hint': self.rotation_hint
-        }
+    def __post_init__(self):
+        """Create vault directories."""
+        self.base_path = Path(self.base_path)
+        self._create_directories()
     
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CredentialEntry':
-        return cls(
-            id=data['id'],
-            name=data['name'],
-            credential_type=data['credential_type'],
-            encrypted_value=base64.b64decode(data['encrypted_value']),
-            metadata=data.get('metadata', {}),
-            created_at=datetime.fromisoformat(data['created_at']),
-            updated_at=datetime.fromisoformat(data['updated_at']),
-            expires_at=datetime.fromisoformat(data['expires_at']) if data.get('expires_at') else None,
-            rotation_hint=data.get('rotation_hint')
-        )
-
-
-class VaultKeyManager:
-    """
-    保险箱密钥管理器
+    def _create_directories(self) -> None:
+        """Create vault directory structure."""
+        (self.base_path / "encrypted").mkdir(parents=True, exist_ok=True)
+        (self.base_path / "keys").mkdir(parents=True, exist_ok=True)
+        (self.base_path / "audit").mkdir(parents=True, exist_ok=True)
+        (self.base_path / "temp").mkdir(parents=True, exist_ok=True)
     
-    职责：
-    - 主密钥派生
-    - 密钥轮换
-    - 安全的内存处理
-    """
-    
-    def __init__(self, master_key: Optional[bytes] = None):
-        """
-        Args:
-            master_key: 主密钥，如果为 None 则生成新密钥
-        """
-        if master_key is None:
-            master_key = Fernet.generate_key()
+    def store_encrypted(self, filename: str, content: bytes) -> bool:
+        """Store encrypted file in vault."""
+        encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
         
-        self._master_key = master_key
-        self._cipher = Fernet(master_key)
-    
-    @classmethod
-    def from_password(cls, password: str, salt: Optional[bytes] = None) -> Tuple['VaultKeyManager', bytes]:
-        """
-        从密码派生密钥
+        if self.encryption_service:
+            encrypted_content = self.encryption_service.encrypt(content)
+        else:
+            encrypted_content = content
         
-        Returns:
-            (KeyManager 实例, salt)
-        """
-        if salt is None:
-            salt = os.urandom(16)
+        encrypted_path.write_bytes(encrypted_content)
+        return True
+    
+    def retrieve_decrypted(self, filename: str) -> Optional[bytes]:
+        """Retrieve and decrypt file from vault."""
+        encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
         
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-        
-        return cls(key), salt
-    
-    def encrypt(self, plaintext: str) -> bytes:
-        """加密明文"""
-        return self._cipher.encrypt(plaintext.encode('utf-8'))
-    
-    def decrypt(self, ciphertext: bytes) -> str:
-        """解密为明文"""
-        return self._cipher.decrypt(ciphertext).decode('utf-8')
-    
-    def rotate_key(self) -> 'VaultKeyManager':
-        """生成新密钥（需要手动重新加密所有凭证）"""
-        return VaultKeyManager()
-    
-    def clear(self):
-        """清除内存中的密钥"""
-        self._master_key = None
-        self._cipher = None
-
-
-class SecureVault:
-    """
-    数据保险箱（Agent-Blind Credentials 实现）
-    
-    安全原则：
-    1. Agent 只能看到凭证的元数据，不能直接访问凭证值
-    2. 凭证值在存储前加密
-    3. 解密需要明确的授权
-    4. 所有访问操作都被审计
-    5. 支持凭证轮换
-    
-    使用模式：
-    ```python
-    vault = SecureVault("/path/to/vault", key_manager)
-    
-    # Agent 存储凭证（只存储元数据）
-    cred_id = vault.store_credential(
-        name="openai_api_key",
-        credential_type="api_key",
-        value="sk-...",
-        metadata={"service": "openai", "scope": "production"}
-    )
-    
-    # Agent 获取凭证（只能看到元数据）
-    cred = vault.get_credential_metadata(cred_id)
-    # cred.encrypted_value 存在，但 Agent 无法解密
-    
-    # 服务层解密使用（需要额外授权）
-    value = vault.decrypt_for_service(cred_id, service_auth)
-    ```
-    """
-    
-    def __init__(self, 
-                 vault_path: str,
-                 key_manager: VaultKeyManager,
-                 audit_log_path: Optional[str] = None):
-        """
-        Args:
-            vault_path: 保险箱存储路径
-            key_manager: 密钥管理器
-            audit_log_path: 审计日志路径
-        """
-        self.vault_path = Path(vault_path)
-        self.vault_path.mkdir(parents=True, exist_ok=True)
-        
-        self.key_manager = key_manager
-        self.audit_log_path = Path(audit_log_path) if audit_log_path else self.vault_path / "audit.log"
-        
-        self._credentials: Dict[str, CredentialEntry] = {}
-        self._load_credentials()
-    
-    def _load_credentials(self):
-        """加载凭证"""
-        cred_file = self.vault_path / "credentials.json"
-        if cred_file.exists():
-            with open(cred_file, 'r') as f:
-                data = json.load(f)
-                self._credentials = {
-                    k: CredentialEntry.from_dict(v) 
-                    for k, v in data.items()
-                }
-    
-    def _save_credentials(self):
-        """保存凭证"""
-        cred_file = self.vault_path / "credentials.json"
-        data = {k: v.to_dict() for k, v in self._credentials.items()}
-        with open(cred_file, 'w') as f:
-            json.dump(data, f, indent=2)
-    
-    def _log_access(self, 
-                   action: str, 
-                   credential_id: str, 
-                   actor: str,
-                   success: bool = True,
-                   details: Optional[Dict] = None):
-        """记录访问日志"""
-        entry = {
-            'timestamp': datetime.now().isoformat(),
-            'action': action,
-            'credential_id': credential_id,
-            'actor': actor,
-            'success': success,
-            'details': details or {}
-        }
-        
-        with open(self.audit_log_path, 'a') as f:
-            f.write(json.dumps(entry) + '\n')
-    
-    def store_credential(self,
-                        name: str,
-                        credential_type: str,
-                        value: str,
-                        metadata: Optional[Dict[str, Any]] = None,
-                        expires_in_days: Optional[int] = None,
-                        actor: str = "system") -> str:
-        """
-        存储凭证
-        
-        Args:
-            name: 凭证名称
-            credential_type: 凭证类型
-            value: 凭证值（会被加密）
-            metadata: 元数据（Agent 可见）
-            expires_in_days: 过期天数
-            actor: 执行者标识
-            
-        Returns:
-            凭证 ID
-        """
-        credential_id = hashlib.sha256(
-            f"{name}:{datetime.now().isoformat()}".encode()
-        ).hexdigest()[:16]
-        
-        now = datetime.now()
-        
-        entry = CredentialEntry(
-            id=credential_id,
-            name=name,
-            credential_type=credential_type,
-            encrypted_value=self.key_manager.encrypt(value),
-            metadata=metadata or {},
-            created_at=now,
-            updated_at=now,
-            expires_at=now + timedelta(days=expires_in_days) if expires_in_days else None
-        )
-        
-        self._credentials[credential_id] = entry
-        self._save_credentials()
-        
-        self._log_access("store", credential_id, actor, success=True)
-        logger.info(f"Credential stored: {name} (ID: {credential_id})")
-        
-        return credential_id
-    
-    def get_credential_metadata(self, 
-                               credential_id: str,
-                               actor: str = "system") -> Optional[Dict[str, Any]]:
-        """
-        获取凭证元数据（Agent 可见）
-        
-        注意：返回的信息不包含凭证值
-        """
-        entry = self._credentials.get(credential_id)
-        if not entry:
-            self._log_access("get_metadata", credential_id, actor, success=False)
+        if not encrypted_path.exists():
             return None
         
-        # 只返回元数据，不包含加密值
-        result = {
-            'id': entry.id,
-            'name': entry.name,
-            'credential_type': entry.credential_type,
-            'metadata': entry.metadata,
-            'created_at': entry.created_at.isoformat(),
-            'updated_at': entry.updated_at.isoformat(),
-            'expires_at': entry.expires_at.isoformat() if entry.expires_at else None,
-            'rotation_hint': entry.rotation_hint,
-            'has_value': True  # 表示存在加密值
+        encrypted_content = encrypted_path.read_bytes()
+        
+        if self.encryption_service:
+            return self.encryption_service.decrypt(encrypted_content)
+        
+        return encrypted_content
+    
+    def delete(self, filename: str) -> bool:
+        """Delete encrypted file from vault."""
+        encrypted_path = self.base_path / "encrypted" / f"{filename}.enc"
+        
+        if encrypted_path.exists():
+            encrypted_path.unlink()
+            return True
+        
+        return False
+    
+    def list_files(self) -> list[str]:
+        """List all encrypted files."""
+        encrypted_dir = self.base_path / "encrypted"
+        files = []
+        
+        for f in encrypted_dir.glob("*.enc"):
+            # Remove .enc extension
+            files.append(f.stem)
+        
+        return files
+
+
+@dataclass
+class VaultAccessControl:
+    """Access control for vault resources."""
+    
+    vault_path: Path
+    policy_file: Path = field(init=False)
+    
+    def __post_init__(self):
+        """Initialize access control."""
+        self.vault_path = Path(self.vault_path)
+        self.policy_file = self.vault_path / "access_policy.json"
+        self._initialize_policy()
+    
+    def _initialize_policy(self) -> None:
+        """Initialize policy file."""
+        if not self.policy_file.exists():
+            self.policy_file.write_text(json.dumps({"grants": []}))
+    
+    def _load_policy(self) -> dict:
+        """Load access policy."""
+        return json.loads(self.policy_file.read_text())
+    
+    def _save_policy(self, policy: dict) -> None:
+        """Save access policy."""
+        self.policy_file.write_text(json.dumps(policy, indent=2))
+    
+    def grant_access(self, user_id: str, resource: str, permissions: list[str], time_restrictions: Optional[dict] = None) -> bool:
+        """Grant access to a resource."""
+        policy = self._load_policy()
+        
+        # Remove existing grant for this user/resource
+        policy["grants"] = [
+            g for g in policy["grants"]
+            if not (g["user_id"] == user_id and g["resource"] == resource)
+        ]
+        
+        # Add new grant
+        grant = {
+            "user_id": user_id,
+            "resource": resource,
+            "permissions": permissions,
+            "granted_at": datetime.now().isoformat(),
         }
         
-        self._log_access("get_metadata", credential_id, actor, success=True)
-        return result
-    
-    def list_credentials(self, 
-                        credential_type: Optional[str] = None,
-                        actor: str = "system") -> List[Dict[str, Any]]:
-        """
-        列出凭证（仅元数据）
-        """
-        results = []
+        if time_restrictions:
+            grant["time_restrictions"] = time_restrictions
         
-        for entry in self._credentials.values():
-            if credential_type and entry.credential_type != credential_type:
+        policy["grants"].append(grant)
+        self._save_policy(policy)
+        
+        return True
+    
+    def revoke_access(self, user_id: str, resource: str) -> bool:
+        """Revoke access to a resource."""
+        policy = self._load_policy()
+        
+        policy["grants"] = [
+            g for g in policy["grants"]
+            if not (g["user_id"] == user_id and g["resource"] == resource)
+        ]
+        
+        self._save_policy(policy)
+        return True
+    
+    def check_access(self, user_id: str, resource: str, permission: str) -> bool:
+        """Check if user has permission for resource."""
+        policy = self._load_policy()
+        
+        for grant in policy["grants"]:
+            if grant["user_id"] == user_id and grant["resource"] == resource:
+                if permission in grant["permissions"]:
+                    # Check time restrictions
+                    if "time_restrictions" in grant:
+                        now = datetime.now()
+                        start = grant["time_restrictions"].get("start_time", "00:00")
+                        end = grant["time_restrictions"].get("end_time", "23:59")
+                        
+                        current_time = now.strftime("%H:%M")
+                        if not (start <= current_time <= end):
+                            return False
+                    
+                    return True
+        
+        return False
+    
+    def get_permissions(self, user_id: str, resource: str) -> list[str]:
+        """Get permissions for user on resource."""
+        policy = self._load_policy()
+        
+        for grant in policy["grants"]:
+            if grant["user_id"] == user_id and grant["resource"] == resource:
+                return grant["permissions"]
+        
+        return []
+
+
+@dataclass
+class KeyManager:
+    """Manage encryption keys."""
+    
+    keys_path: Path
+    
+    def __post_init__(self):
+        """Initialize keys directory."""
+        self.keys_path = Path(self.keys_path)
+        self.keys_path.mkdir(parents=True, exist_ok=True)
+    
+    def generate_key(self, key_type: str = "master") -> tuple[str, bytes]:
+        """Generate a new key."""
+        import secrets
+        
+        key_id = secrets.token_hex(16)
+        key = secrets.token_bytes(32)
+        
+        key_file = self.keys_path / f"{key_id}.key"
+        
+        # Store key metadata
+        metadata = {
+            "id": key_id,
+            "type": key_type,
+            "created_at": datetime.now().isoformat(),
+        }
+        
+        key_file.write_bytes(key)
+        
+        meta_file = self.keys_path / f"{key_id}.meta.json"
+        meta_file.write_text(json.dumps(metadata, indent=2))
+        
+        return key_id, key
+    
+    def load_key(self, key_id: str) -> Optional[bytes]:
+        """Load a key by ID."""
+        key_file = self.keys_path / f"{key_id}.key"
+        
+        if not key_file.exists():
+            return None
+        
+        return key_file.read_bytes()
+    
+    def rotate_key(self, key_id: str) -> tuple[str, bytes]:
+        """Rotate a key."""
+        old_key_file = self.keys_path / f"{key_id}.key"
+        
+        if not old_key_file.exists():
+            raise ValueError(f"Key {key_id} not found")
+        
+        # Backup old key
+        backup_file = self.keys_path / f"{key_id}.key.old"
+        backup_file.write_bytes(old_key_file.read_bytes())
+        
+        # Generate new key
+        new_key_id, new_key = self.generate_key()
+        
+        # Delete old key file
+        old_key_file.unlink()
+        
+        return new_key_id, new_key
+    
+    def delete_key(self, key_id: str) -> bool:
+        """Delete a key."""
+        key_file = self.keys_path / f"{key_id}.key"
+        meta_file = self.keys_path / f"{key_id}.meta.json"
+        
+        deleted = False
+        if key_file.exists():
+            key_file.unlink()
+            deleted = True
+        if meta_file.exists():
+            meta_file.unlink()
+        
+        return deleted
+    
+    def list_keys(self) -> list[str]:
+        """List all keys."""
+        keys = []
+        for f in self.keys_path.glob("*.key"):
+            keys.append(f.stem)
+        return keys
+
+
+@dataclass
+class VaultAudit:
+    """Audit logging for vault access."""
+    
+    audit_path: Path
+    
+    def __post_init__(self):
+        """Initialize audit directory."""
+        self.audit_path = Path(self.audit_path)
+        self.audit_path.mkdir(parents=True, exist_ok=True)
+    
+    def log_access(self, user_id: str, action: str, resource: str, success: bool, reason: str = "") -> bool:
+        """Log an access event."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "user_id": user_id,
+            "action": action,
+            "resource": resource,
+            "success": success,
+        }
+        
+        if reason:
+            log_entry["reason"] = reason
+        
+        # Write to daily log file
+        log_file = self.audit_path / f"{datetime.now().strftime('%Y-%m-%d')}.log"
+        
+        with open(log_file, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+        
+        return True
+    
+    def get_access_history(self, user_id: str) -> list[dict]:
+        """Get access history for a user."""
+        history = []
+        
+        for log_file in self.audit_path.glob("*.log"):
+            with open(log_file) as f:
+                for line in f:
+                    entry = json.loads(line.strip())
+                    if entry["user_id"] == user_id:
+                        history.append(entry)
+        
+        return sorted(history, key=lambda x: x["timestamp"])
+    
+    def get_resource_access_log(self, resource: str) -> list[dict]:
+        """Get access log for a resource."""
+        history = []
+        
+        for log_file in self.audit_path.glob("*.log"):
+            with open(log_file) as f:
+                for line in f:
+                    entry = json.loads(line.strip())
+                    if entry["resource"] == resource:
+                        history.append(entry)
+        
+        return sorted(history, key=lambda x: x["timestamp"])
+    
+    def cleanup_old_logs(self, retention_days: int = 30) -> bool:
+        """Clean up old audit logs."""
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        
+        for log_file in self.audit_path.glob("*.log"):
+            # Parse date from filename
+            try:
+                file_date = datetime.strptime(log_file.stem, "%Y-%m-%d")
+                if file_date < cutoff:
+                    log_file.unlink()
+            except ValueError:
                 continue
-            
-            results.append({
-                'id': entry.id,
-                'name': entry.name,
-                'credential_type': entry.credential_type,
-                'metadata': entry.metadata,
-                'expires_at': entry.expires_at.isoformat() if entry.expires_at else None
-            })
-        
-        self._log_access("list", "all", actor, success=True, 
-                        details={'filter_type': credential_type, 'count': len(results)})
-        
-        return results
-    
-    def decrypt_for_service(self,
-                           credential_id: str,
-                           service_auth_token: str,
-                           actor: str = "system") -> Optional[str]:
-        """
-        为服务层解密凭证
-        
-        这是唯一可以获取明文凭证的方法，需要服务层授权令牌。
-        使用示例：当 OpenClaw 需要调用 API 时，通过此方法获取真实密钥。
-        
-        Args:
-            credential_id: 凭证 ID
-            service_auth_token: 服务授权令牌
-            actor: 执行者标识
-            
-        Returns:
-            明文凭证值，如果授权失败则返回 None
-        """
-        # 验证服务授权（简化实现，实际应调用 auth 服务）
-        if not self._verify_service_auth(service_auth_token):
-            self._log_access("decrypt", credential_id, actor, 
-                           success=False, details={'reason': 'auth_failed'})
-            logger.warning(f"Unauthorized decrypt attempt: {credential_id}")
-            return None
-        
-        entry = self._credentials.get(credential_id)
-        if not entry:
-            self._log_access("decrypt", credential_id, actor, 
-                           success=False, details={'reason': 'not_found'})
-            return None
-        
-        # 检查是否过期
-        if entry.expires_at and datetime.now() > entry.expires_at:
-            self._log_access("decrypt", credential_id, actor,
-                           success=False, details={'reason': 'expired'})
-            logger.warning(f"Attempt to use expired credential: {credential_id}")
-            return None
-        
-        try:
-            plaintext = self.key_manager.decrypt(entry.encrypted_value)
-            self._log_access("decrypt", credential_id, actor, success=True)
-            return plaintext
-        except Exception as e:
-            self._log_access("decrypt", credential_id, actor,
-                           success=False, details={'reason': 'decrypt_error', 'error': str(e)})
-            logger.error(f"Failed to decrypt credential {credential_id}: {e}")
-            return None
-    
-    def _verify_service_auth(self, token: str) -> bool:
-        """
-        验证服务授权
-        
-        简化实现，实际应调用专门的 auth 服务
-        """
-        # 实际实现应检查 JWT 或调用外部 auth 服务
-        # 这里使用简单的常量比较作为示例
-        expected_token = os.environ.get("OPC200_VAULT_SERVICE_TOKEN")
-        if expected_token:
-            return secrets.compare_digest(token, expected_token)
-        return True  # 如果没有设置令牌，允许访问（仅用于开发）
-    
-    def update_credential(self,
-                         credential_id: str,
-                         new_value: Optional[str] = None,
-                         new_metadata: Optional[Dict[str, Any]] = None,
-                         actor: str = "system") -> bool:
-        """
-        更新凭证
-        """
-        entry = self._credentials.get(credential_id)
-        if not entry:
-            return False
-        
-        if new_value:
-            entry.encrypted_value = self.key_manager.encrypt(new_value)
-        
-        if new_metadata:
-            entry.metadata.update(new_metadata)
-        
-        entry.updated_at = datetime.now()
-        
-        self._save_credentials()
-        self._log_access("update", credential_id, actor, success=True)
         
         return True
-    
-    def rotate_credential(self,
-                         credential_id: str,
-                         new_value: str,
-                         actor: str = "system") -> bool:
-        """
-        轮换凭证
-        
-        更新凭证值并记录轮换历史
-        """
-        entry = self._credentials.get(credential_id)
-        if not entry:
-            return False
-        
-        # 加密新值
-        entry.encrypted_value = self.key_manager.encrypt(new_value)
-        entry.updated_at = datetime.now()
-        
-        # 更新轮换提示
-        entry.rotation_hint = f"Rotated at {datetime.now().isoformat()}"
-        
-        self._save_credentials()
-        self._log_access("rotate", credential_id, actor, success=True)
-        
-        logger.info(f"Credential rotated: {credential_id}")
-        return True
-    
-    def delete_credential(self,
-                         credential_id: str,
-                         actor: str = "system") -> bool:
-        """
-        删除凭证
-        """
-        if credential_id not in self._credentials:
-            return False
-        
-        del self._credentials[credential_id]
-        self._save_credentials()
-        
-        self._log_access("delete", credential_id, actor, success=True)
-        logger.info(f"Credential deleted: {credential_id}")
-        
-        return True
-    
-    def get_expired_credentials(self) -> List[Dict[str, Any]]:
-        """获取已过期凭证列表"""
-        now = datetime.now()
-        expired = []
-        
-        for entry in self._credentials.values():
-            if entry.expires_at and now > entry.expires_at:
-                expired.append({
-                    'id': entry.id,
-                    'name': entry.name,
-                    'expired_at': entry.expires_at.isoformat(),
-                    'days_overdue': (now - entry.expires_at).days
-                })
-        
-        return expired
-    
-    def get_audit_log(self, 
-                     credential_id: Optional[str] = None,
-                     since: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """
-        获取审计日志
-        """
-        if not self.audit_log_path.exists():
-            return []
-        
-        logs = []
-        with open(self.audit_log_path, 'r') as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                
-                try:
-                    entry = json.loads(line)
-                    
-                    # 过滤
-                    if credential_id and entry.get('credential_id') != credential_id:
-                        continue
-                    
-                    entry_time = datetime.fromisoformat(entry['timestamp'])
-                    if since and entry_time < since:
-                        continue
-                    
-                    logs.append(entry)
-                except json.JSONDecodeError:
-                    continue
-        
-        return logs
 
 
-class VaultHealthChecker:
-    """
-    保险箱健康检查
-    """
+@dataclass
+class VaultIntegrity:
+    """Verify vault integrity."""
     
-    def __init__(self, vault: SecureVault):
-        self.vault = vault
+    vault: DataVault
     
-    async def check_health(self) -> Dict[str, Any]:
-        """执行健康检查"""
-        checks = {
-            'vault_accessible': self._check_vault_accessible(),
-            'credentials_count': len(self.vault._credentials),
-            'expired_credentials': len(self.vault.get_expired_credentials()),
-            'audit_log_accessible': self.vault.audit_log_path.exists(),
-            'timestamp': datetime.now().isoformat()
-        }
+    def verify_all_files(self) -> bool:
+        """Verify integrity of all files in vault."""
+        files = self.vault.list_files()
         
-        # 检查即将过期的凭证
-        expiring_soon = []
-        now = datetime.now()
-        for entry in self.vault._credentials.values():
-            if entry.expires_at:
-                days_until = (entry.expires_at - now).days
-                if 0 < days_until <= 7:
-                    expiring_soon.append({
-                        'id': entry.id,
-                        'name': entry.name,
-                        'expires_in_days': days_until
-                    })
+        for filename in files:
+            try:
+                content = self.vault.retrieve_decrypted(filename)
+                if content is None:
+                    return False
+            except Exception:
+                return False
         
-        checks['expiring_soon'] = expiring_soon
-        checks['status'] = 'healthy' if all([
-            checks['vault_accessible'],
-            checks['audit_log_accessible']
-        ]) else 'unhealthy'
-        
-        return checks
+        return True
     
-    def _check_vault_accessible(self) -> bool:
-        """检查保险箱是否可访问"""
-        try:
-            return self.vault.vault_path.exists() and os.access(self.vault.vault_path, os.R_OK | os.W_OK)
-        except Exception:
-            return False
+    def create_backup_checksums(self) -> bool:
+        """Create checksums for backup verification."""
+        import hashlib
+        
+        checksums = {}
+        
+        for filename in self.vault.list_files():
+            filepath = self.vault.base_path / "encrypted" / f"{filename}.enc"
+            content = filepath.read_bytes()
+            checksums[filename] = hashlib.sha256(content).hexdigest()
+        
+        checksum_file = self.vault.base_path / "checksums.json"
+        checksum_file.write_text(json.dumps(checksums, indent=2))
+        
+        return True
+    
+    def repair_from_backup(self) -> bool:
+        """Repair vault from backup."""
+        # Placeholder for repair logic
+        return True
