@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, NotRequired, Optional, TypedDict
 
 
+# Date format constants
+DATE_FORMAT_ISO = "%Y-%m-%d"  # ISO 8601 date format
+DATE_FORMAT_DISPLAY = "%B %d, %Y"  # Human-readable date format
+DATE_FORMAT_FILENAME = "%Y%m%d_%H%M%S"  # Filename-safe date format
+
+
 # TypedDict definitions for structured parameters
 class DailySummaryParams(TypedDict):
     """Parameters for daily summary generation."""
@@ -56,7 +62,7 @@ class InsightGenerator:
         
         return {
             "type": "daily_summary",
-            "date": date.strftime("%Y-%m-%d"),
+            "date": date.strftime(DATE_FORMAT_ISO),
             "tasks_completed": tasks_completed,
             "meetings": meetings,
             "total_activities": len(activities),
@@ -87,7 +93,7 @@ class InsightGenerator:
         
         return {
             "type": "weekly_review",
-            "week_start": week_start.strftime("%Y-%m-%d"),
+            "week_start": week_start.strftime(DATE_FORMAT_ISO),
             "total_tasks_completed": total_tasks,
             "avg_focus_hours_per_day": total_focus_hours / len(daily_summaries) if daily_summaries else 0,
             "productivity_trend": trend,
@@ -101,7 +107,7 @@ class InsightGenerator:
         return {
             "type": "milestone",
             "milestone_name": milestone["name"],
-            "date_achieved": milestone["date_achieved"].strftime("%Y-%m-%d") if isinstance(milestone["date_achieved"], datetime) else milestone["date_achieved"],
+            "date_achieved": milestone["date_achieved"].strftime(DATE_FORMAT_ISO) if isinstance(milestone["date_achieved"], datetime) else milestone["date_achieved"],
             "celebration_message": f"🎉 Congratulations on achieving {milestone['name']}!",
             "metrics_achieved": metrics,
             "impact_assessment": self._assess_impact(metrics)
@@ -229,8 +235,8 @@ class ReportGenerator:
         
         return {
             "type": "progress_report",
-            "period_start": period_start.strftime("%Y-%m-%d"),
-            "period_end": period_end.strftime("%Y-%m-%d"),
+            "period_start": period_start.strftime(DATE_FORMAT_ISO),
+            "period_end": period_end.strftime(DATE_FORMAT_ISO),
             "goals": goal_progress,
             "overall_progress": round(
                 sum(g["progress_percentage"] for g in goal_progress) / len(goal_progress), 1

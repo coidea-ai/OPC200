@@ -7,6 +7,18 @@
 
 set -uo pipefail
 
+# 脚本信息
+SCRIPT_NAME="$(basename "$0")"
+SCRIPT_VERSION="2.2.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 检查执行权限
+check_execution_permission() {
+    if [[ "$EUID" -ne 0 ]]; then
+        echo "警告: 脚本未以 root 权限运行，某些检查可能受限" && 2
+    fi
+}
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,10 +36,11 @@ OPC_ID=""
 MODE="all"  # all | on-premise | cloud
 VERBOSE=false
 OUTPUT_JSON=false
+GENERATE_DOCS=false
 
 show_help() {
     cat << EOF
-OPC200 Health Check Script
+OPC200 Health Check Script v${SCRIPT_VERSION}
 
 Usage: $0 [OPTIONS]
 
@@ -36,6 +49,7 @@ OPTIONS:
     -m, --mode MODE      检查模式: all | on-premise | cloud
     -v, --verbose        详细输出
     -j, --json           JSON 格式输出
+    -d, --generate-docs  生成文档
     -h, --help          显示此帮助
 
 示例:
@@ -69,6 +83,10 @@ parse_args() {
                 OUTPUT_JSON=true
                 shift
                 ;;
+            -d|--generate-docs)
+                GENERATE_DOCS=true
+                shift
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -79,6 +97,54 @@ parse_args() {
                 ;;
         esac
     done
+}
+
+# 生成文档
+generate_documentation() {
+    cat << 'EOF'
+# Health Check Documentation
+
+## Overview
+The health check script performs comprehensive system and service validation.
+
+## Checks Performed
+
+### System Resources
+- CPU usage monitoring
+- Memory usage monitoring
+- Disk space monitoring
+
+### Services
+- Docker daemon status
+- Gateway container health
+- Tailscale VPN connectivity
+
+### Data Integrity
+- Skills installation verification
+- Data vault encryption status
+- Backup currency check
+
+## Exit Codes
+- 0: All checks passed
+- 1: Warnings detected
+- 2: Critical issues found
+
+## JSON Output Format
+```json
+{
+  "timestamp": "2024-03-24T10:00:00Z",
+  "customer_id": "OPC-001",
+  "overall_status": "healthy",
+  "checks": [
+    {
+      "name": "CPU",
+      "status": "OK",
+      "message": "使用率: 45%"
+    }
+  ]
+}
+```
+EOF
 }
 
 # 初始化检查结果
@@ -94,12 +160,71 @@ add_check() {
     CHECK_ORDER+=("$name")
 }
 
+# JSON 输出函数
+output_json() {
+    local customer_id=${OPC_ID:-"unknown"}
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    # Determine overall status
+    local overall_status="healthy"
+    for name in "${CHECK_ORDER[@]}"; do
+        local result="${CHECK_RESULTS[$name]}"
+        local status
+        status=$(echo "$result" | cut -d'|' -f1)
+        if [[ "$status" == "CRITICAL" ]]; then
+            overall_status="critical"
+            break
+        elif [[ "$status" == "WARNING" && "$overall_status" != "critical" ]]; then
+            overall_status="warning"
+        fi
+    done
+    
+    # Build JSON output
+    echo "{"
+    echo "  \"timestamp\": \"$timestamp\","
+    echo "  \"customer_id\": \"$customer_id\","
+    echo "  \"overall_status\": \"$overall_status\","
+    echo "  \"script_version\": \"$SCRIPT_VERSION\","
+    echo "  \"checks\": ["
+    
+    local first=true
+    for name in "${CHECK_ORDER[@]}"; do
+        local result="${CHECK_RESULTS[$name]}"
+        local status
+        status=$(echo "$result" | cut -d'|' -f1)
+        local message
+        message=$(echo "$result" | cut -d'|' -f2)
+        
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            echo ","
+        fi
+        
+        # Escape message for JSON
+        local escaped_message
+        escaped_message=$(echo "$message" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+        
+        echo -n "    {"
+        echo -n "\"name\": \"$name\", "
+        echo -n "\"status\": \"$status\", "
+        echo -n "\"message\": \"$escaped_message\""
+        echo -n "}"
+    done
+    
+    echo ""
+    echo "  ]"
+    echo "}"
+}
+
 # 检查系统资源
 check_system_resources() {
     local issues=0
     
     # CPU
-    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    local cpu_usage
+    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
     # Use awk for comparison instead of bc
     if awk "BEGIN {exit !($cpu_usage > 80)}"; then
         add_check "CPU" "WARNING" "使用率: ${cpu_usage}% (高)"
@@ -109,9 +234,12 @@ check_system_resources() {
     fi
     
     # 内存
-    local mem_info=$(free | grep Mem)
-    local mem_total=$(echo $mem_info | awk '{print $2}')
-    local mem_used=$(echo $mem_info | awk '{print $3}')
+    local mem_info
+    mem_info=$(free | grep Mem)
+    local mem_total
+    mem_total=$(echo "$mem_info" | awk '{print $2}')
+    local mem_used
+    mem_used=$(echo "$mem_info" | awk '{print $3}')
     local mem_usage=$((mem_used * 100 / mem_total))
     
     if [[ $mem_usage -gt 85 ]]; then
@@ -122,7 +250,8 @@ check_system_resources() {
     fi
     
     # 磁盘
-    local disk_usage=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    local disk_usage
+    disk_usage=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
     if [[ $disk_usage -gt 85 ]]; then
         add_check "Disk" "WARNING" "使用率: ${disk_usage}% (高)"
         ((issues++))
@@ -160,7 +289,8 @@ check_gateway() {
     fi
     
     # 检查健康状态
-    local health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "unknown")
+    local health
+    health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "unknown")
     
     if [[ "$health" == "healthy" ]]; then
         add_check "Gateway" "OK" "健康状态良好"
@@ -194,7 +324,8 @@ check_tailscale() {
         return 1
     fi
     
-    local tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
+    local tailscale_ip
+    tailscale_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
     add_check "Tailscale" "OK" "已连接 (${tailscale_ip})"
     return 0
 }
@@ -209,7 +340,8 @@ check_skills() {
         return 1
     fi
     
-    local skill_count=$(find "$skills_dir" -maxdepth 1 -type d | wc -l)
+    local skill_count
+    skill_count=$(find "$skills_dir" -maxdepth 1 -type d | wc -l)
     skill_count=$((skill_count - 1))
     
     if [[ $skill_count -eq 0 ]]; then
@@ -257,7 +389,8 @@ check_logs() {
     fi
     
     # 检查日志大小
-    local log_size=$(du -sm "$logs_dir" | cut -f1)
+    local log_size
+    log_size=$(du -sm "$logs_dir" | cut -f1)
     if [[ $log_size -gt 1000 ]]; then
         add_check "Logs" "WARNING" "日志过大: ${log_size}MB (建议清理)"
     else
@@ -265,7 +398,8 @@ check_logs() {
     fi
     
     # 检查最近错误
-    local recent_errors=$(find "$logs_dir" -name "*.log" -mtime -1 -exec grep -i "error" {} + 2>/dev/null | wc -l)
+    local recent_errors
+    recent_errors=$(find "$logs_dir" -name "*.log" -mtime -1 -exec grep -i "error" {} + 2>/dev/null | wc -l)
     if [[ $recent_errors -gt 10 ]]; then
         add_check "Log-Errors" "WARNING" "最近24小时有 ${recent_errors} 条错误"
     else
@@ -286,7 +420,8 @@ check_backup() {
     fi
     
     # 检查最近备份
-    local latest_backup=$(find "$backup_dir" -type f -mtime -1 | head -1)
+    local latest_backup
+    latest_backup=$(find "$backup_dir" -type f -mtime -1 | head -1)
     if [[ -n "$latest_backup" ]]; then
         add_check "Backup" "OK" "最近备份: $(basename "$latest_backup")"
     else
@@ -341,8 +476,10 @@ check_customer() {
     
     for name in "${CHECK_ORDER[@]}"; do
         local result="${CHECK_RESULTS[$name]}"
-        local status=$(echo "$result" | cut -d'|' -f1)
-        local message=$(echo "$result" | cut -d'|' -f2)
+        local status
+        status=$(echo "$result" | cut -d'|' -f1)
+        local message
+        message=$(echo "$result" | cut -d'|' -f2)
         
         case "$status" in
             OK)
@@ -380,7 +517,8 @@ check_all_customers() {
     # 本地客户
     for customer_dir in customers/on-premise/OPC-*; do
         if [[ -d "$customer_dir" ]]; then
-            local opc_id=$(basename "$customer_dir")
+            local opc_id
+            opc_id=$(basename "$customer_dir")
             
             # SSH 到客户服务器检查（简化版）
             echo "$opc_id: on-premise" >> "$summary_file"
@@ -390,7 +528,8 @@ check_all_customers() {
     # 云端客户
     for customer_dir in customers/cloud-hosted/OPC-*; do
         if [[ -d "$customer_dir" ]]; then
-            local opc_id=$(basename "$customer_dir")
+            local opc_id
+            opc_id=$(basename "$customer_dir")
             echo "$opc_id: cloud-hosted" >> "$summary_file"
         fi
     done
@@ -400,7 +539,14 @@ check_all_customers() {
 
 # 主函数
 main() {
+    check_execution_permission
     parse_args "$@"
+    
+    # 生成文档模式
+    if [[ "$GENERATE_DOCS" == "true" ]]; then
+        generate_documentation
+        exit 0
+    fi
     
     if [[ -n "$OPC_ID" ]]; then
         # 确定客户模式
@@ -414,6 +560,11 @@ main() {
         fi
     else
         check_all_customers
+    fi
+    
+    # JSON 输出模式
+    if [[ "$OUTPUT_JSON" == "true" ]]; then
+        output_json
     fi
 }
 

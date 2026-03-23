@@ -1,6 +1,7 @@
 """
 pytest configuration and fixtures.
 """
+
 import asyncio
 import sqlite3
 from datetime import datetime
@@ -42,10 +43,7 @@ def sample_journal_entry_data() -> dict:
         "id": "entry-001",
         "content": "Test journal entry content",
         "tags": ["test", "example"],
-        "metadata": {
-            "importance": "high",
-            "source": "test"
-        },
+        "metadata": {"importance": "high", "source": "test"},
         "created_at": "2024-03-24T10:00:00",
         "updated_at": "2024-03-24T10:00:00",
     }
@@ -56,14 +54,16 @@ def sample_journal_entries() -> list[dict]:
     """Generate sample journal entries for testing."""
     entries = []
     for i in range(10):
-        entries.append({
-            "id": f"entry-{i:03d}",
-            "content": f"Test entry content {i}",
-            "tags": ["test"] if i % 2 == 0 else ["example"],
-            "metadata": {"index": i},
-            "created_at": f"2024-03-{i+1:02d}T10:00:00",
-            "updated_at": f"2024-03-{i+1:02d}T10:00:00",
-        })
+        entries.append(
+            {
+                "id": f"entry-{i:03d}",
+                "content": f"Test entry content {i}",
+                "tags": ["test"] if i % 2 == 0 else ["example"],
+                "metadata": {"index": i},
+                "created_at": f"2024-03-{i+1:02d}T10:00:00",
+                "updated_at": f"2024-03-{i+1:02d}T10:00:00",
+            }
+        )
     return entries
 
 
@@ -96,4 +96,3 @@ def sample_embeddings() -> list[list[float]]:
 
 # Import mock fixtures for Qdrant
 pytest_plugins = ["tests.fixtures.mocks"]
-

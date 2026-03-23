@@ -7,25 +7,47 @@ import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from src.utils.validation import InputValidator, ValidationError
 
 # Type aliases for better code clarity
 EntryId = str
 Tag = str
-Metadata = dict[str, Any]
-EntryDict = dict[str, Any]
+Metadata = Dict[str, Any]
+EntryDict = Dict[str, Any]
 
 
 @dataclass
 class JournalEntry:
-    """Represents a single journal entry."""
+    """Represents a single journal entry.
+    
+    A journal entry is the fundamental unit of the journaling system.
+    It contains content, metadata, tags, and timestamps for tracking
+    creation and modification times.
+    
+    Attributes:
+        content: The main text content of the entry
+        id: Unique identifier for the entry (auto-generated if not provided)
+        tags: List of string tags for categorization
+        metadata: Dictionary of arbitrary metadata
+        created_at: Timestamp when the entry was created
+        updated_at: Timestamp when the entry was last modified
+    
+    Example:
+        >>> entry = JournalEntry(content="Today I learned about Python dataclasses")
+        >>> entry.add_tag("learning")
+        >>> entry.set_metadata("topic", "python")
+        >>> print(entry.to_dict())
+    
+    Raises:
+        ValueError: If content is empty or validation fails
+    """
     
     content: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     tags: list[str] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Metadata = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     
@@ -41,7 +63,7 @@ class JournalEntry:
         except ValidationError as e:
             raise ValueError(f"Validation failed: {e}") from e
     
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert entry to dictionary."""
         return {
             "id": self.id,
@@ -53,8 +75,19 @@ class JournalEntry:
         }
     
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "JournalEntry":
-        """Create entry from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> "JournalEntry":
+        """Create entry from dictionary.
+        
+        Args:
+            data: Dictionary containing entry data
+            
+        Returns:
+            A new JournalEntry instance
+            
+        Raises:
+            TypeError: If data is not a dict
+            ValueError: If required fields are missing or invalid
+        """
         if not isinstance(data, dict):
             raise TypeError(f"Expected dict, got {type(data).__name__}")
         
@@ -114,7 +147,7 @@ class JournalEntry:
         self.content = new_content
         self.updated_at = datetime.now()
     
-    def update_metadata(self, updates: dict[str, Any]) -> None:
+    def update_metadata(self, updates: Metadata) -> None:
         """Update entry metadata."""
         self.metadata.update(updates)
         self.updated_at = datetime.now()
@@ -144,7 +177,22 @@ class JournalEntry:
 
 
 class JournalManager:
-    """Manages journal entries with CRUD operations."""
+    """Manages journal entries with CRUD operations.
+    
+    Provides methods for creating, reading, updating, and deleting
+    journal entries in a SQLite database.
+    
+    Attributes:
+        connection: SQLite database connection
+    
+    Example:
+        >>> import sqlite3
+        >>> conn = sqlite3.connect(":memory:")
+        >>> manager = JournalManager(conn)
+        >>> manager.create_table()
+        >>> entry = JournalEntry(content="Test entry")
+        >>> manager.create_entry(entry)
+    """
     
     def __init__(self, connection: sqlite3.Connection) -> None:
         """Initialize with database connection."""
@@ -152,6 +200,17 @@ class JournalManager:
         # Ensure row factory is set for dictionary-style access
         if hasattr(self.connection, 'row_factory') and self.connection.row_factory is None:
             self.connection.row_factory = sqlite3.Row
+    
+    def _create_entry_from_row(self, row: sqlite3.Row) -> JournalEntry:
+        """Create a JournalEntry from a database row."""
+        return JournalEntry(
+            id=str(row["id"]),
+            content=str(row["content"]),
+            tags=json.loads(row["tags"]) if row["tags"] else [],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
     
     def create_table(self) -> None:
         """Create journal entries table."""
@@ -202,14 +261,7 @@ class JournalManager:
         if row is None:
             return None
         
-        return JournalEntry(
-            id=str(row["id"]),
-            content=str(row["content"]),
-            tags=json.loads(row["tags"]) if row["tags"] else [],
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-        )
+        return self._create_entry_from_row(row)
     
     def update_entry(self, entry: JournalEntry) -> bool:
         """Update an existing journal entry."""
@@ -256,14 +308,7 @@ class JournalManager:
         entries: list[JournalEntry] = []
         
         for row in rows:
-            entries.append(JournalEntry(
-                id=str(row["id"]),
-                content=str(row["content"]),
-                tags=json.loads(row["tags"]) if row["tags"] else [],
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            ))
+            entries.append(self._create_entry_from_row(row))
         
         return entries
     
@@ -295,14 +340,7 @@ class JournalManager:
         entries: list[JournalEntry] = []
         
         for row in rows:
-            entries.append(JournalEntry(
-                id=str(row["id"]),
-                content=str(row["content"]),
-                tags=json.loads(row["tags"]) if row["tags"] else [],
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            ))
+            entries.append(self._create_entry_from_row(row))
         
         return entries
     

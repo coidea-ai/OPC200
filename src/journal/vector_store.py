@@ -2,9 +2,63 @@
 Vector Store Module - Qdrant integration for semantic search.
 """
 import json
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+
+
+# Retry configuration constants
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 1.0  # seconds
+DEFAULT_RETRY_BACKOFF = 2.0  # exponential backoff multiplier
+
+
+class QdrantConnectionError(ConnectionError):
+    """Raised when Qdrant connection fails after all retries."""
+    pass
+
+
+def with_retry(
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    retry_delay: float = DEFAULT_RETRY_DELAY,
+    backoff: float = DEFAULT_RETRY_BACKOFF,
+    exceptions: tuple[type[Exception], ...] = (Exception,)
+) -> Callable:
+    """Decorator for adding retry logic to functions.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        retry_delay: Initial delay between retries in seconds
+        backoff: Multiplier for exponential backoff
+        exceptions: Tuple of exception types to catch and retry
+    
+    Returns:
+        Decorated function with retry logic
+    """
+    def decorator(func: Callable) -> Callable:
+        def wrapper(*args, **kwargs) -> Any:
+            delay = retry_delay
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        time.sleep(delay)
+                        delay *= backoff
+                    else:
+                        raise QdrantConnectionError(
+                            f"Failed after {max_retries + 1} attempts: {e}"
+                        ) from e
+            
+            # This should never be reached, but just in case
+            raise QdrantConnectionError(f"Unexpected error: {last_exception}")
+        
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -15,9 +69,28 @@ class VectorStore:
     port: int = 6333
     collection_name: str = "journal"
     client: Any = None
+    max_retries: int = DEFAULT_MAX_RETRIES
+    retry_delay: float = DEFAULT_RETRY_DELAY
     
+    def __post_init__(self):
+        """Initialize retry configuration."""
+        # Ensure retry decorator has access to instance config
+        self._retry_decorator = with_retry(
+            max_retries=self.max_retries,
+            retry_delay=self.retry_delay
+        )
+    
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def connect(self) -> bool:
-        """Connect to Qdrant server."""
+        """Connect to Qdrant server with retry logic.
+        
+        Returns:
+            True if connection successful
+            
+        Raises:
+            QdrantConnectionError: If connection fails after all retries
+            ImportError: If qdrant_client is not installed
+        """
         try:
             from qdrant_client import QdrantClient
             self.client = QdrantClient(host=self.host, port=self.port)
@@ -29,6 +102,7 @@ class VectorStore:
                 "Install with: pip install qdrant-client"
             )
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def create_collection(self, vector_size: int = 384) -> bool:
         """Create a vector collection."""
         from qdrant_client.models import Distance, VectorParams
@@ -39,15 +113,18 @@ class VectorStore:
         )
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def delete_collection(self) -> bool:
         """Delete the vector collection."""
         self.client.delete_collection(collection_name=self.collection_name)
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def collection_exists(self) -> bool:
         """Check if collection exists."""
         return self.client.collection_exists(collection_name=self.collection_name)
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def upsert(self, id: str, vector: list[float], payload: dict) -> bool:
         """Upsert a single vector."""
         from qdrant_client.models import PointStruct
@@ -58,6 +135,7 @@ class VectorStore:
         )
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def upsert_batch(self, points: list[dict]) -> bool:
         """Upsert multiple vectors."""
         from qdrant_client.models import PointStruct
@@ -73,6 +151,7 @@ class VectorStore:
         )
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def search(self, vector: list[float], limit: int = 10, score_threshold: float = 0.0, query_filter: Optional[dict] = None):
         """Search for similar vectors."""
         results = self.client.search(
@@ -84,6 +163,7 @@ class VectorStore:
         )
         return results
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def delete_by_id(self, id: str) -> bool:
         """Delete vector by ID."""
         self.client.delete(
@@ -92,6 +172,7 @@ class VectorStore:
         )
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def delete_by_filter(self, filter_condition: dict) -> bool:
         """Delete vectors by filter."""
         self.client.delete(
@@ -100,6 +181,7 @@ class VectorStore:
         )
         return True
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def get_by_id(self, id: str):
         """Get vector by ID."""
         results = self.client.retrieve(
@@ -108,11 +190,13 @@ class VectorStore:
         )
         return results[0] if results else None
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def count(self) -> int:
         """Count vectors in collection."""
         result = self.client.count(collection_name=self.collection_name)
         return result.count
     
+    @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def scroll(self, limit: int = 100, offset: Optional[str] = None):
         """Scroll through vectors."""
         results, next_page = self.client.scroll(

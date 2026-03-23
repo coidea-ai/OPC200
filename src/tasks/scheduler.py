@@ -79,8 +79,32 @@ class CronParser:
             "days_of_week": self._parse_field(parts[4], 0, 6),
         }
     
+    def _parse_step_notation(self, range_part: str, step: int, min_val: int, max_val: int) -> list[int]:
+        """Parse step notation like */15 or 0-30/5."""
+        if range_part == "*":
+            start, end = min_val, max_val
+        elif "-" in range_part:
+            start, end = map(int, range_part.split("-"))
+        else:
+            start = end = int(range_part)
+        
+        return list(range(start, end + 1, step))
+    
+    def _parse_range_notation(self, part: str) -> list[int]:
+        """Parse range notation like 1-5."""
+        start, end = map(int, part.split("-"))
+        return list(range(start, end + 1))
+    
     def _parse_field(self, field: str, min_val: int, max_val: int) -> list[int]:
-        """Parse a single cron field."""
+        """Parse a single cron field.
+        
+        Supports:
+        - * (all values)
+        - 1,2,3 (list of values)
+        - 1-5 (range)
+        - */15 (step)
+        - 0-30/5 (range with step)
+        """
         values = []
         
         if field == "*":
@@ -91,19 +115,10 @@ class CronParser:
                 # Step notation: */15 or 0-30/5
                 range_part, step = part.split("/")
                 step = int(step)
-                
-                if range_part == "*":
-                    start, end = min_val, max_val
-                elif "-" in range_part:
-                    start, end = map(int, range_part.split("-"))
-                else:
-                    start = end = int(range_part)
-                
-                values.extend(range(start, end + 1, step))
+                values.extend(self._parse_step_notation(range_part, step, min_val, max_val))
             elif "-" in part:
                 # Range notation: 1-5
-                start, end = map(int, part.split("-"))
-                values.extend(range(start, end + 1))
+                values.extend(self._parse_range_notation(part))
             else:
                 # Single value
                 values.append(int(part))
@@ -310,16 +325,40 @@ class RecurringTask:
     execution_count: int = 0
     success_count: int = 0
     failure_count: int = 0
+    _next_run_cache: Optional[datetime] = field(default=None, init=False, repr=False)
+    _cache_valid: bool = field(default=False, init=False, repr=False)
     
     def __post_init__(self):
         if self.next_run is None:
             parser = CronParser()
-            self.next_run = parser.get_next_run(self.cron)
+            self._next_run_cache = parser.get_next_run(self.cron)
+            self.next_run = self._next_run_cache
+            self._cache_valid = True
     
     def get_next_run(self, from_time: Optional[datetime] = None) -> datetime:
-        """Calculate next run time."""
+        """Calculate next run time with caching.
+        
+        The result is cached to avoid repeated calculations when called
+        multiple times without state changes.
+        """
+        # Return cached result if valid and no from_time specified
+        if from_time is None and self._cache_valid and self._next_run_cache is not None:
+            return self._next_run_cache
+        
         parser = CronParser()
-        return parser.get_next_run(self.cron, from_time)
+        next_run = parser.get_next_run(self.cron, from_time)
+        
+        # Update cache if no from_time specified (default calculation)
+        if from_time is None:
+            self._next_run_cache = next_run
+            self._cache_valid = True
+        
+        return next_run
+    
+    def invalidate_cache(self) -> None:
+        """Invalidate the next_run cache."""
+        self._cache_valid = False
+        self._next_run_cache = None
     
     def is_due(self) -> bool:
         """Check if task is due for execution."""
@@ -371,7 +410,8 @@ class SchedulerPersistence:
             "saved_at": datetime.now().isoformat()
         }
         
-        state_file.write_text(json.dumps(state, indent=2))
+        with open(state_file, 'w') as f:
+            f.write(json.dumps(state, indent=2))
         return True
     
     def load_state(self, scheduler: TaskScheduler) -> bool:
@@ -381,7 +421,8 @@ class SchedulerPersistence:
         if not state_file.exists():
             return False
         
-        state = json.loads(state_file.read_text())
+        with open(state_file, 'r') as f:
+            state = json.loads(f.read())
         
         # Note: Actual job functions cannot be restored from state
         # This would require job registration system
@@ -391,7 +432,8 @@ class SchedulerPersistence:
     def save_history(self, history: list[dict]) -> bool:
         """Save task execution history."""
         history_file = self.storage_path / "task_history.json"
-        history_file.write_text(json.dumps(history, indent=2))
+        with open(history_file, 'w') as f:
+            f.write(json.dumps(history, indent=2))
         return True
 
 

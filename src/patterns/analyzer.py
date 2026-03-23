@@ -12,6 +12,21 @@ from typing import Any, Optional
 
 import numpy as np
 
+# Named constants for pattern detection thresholds
+DAILY_CONFIDENCE_THRESHOLD = 0.6  # Minimum confidence for daily pattern detection
+WEEKLY_CONFIDENCE_THRESHOLD = 0.5  # Minimum confidence for weekly pattern detection
+PATTERN_BREAK_HOUR_DEVIATION = 6  # Hours deviation threshold for pattern break detection
+OUTLIER_ZSCORE_THRESHOLD = 2.0  # Default z-score threshold for outlier detection
+
+# Time-related constants
+MINUTES_PER_HOUR = 60
+HOURS_PER_DAY = 24
+DAYS_PER_WEEK = 7
+
+# Statistical constants
+MIN_SAMPLES_FOR_STD = 2  # Minimum samples needed for standard deviation calculation
+MIN_SAMPLES_FOR_OUTLIERS = 3  # Minimum samples needed for outlier detection
+
 
 @dataclass
 class BehaviorAnalyzer:
@@ -53,7 +68,7 @@ class BehaviorAnalyzer:
         day_confidence = most_common_day[1] / total
         
         # Determine pattern type
-        if hour_confidence > 0.6:
+        if hour_confidence > DAILY_CONFIDENCE_THRESHOLD:
             day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
             return {
                 "detected": True,
@@ -62,7 +77,7 @@ class BehaviorAnalyzer:
                 "confidence": hour_confidence,
                 "sample_size": total
             }
-        elif day_confidence > 0.5:
+        elif day_confidence > WEEKLY_CONFIDENCE_THRESHOLD:
             day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
             return {
                 "detected": True,
@@ -85,7 +100,7 @@ class TrendAnalyzer:
     
     def detect_trend(self, values: list[float]) -> dict:
         """Detect trend direction and strength."""
-        if len(values) < 2:
+        if len(values) < MIN_SAMPLES_FOR_STD:
             return {"direction": "stable", "strength": 0.0}
         
         # Calculate linear regression
@@ -116,7 +131,7 @@ class TrendAnalyzer:
     
     def forecast(self, values: list[float], periods: int = 5) -> list[float]:
         """Forecast future values using linear trend."""
-        if len(values) < 2:
+        if len(values) < MIN_SAMPLES_FOR_STD:
             return [values[-1]] * periods if values else [0.0] * periods
         
         x = np.arange(len(values))
@@ -139,9 +154,21 @@ class TrendAnalyzer:
 class AnomalyDetector:
     """Detect anomalies in data."""
     
-    def detect_outliers(self, values: list[float], threshold: float = 2.0) -> list[dict]:
-        """Detect statistical outliers using z-score."""
-        if len(values) < 3:
+    def detect_outliers(self, values: list[float], threshold: float = OUTLIER_ZSCORE_THRESHOLD) -> list[dict]:
+        """Detect statistical outliers using z-score.
+        
+        Args:
+            values: List of values to analyze
+            threshold: Z-score threshold for outlier detection (default: 2.0)
+            
+        Returns:
+            List of outlier dictionaries with index, value, and statistics
+        """
+        # Check for empty list
+        if not values:
+            return []
+        
+        if len(values) < MIN_SAMPLES_FOR_OUTLIERS:
             return []
         
         mean = statistics.mean(values)
@@ -166,7 +193,7 @@ class AnomalyDetector:
     
     def detect_pattern_breaks(self, activities: list[dict]) -> list[dict]:
         """Detect breaks in activity patterns."""
-        if len(activities) < 3:
+        if len(activities) < MIN_SAMPLES_FOR_OUTLIERS:
             return []
         
         breaks = []
@@ -188,7 +215,7 @@ class AnomalyDetector:
                 timestamp = datetime.fromisoformat(timestamp)
             
             hour_diff = abs(timestamp.hour - mean_hour)
-            if hour_diff > 6:  # More than 6 hours deviation
+            if hour_diff > PATTERN_BREAK_HOUR_DEVIATION:  # More than 6 hours deviation
                 breaks.append({
                     "index": i,
                     "timestamp": timestamp,
@@ -258,7 +285,7 @@ class ProductivityAnalyzer:
             if isinstance(completed, str):
                 completed = datetime.fromisoformat(completed)
             
-            duration = (completed - created).total_seconds() / 3600  # hours
+            duration = (completed - created).total_seconds() / MINUTES_PER_HOUR / MINUTES_PER_HOUR  # hours
             
             if task_type not in type_stats:
                 type_stats[task_type] = {"durations": [], "count": 0}

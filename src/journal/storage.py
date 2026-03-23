@@ -25,6 +25,23 @@ class SQLiteStorage:
             self.connection = sqlite3.connect(self.db_path)
             self.connection.row_factory = sqlite3.Row
     
+    def _create_entry_from_row(self, row: sqlite3.Row) -> "JournalEntry":
+        """Create a JournalEntry from a database row.
+        
+        This helper method centralizes the construction logic for JournalEntry
+        objects from database rows, avoiding code duplication.
+        """
+        from src.journal.core import JournalEntry
+        
+        return JournalEntry(
+            id=row["id"],
+            content=row["content"],
+            tags=json.loads(row["tags"]) if row["tags"] else [],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+    
     def create_tables(self) -> None:
         """Create database tables."""
         cursor = self.connection.cursor()
@@ -120,8 +137,6 @@ class SQLiteStorage:
     
     def insert_entry(self, entry) -> bool:
         """Insert a journal entry."""
-        from src.journal.core import JournalEntry
-        
         cursor = self.connection.cursor()
         cursor.execute("""
             INSERT INTO journal_entries (id, content, tags, metadata, created_at, updated_at)
@@ -139,8 +154,6 @@ class SQLiteStorage:
     
     def get_entry(self, entry_id: str):
         """Get entry by ID."""
-        from src.journal.core import JournalEntry
-        
         cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,))
         row = cursor.fetchone()
@@ -148,14 +161,7 @@ class SQLiteStorage:
         if row is None:
             return None
         
-        return JournalEntry(
-            id=row["id"],
-            content=row["content"],
-            tags=json.loads(row["tags"]) if row["tags"] else [],
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-        )
+        return self._create_entry_from_row(row)
     
     def update_entry(self, entry) -> bool:
         """Update an existing entry."""
@@ -186,8 +192,6 @@ class SQLiteStorage:
     
     def list_entries(self, limit: int = 100, offset: int = 0):
         """List entries with pagination."""
-        from src.journal.core import JournalEntry
-        
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM journal_entries
@@ -199,21 +203,12 @@ class SQLiteStorage:
         entries = []
         
         for row in rows:
-            entries.append(JournalEntry(
-                id=row["id"],
-                content=row["content"],
-                tags=json.loads(row["tags"]) if row["tags"] else [],
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            ))
+            entries.append(self._create_entry_from_row(row))
         
         return entries
     
     def search_by_content(self, query: str):
         """Search entries by content."""
-        from src.journal.core import JournalEntry
-        
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM journal_entries
@@ -225,14 +220,7 @@ class SQLiteStorage:
         entries = []
         
         for row in rows:
-            entries.append(JournalEntry(
-                id=row["id"],
-                content=row["content"],
-                tags=json.loads(row["tags"]) if row["tags"] else [],
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            ))
+            entries.append(self._create_entry_from_row(row))
         
         return entries
     

@@ -65,11 +65,24 @@ class DataVault:
         else:
             encrypted_content = content
         
-        encrypted_path.write_bytes(encrypted_content)
+        with open(encrypted_path, 'wb') as f:
+            f.write(encrypted_content)
         return True
     
     def retrieve_decrypted(self, filename: str, user_id: Optional[str] = None) -> Optional[bytes]:
-        """Retrieve and decrypt file from vault."""
+        """Retrieve and decrypt file from vault.
+        
+        Args:
+            filename: Name of the file to retrieve (without .enc extension)
+            user_id: Optional user ID for permission check
+            
+        Returns:
+            The decrypted file content as bytes, or None if file not found
+            
+        Raises:
+            PermissionError: If user doesn't have read permission
+            EncryptionError: If decryption fails
+        """
         if user_id:
             self.set_user_context(user_id)
         self._require_permission(filename, "read")
@@ -79,7 +92,8 @@ class DataVault:
         if not encrypted_path.exists():
             return None
         
-        encrypted_content = encrypted_path.read_bytes()
+        with open(encrypted_path, 'rb') as f:
+            encrypted_content = f.read()
         
         if self.encryption_service:
             return self.encryption_service.decrypt(encrypted_content)
@@ -132,15 +146,18 @@ class VaultAccessControl:
     def _initialize_policy(self) -> None:
         """Initialize policy file."""
         if not self.policy_file.exists():
-            self.policy_file.write_text(json.dumps({"grants": []}))
+            with open(self.policy_file, 'w') as f:
+                f.write(json.dumps({"grants": []}))
     
     def _load_policy(self) -> dict:
         """Load access policy."""
-        return json.loads(self.policy_file.read_text())
+        with open(self.policy_file, 'r') as f:
+            return json.loads(f.read())
     
     def _save_policy(self, policy: dict) -> None:
         """Save access policy."""
-        self.policy_file.write_text(json.dumps(policy, indent=2))
+        with open(self.policy_file, 'w') as f:
+            f.write(json.dumps(policy, indent=2))
     
     def grant_access(self, user_id: str, resource: str, permissions: list[str], time_restrictions: Optional[dict] = None) -> bool:
         """Grant access to a resource."""
@@ -239,10 +256,12 @@ class KeyManager:
             "created_at": datetime.now().isoformat(),
         }
         
-        key_file.write_bytes(key)
+        with open(key_file, 'wb') as f:
+            f.write(key)
         
         meta_file = self.keys_path / f"{key_id}.meta.json"
-        meta_file.write_text(json.dumps(metadata, indent=2))
+        with open(meta_file, 'w') as f:
+            f.write(json.dumps(metadata, indent=2))
         
         return key_id, key
     
@@ -253,7 +272,8 @@ class KeyManager:
         if not key_file.exists():
             return None
         
-        return key_file.read_bytes()
+        with open(key_file, 'rb') as f:
+            return f.read()
     
     def rotate_key(self, key_id: str) -> tuple[str, bytes]:
         """Rotate a key."""
@@ -264,7 +284,10 @@ class KeyManager:
         
         # Backup old key
         backup_file = self.keys_path / f"{key_id}.key.old"
-        backup_file.write_bytes(old_key_file.read_bytes())
+        with open(old_key_file, 'rb') as f:
+            backup_content = f.read()
+        with open(backup_file, 'wb') as f:
+            f.write(backup_content)
         
         # Generate new key
         new_key_id, new_key = self.generate_key()
@@ -398,11 +421,13 @@ class VaultIntegrity:
         
         for filename in self.vault.list_files():
             filepath = self.vault.base_path / "encrypted" / f"{filename}.enc"
-            content = filepath.read_bytes()
+            with open(filepath, 'rb') as f:
+                content = f.read()
             checksums[filename] = hashlib.sha256(content).hexdigest()
         
         checksum_file = self.vault.base_path / "checksums.json"
-        checksum_file.write_text(json.dumps(checksums, indent=2))
+        with open(checksum_file, 'w') as f:
+            f.write(json.dumps(checksums, indent=2))
         
         return True
     

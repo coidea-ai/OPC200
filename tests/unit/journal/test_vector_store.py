@@ -2,6 +2,7 @@
 Unit tests for journal/vector_store.py - Qdrant vector store integration.
 Following TDD: Red-Green-Refactor cycle.
 """
+
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -18,11 +19,7 @@ class TestVectorStore:
         # Arrange & Act
         from src.journal.vector_store import VectorStore
 
-        store = VectorStore(
-            host="localhost",
-            port=6333,
-            collection_name="test_journal"
-        )
+        store = VectorStore(host="localhost", port=6333, collection_name="test_journal")
 
         # Assert
         assert store.host == "localhost"
@@ -133,11 +130,7 @@ class TestVectorStore:
         store.client = mock_qdrant_client
 
         # Act
-        result = store.upsert(
-            id="doc1",
-            vector=sample_embedding,
-            payload={"text": "Test document"}
-        )
+        result = store.upsert(id="doc1", vector=sample_embedding, payload={"text": "Test document"})
 
         # Assert
         assert result is True
@@ -165,10 +158,7 @@ class TestVectorStore:
         )
         store.client = mock_qdrant_client
 
-        points = [
-            {"id": f"doc{i}", "vector": vec, "payload": {"text": f"Doc {i}"}}
-            for i, vec in enumerate(sample_embeddings)
-        ]
+        points = [{"id": f"doc{i}", "vector": vec, "payload": {"text": f"Doc {i}"}} for i, vec in enumerate(sample_embeddings)]
 
         # Act
         result = store.upsert_batch(points)
@@ -190,11 +180,7 @@ class TestVectorStore:
         store.client = mock_qdrant_client
 
         # Act
-        results = store.search(
-            vector=sample_embedding,
-            limit=5,
-            score_threshold=0.7
-        )
+        results = store.search(vector=sample_embedding, limit=5, score_threshold=0.7)
 
         # Assert
         assert len(results) == 2
@@ -227,11 +213,7 @@ class TestVectorStore:
         filter_condition = {"must": [{"key": "tag", "match": {"value": "important"}}]}
 
         # Act
-        results = store.search(
-            vector=sample_embedding,
-            query_filter=filter_condition,
-            limit=10
-        )
+        results = store.search(vector=sample_embedding, query_filter=filter_condition, limit=10)
 
         # Assert
         assert len(results) == 2
@@ -288,9 +270,7 @@ class TestVectorStore:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.retrieve.return_value = [
-            Mock(id="doc1", payload={"text": "Test"})
-        ]
+        mock_qdrant_client.retrieve.return_value = [Mock(id="doc1", payload={"text": "Test"})]
 
         # Act
         result = store.get_by_id("doc1")
@@ -331,10 +311,7 @@ class TestVectorStore:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.scroll.return_value = (
-            [Mock(id="doc1"), Mock(id="doc2")],
-            "next_page_token"
-        )
+        mock_qdrant_client.scroll.return_value = ([Mock(id="doc1"), Mock(id="doc2")], "next_page_token")
 
         # Act
         results, next_page = store.scroll(limit=2)
@@ -353,9 +330,7 @@ class TestEmbeddingGenerator:
         # Arrange & Act
         from src.journal.vector_store import EmbeddingGenerator
 
-        generator = EmbeddingGenerator(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
+        generator = EmbeddingGenerator(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
         # Assert
         assert generator.model_name == "sentence-transformers/all-MiniLM-L6-v2"
@@ -409,6 +384,7 @@ class TestEmbeddingGenerator:
 
         # Assert - Length should be 1 (normalized)
         import math
+
         length = math.sqrt(sum(x**2 for x in normalized))
         assert abs(length - 1.0) < 0.0001
 
@@ -456,12 +432,7 @@ class TestSemanticSearch:
             mock_embed.return_value = [0.1] * 384
 
             # Act
-            results = searcher.search(
-                "project updates",
-                start_date=start_date,
-                end_date=end_date,
-                limit=10
-            )
+            results = searcher.search("project updates", start_date=start_date, end_date=end_date, limit=10)
 
         # Assert
         assert len(results) == 2
@@ -481,11 +452,7 @@ class TestSemanticSearch:
             mock_embed.return_value = [0.1] * 384
 
             # Act
-            results = searcher.search(
-                "meeting notes",
-                tags=["work", "important"],
-                limit=5
-            )
+            results = searcher.search("meeting notes", tags=["work", "important"], limit=5)
 
         # Assert
         assert len(results) == 2
@@ -500,9 +467,7 @@ class TestSemanticSearch:
             store_port=6333,
         )
         searcher.vector_store.client = mock_qdrant_client
-        mock_qdrant_client.retrieve.return_value = [
-            Mock(vector=[0.1] * 384, payload={"text": "Original"})
-        ]
+        mock_qdrant_client.retrieve.return_value = [Mock(vector=[0.1] * 384, payload={"text": "Original"})]
 
         # Act
         results = searcher.find_similar("entry-id-001", limit=5)
@@ -555,10 +520,7 @@ class TestVectorStoreIndexing:
         )
         indexer.store.client = mock_qdrant_client
 
-        entries = [
-            JournalEntry(id=f"entry-{i:03d}", content=f"Content {i}")
-            for i in range(5)
-        ]
+        entries = [JournalEntry(id=f"entry-{i:03d}", content=f"Content {i}") for i in range(5)]
 
         with patch.object(indexer.embedder, "generate_batch") as mock_embed:
             mock_embed.return_value = [[0.1] * 384 for _ in range(5)]
@@ -622,10 +584,7 @@ class TestVectorStoreBackup:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.scroll.return_value = (
-            [Mock(id="doc1", vector=[0.1] * 384, payload={"text": "Test"})],
-            None
-        )
+        mock_qdrant_client.scroll.return_value = ([Mock(id="doc1", vector=[0.1] * 384, payload={"text": "Test"})], None)
 
         export_path = temp_dir / "vectors.json"
 
@@ -650,9 +609,7 @@ class TestVectorStoreBackup:
         store.client = mock_qdrant_client
 
         # Create import file
-        data = [
-            {"id": "doc1", "vector": [0.1] * 384, "payload": {"text": "Imported"}}
-        ]
+        data = [{"id": "doc1", "vector": [0.1] * 384, "payload": {"text": "Imported"}}]
         import_path = temp_dir / "import.json"
         with open(import_path, "w") as f:
             json.dump(data, f)

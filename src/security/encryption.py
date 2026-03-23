@@ -16,26 +16,62 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+# Configuration constants for cryptographic operations
+# These values follow OWASP and NIST recommendations
+KDF_ITERATIONS = 480000  # PBKDF2 iterations (OWASP 2023 recommendation)
+KEY_LENGTH = 32  # AES-256 key length in bytes
+SALT_LENGTH = 32  # Salt length in bytes
+NONCE_LENGTH = 12  # AES-GCM nonce length in bytes
+
 
 @dataclass
 class EncryptionService:
-    """Service for encrypting and decrypting data."""
+    """Service for encrypting and decrypting data.
+    
+    Provides AES-256-GCM encryption with authenticated encryption.
+    
+    Attributes:
+        key: The encryption key (must be 32 bytes for AES-256)
+    
+    Example:
+        >>> key = EncryptionService.generate_key()
+        >>> service = EncryptionService(key=key)
+        >>> encrypted = service.encrypt(b"secret message")
+        >>> decrypted = service.decrypt(encrypted)
+        >>> assert decrypted == b"secret message"
+    """
     
     key: bytes
     
     def encrypt(self, plaintext: bytes, associated_data: Optional[bytes] = None) -> bytes:
-        """Encrypt data using AES-256-GCM."""
+        """Encrypt data using AES-256-GCM.
+        
+        Args:
+            plaintext: The data to encrypt
+            associated_data: Optional authenticated associated data
+            
+        Returns:
+            The encrypted data with nonce prepended
+        """
         aesgcm = AESGCM(self.key)
-        nonce = os.urandom(12)
+        nonce = os.urandom(NONCE_LENGTH)
         
         ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
         return nonce + ciphertext
     
     def decrypt(self, ciphertext: bytes, associated_data: Optional[bytes] = None) -> bytes:
-        """Decrypt data using AES-256-GCM."""
+        """Decrypt data using AES-256-GCM.
+        
+        Args:
+            ciphertext: The encrypted data (nonce + ciphertext)
+            associated_data: Optional authenticated associated data
+            
+        Returns:
+            The decrypted plaintext
+        """
         aesgcm = AESGCM(self.key)
-        nonce = ciphertext[:12]
-        encrypted_data = ciphertext[12:]
+        nonce = ciphertext[:NONCE_LENGTH]
+        encrypted_data = ciphertext[NONCE_LENGTH:]
         
         return aesgcm.decrypt(nonce, encrypted_data, associated_data)
     
@@ -46,16 +82,20 @@ class EncryptionService:
     
     def encrypt_file(self, input_path: Path, output_path: Path) -> bool:
         """Encrypt a file."""
-        plaintext = input_path.read_bytes()
+        with open(input_path, 'rb') as f:
+            plaintext = f.read()
         ciphertext = self.encrypt(plaintext)
-        output_path.write_bytes(ciphertext)
+        with open(output_path, 'wb') as f:
+            f.write(ciphertext)
         return True
     
     def decrypt_file(self, input_path: Path, output_path: Path) -> bool:
         """Decrypt a file."""
-        ciphertext = input_path.read_bytes()
+        with open(input_path, 'rb') as f:
+            ciphertext = f.read()
         plaintext = self.decrypt(ciphertext)
-        output_path.write_bytes(plaintext)
+        with open(output_path, 'wb') as f:
+            f.write(plaintext)
         return True
 
 
@@ -66,13 +106,13 @@ class KeyDerivation:
     def derive_from_password(password: str, salt: Optional[bytes] = None) -> tuple[bytes, bytes]:
         """Derive a key from a password using PBKDF2."""
         if salt is None:
-            salt = os.urandom(32)
+            salt = os.urandom(SALT_LENGTH)
         
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
-            length=32,
+            length=KEY_LENGTH,
             salt=salt,
-            iterations=480000,
+            iterations=KDF_ITERATIONS,
         )
         
         key = kdf.derive(password.encode())
@@ -128,13 +168,13 @@ class PasswordHashing:
     @staticmethod
     def hash(password: str) -> str:
         """Hash a password using PBKDF2."""
-        salt = os.urandom(32)
+        salt = os.urandom(SALT_LENGTH)
         
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
-            length=32,
+            length=KEY_LENGTH,
             salt=salt,
-            iterations=480000,
+            iterations=KDF_ITERATIONS,
         )
         
         key = kdf.derive(password.encode())
@@ -147,14 +187,14 @@ class PasswordHashing:
         """Verify a password against its hash."""
         try:
             decoded = base64.urlsafe_b64decode(hashed.encode())
-            salt = decoded[:32]
-            stored_key = decoded[32:]
+            salt = decoded[:SALT_LENGTH]
+            stored_key = decoded[SALT_LENGTH:]
             
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
-                length=32,
+                length=KEY_LENGTH,
                 salt=salt,
-                iterations=480000,
+                iterations=KDF_ITERATIONS,
             )
             
             key = kdf.derive(password.encode())
@@ -167,12 +207,16 @@ class FileEncryption:
     """Encrypt and decrypt files and directories using streaming."""
     
     CHUNK_OVERHEAD = 28  # 16 bytes tag + 12 bytes chunk nonce
+    CHUNK_SIZE = 64 * 1024  # 64KB chunks for streaming
+    FILE_NONCE_LENGTH = 12  # File-level nonce length
+    CHUNK_INDEX_BYTES = 8  # Bytes for chunk index
+    CHUNK_LEN_BYTES = 4  # Bytes for chunk length header
     
     def __init__(self, key: bytes):
         self.encryption_service = EncryptionService(key=key)
         self._key = key
     
-    def encrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = 64 * 1024) -> bool:
+    def encrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = CHUNK_SIZE) -> bool:
         """Encrypt file using true streaming with chunked AEAD.
         
         Format: [file_nonce(12)] + [num_chunks(8)] + [chunk1_len(4) + chunk1_tag(16) + chunk1_nonce(12) + chunk1_data] + ...
@@ -180,7 +224,7 @@ class FileEncryption:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         import struct
         
-        file_nonce = os.urandom(12)
+        file_nonce = os.urandom(self.FILE_NONCE_LENGTH)
         
         # First pass: count chunks
         chunk_count = 0
@@ -213,32 +257,32 @@ class FileEncryption:
         
         return True
     
-    def decrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = 64 * 1024) -> bool:
+    def decrypt_file_streaming(self, input_path: Path, output_path: Path, chunk_size: int = CHUNK_SIZE) -> bool:
         """Decrypt file using true streaming with chunked AEAD."""
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         import struct
         
         with open(input_path, "rb") as infile, open(output_path, "wb") as outfile:
             # Read file header
-            file_nonce = infile.read(12)
-            if len(file_nonce) != 12:
+            file_nonce = infile.read(self.FILE_NONCE_LENGTH)
+            if len(file_nonce) != self.FILE_NONCE_LENGTH:
                 raise ValueError("Invalid encrypted file: missing nonce")
             
-            chunk_count_bytes = infile.read(8)
-            if len(chunk_count_bytes) != 8:
+            chunk_count_bytes = infile.read(self.CHUNK_INDEX_BYTES)
+            if len(chunk_count_bytes) != self.CHUNK_INDEX_BYTES:
                 raise ValueError("Invalid encrypted file: missing chunk count")
             chunk_count = struct.unpack("<Q", chunk_count_bytes)[0]
             
             # Decrypt chunks
             for chunk_index in range(chunk_count):
                 # Read chunk header
-                chunk_len_bytes = infile.read(4)
-                if len(chunk_len_bytes) != 4:
+                chunk_len_bytes = infile.read(self.CHUNK_LEN_BYTES)
+                if len(chunk_len_bytes) != self.CHUNK_LEN_BYTES:
                     raise ValueError(f"Invalid chunk header at index {chunk_index}")
                 chunk_len = struct.unpack("<I", chunk_len_bytes)[0]
                 
-                chunk_nonce = infile.read(12)
-                if len(chunk_nonce) != 12:
+                chunk_nonce = infile.read(NONCE_LENGTH)
+                if len(chunk_nonce) != NONCE_LENGTH:
                     raise ValueError(f"Invalid chunk nonce at index {chunk_index}")
                 
                 encrypted_chunk = infile.read(chunk_len)
@@ -258,12 +302,11 @@ class FileEncryption:
     
     def _derive_chunk_nonce(self, file_nonce: bytes, chunk_index: int) -> bytes:
         """Derive a unique nonce for each chunk from file nonce and chunk index."""
-        import hashlib
         # Combine file_nonce with chunk_index to create unique nonce
-        index_bytes = chunk_index.to_bytes(8, 'little')
+        index_bytes = chunk_index.to_bytes(self.CHUNK_INDEX_BYTES, 'little')
         combined = file_nonce + index_bytes
         # Use first 12 bytes of SHA256 hash
-        return hashlib.sha256(combined).digest()[:12]
+        return hashlib.sha256(combined).digest()[:NONCE_LENGTH]
     
     def encrypt_directory(self, source_dir: Path, output_dir: Path) -> bool:
         """Encrypt all files in a directory."""
@@ -307,14 +350,15 @@ class EncryptionMetadata:
             "algorithm": algorithm,
             "key_id": key_id,
             "salt": base64.b64encode(salt).decode(),
-            "created_at": str(uuid.uuid4()),
+            "created_at": datetime.now().isoformat(),
         }
         
         if nonce:
             metadata["nonce"] = base64.b64encode(nonce).decode()
         
         metadata_file = self.metadata_path / f"{file_id}.meta.json"
-        metadata_file.write_text(json.dumps(metadata, indent=2))
+        with open(metadata_file, 'w') as f:
+            f.write(json.dumps(metadata, indent=2))
         
         return True
     
@@ -325,7 +369,8 @@ class EncryptionMetadata:
         if not metadata_file.exists():
             return None
         
-        metadata = json.loads(metadata_file.read_text())
+        with open(metadata_file, 'r') as f:
+            metadata = json.loads(f.read())
         metadata["salt"] = base64.b64decode(metadata["salt"])
         
         if "nonce" in metadata:
@@ -342,3 +387,7 @@ class EncryptionMetadata:
             return True
         
         return False
+
+
+# Import datetime at the end to avoid circular imports
+from datetime import datetime
