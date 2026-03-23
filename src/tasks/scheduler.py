@@ -317,7 +317,7 @@ class TaskQueue:
         
         task = pending[0]
         task["status"] = "processing"
-        result: dict[str, Any] = task
+        result: dict[str, Any] = task  # type: ignore[no-any-return]
         return result
     
     async def execute(self, task_func: Callable, timeout: Optional[int] = None) -> Any:

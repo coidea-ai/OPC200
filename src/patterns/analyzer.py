@@ -369,7 +369,7 @@ class PatternStore:
             return {}
         
         data: dict[str, Any] = json.loads(pattern_file.read_text())
-        patterns: dict[str, Any] = data.get("patterns", {})
+        patterns: dict[str, Any] = data.get("patterns", {})  # type: ignore[no-any-return]
         return patterns
     
     def delete_old_patterns(self, days: int = 30) -> bool:
