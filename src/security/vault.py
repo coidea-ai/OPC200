@@ -165,14 +165,20 @@ class VaultAccessControl:
         """Grant access to a resource."""
         policy = self._load_policy()
         
+        # Ensure grants is a list
+        if "grants" not in policy or not isinstance(policy["grants"], list):
+            policy["grants"] = []
+        
+        grants: list[dict[str, Any]] = policy["grants"]
+        
         # Remove existing grant for this user/resource
         policy["grants"] = [
-            g for g in policy["grants"]
-            if not (g["user_id"] == user_id and g["resource"] == resource)
+            g for g in grants
+            if not (g.get("user_id") == user_id and g.get("resource") == resource)
         ]
         
         # Add new grant
-        grant = {
+        grant: dict[str, Any] = {
             "user_id": user_id,
             "resource": resource,
             "permissions": permissions,

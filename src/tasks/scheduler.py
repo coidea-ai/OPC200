@@ -309,15 +309,16 @@ class TaskQueue:
         
         return task_id
     
-    async def dequeue(self) -> Optional[dict]:
+    async def dequeue(self) -> Optional[dict[str, Any]]:
         """Get next task from queue."""
-        pending = [t for t in self.tasks if t["status"] == "pending"]
+        pending = [t for t in self.tasks if t.get("status") == "pending"]
         if not pending:
             return None
         
         task = pending[0]
         task["status"] = "processing"
-        return task
+        result: dict[str, Any] = task
+        return result
     
     async def execute(self, task_func: Callable, timeout: Optional[int] = None) -> Any:
         """Execute a task with timeout and precise exception handling."""

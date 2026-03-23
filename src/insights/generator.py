@@ -383,13 +383,19 @@ class PatternInsightGenerator:
                     if isinstance(entry_date, str):
                         entry_date = datetime.fromisoformat(entry_date)
                     
-                    if last_date is None or (entry_date - last_date).days <= 1:
-                        current_streak += 1
-                        longest_streak = max(longest_streak, current_streak)
-                    else:
-                        current_streak = 1
-                    
-                    last_date = entry_date
+                    if entry_date is not None and hasattr(entry_date, "day"):
+                        if last_date is None:
+                            current_streak += 1
+                            longest_streak = max(longest_streak, current_streak)
+                        elif hasattr(last_date, "day"):
+                            delta = entry_date - last_date
+                            if delta.days <= 1:
+                                current_streak += 1
+                                longest_streak = max(longest_streak, current_streak)
+                            else:
+                                current_streak = 1
+                        
+                        last_date = entry_date
                 else:
                     current_streak = 0
             

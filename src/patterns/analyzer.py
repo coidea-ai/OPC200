@@ -361,15 +361,16 @@ class PatternStore:
         pattern_file.write_text(json.dumps(data, indent=2))
         return True
     
-    def load_patterns(self, user_id: str) -> dict:
+    def load_patterns(self, user_id: str) -> dict[str, Any]:
         """Load patterns for a user."""
         pattern_file = self.storage_path / f"{user_id}_patterns.json"
         
         if not pattern_file.exists():
             return {}
         
-        data = json.loads(pattern_file.read_text())
-        return data.get("patterns", {})
+        data: dict[str, Any] = json.loads(pattern_file.read_text())
+        patterns: dict[str, Any] = data.get("patterns", {})
+        return patterns
     
     def delete_old_patterns(self, days: int = 30) -> bool:
         """Delete patterns older than specified days."""
