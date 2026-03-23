@@ -3,7 +3,14 @@
 This module generates weekly review insights.
 """
 
-# Add project root to path for imports
+# Add project root to path for imports (must be first)
+import sys
+from pathlib import Path
+_script_dir = Path(__file__).parent.resolve()
+_project_root = _script_dir.parent.parent.parent.parent.resolve()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 import sys
 from pathlib import Path
 _script_dir = Path(__file__).parent.resolve()
