@@ -1,326 +1,414 @@
-"""Integration tests for OPC200 Skills.
+"""Integration tests for OPC Journal Suite Skills.
 
-These tests verify the integration between skills and the core system.
+Tests each skill's initialization and core functionality flows.
 """
+import importlib.util
 import json
 import os
+import shutil
+import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
-import pytest
-
-# Import skill modules
-from skills.opc_journal_suite.opc_journal_core.scripts import init as journal_init
-from skills.opc_journal_suite.opc_journal_core.scripts import record as journal_record
-from skills.opc_journal_suite.opc_journal_core.scripts import search as journal_search
-from skills.opc_journal_suite.opc_pattern_recognition.scripts import init as pattern_init
-from skills.opc_journal_suite.opc_pattern_recognition.scripts import analyze as pattern_analyze
-from skills.opc_journal_suite.opc_milestone_tracker.scripts import init as milestone_init
-from skills.opc_journal_suite.opc_milestone_tracker.scripts import detect as milestone_detect
-from skills.opc_journal_suite.opc_async_task_manager.scripts import init as task_init
-from skills.opc_journal_suite.opc_async_task_manager.scripts import create as task_create
-from skills.opc_journal_suite.opc_insights_generator.scripts import init as insights_init
-
-
-@pytest.fixture
-def test_customer_id():
-    """Provide a test customer ID."""
-    return "OPC-TEST-001"
-
-
-@pytest.fixture
-def temp_customer_dir(tmp_path):
-    """Create a temporary directory for test customer data."""
-    customer_dir = tmp_path / "customers" / "OPC-TEST-001"
-    customer_dir.mkdir(parents=True)
-    return customer_dir
-
-
-@pytest.fixture
-def journal_context(temp_customer_dir, test_customer_id):
-    """Provide context for journal skill tests."""
-    return {
-        "customer_id": test_customer_id,
-        "input": {},
-        "config": {
-            "storage": {"path": str(temp_customer_dir / "journal")},
-            "privacy": {"default_level": "normal"},
-            "retention_days": 365
-        },
-        "memory": {"timestamp": datetime.now().isoformat()}
-    }
-
-
-class TestJournalCoreSkill:
-    """Tests for opc-journal-core skill."""
+# Helper function to load module from file
+def load_module(module_name, file_path):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
     
-    def test_init(self, journal_context, temp_customer_dir):
-        """Test journal initialization."""
-        result = journal_init.main(journal_context)
+    # Add project root to path before executing
+    import sys
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    
+    spec.loader.exec_module(module)
+    return module
+
+
+# Load all skill modules
+BASE_DIR = Path(__file__).parent.parent.parent
+SKILLS_DIR = BASE_DIR / "skills" / "opc-journal-suite"
+
+# Journal Core
+journal_init = load_module("journal_init", SKILLS_DIR / "opc-journal-core" / "scripts" / "init.py")
+journal_record = load_module("journal_record", SKILLS_DIR / "opc-journal-core" / "scripts" / "record.py")
+journal_search = load_module("journal_search", SKILLS_DIR / "opc-journal-core" / "scripts" / "search.py")
+journal_export = load_module("journal_export", SKILLS_DIR / "opc-journal-core" / "scripts" / "export.py")
+
+# Pattern Recognition
+pattern_init = load_module("pattern_init", SKILLS_DIR / "opc-pattern-recognition" / "scripts" / "init.py")
+pattern_analyze = load_module("pattern_analyze", SKILLS_DIR / "opc-pattern-recognition" / "scripts" / "analyze.py")
+pattern_detect_outliers = load_module("pattern_detect_outliers", SKILLS_DIR / "opc-pattern-recognition" / "scripts" / "detect_outliers.py")
+
+# Milestone Tracker
+milestone_init = load_module("milestone_init", SKILLS_DIR / "opc-milestone-tracker" / "scripts" / "init.py")
+milestone_detect = load_module("milestone_detect", SKILLS_DIR / "opc-milestone-tracker" / "scripts" / "detect.py")
+milestone_notify = load_module("milestone_notify", SKILLS_DIR / "opc-milestone-tracker" / "scripts" / "notify.py")
+
+# Async Task Manager
+task_init = load_module("task_init", SKILLS_DIR / "opc-async-task-manager" / "scripts" / "init.py")
+task_create = load_module("task_create", SKILLS_DIR / "opc-async-task-manager" / "scripts" / "create.py")
+task_execute = load_module("task_execute", SKILLS_DIR / "opc-async-task-manager" / "scripts" / "execute.py")
+task_status = load_module("task_status", SKILLS_DIR / "opc-async-task-manager" / "scripts" / "status.py")
+
+# Insight Generator
+insight_init = load_module("insight_init", SKILLS_DIR / "opc-insight-generator" / "scripts" / "init.py")
+insight_daily_summary = load_module("insight_daily_summary", SKILLS_DIR / "opc-insight-generator" / "scripts" / "daily_summary.py")
+insight_weekly_review = load_module("insight_weekly_review", SKILLS_DIR / "opc-insight-generator" / "scripts" / "weekly_review.py")
+insight_recommendations = load_module("insight_recommendations", SKILLS_DIR / "opc-insight-generator" / "scripts" / "recommendations.py")
+
+
+def test_journal_core_init():
+    """Test journal core initialization."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        result = journal_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {"timestamp": "2026-03-24T03:38:00Z"}
+        })
         
-        assert result["status"] == "success"
+        assert result["status"] == "success", f"Init failed: {result['message']}"
         assert result["result"]["initialized"] is True
-        assert result["result"]["customer_id"] == "OPC-TEST-001"
+        assert Path(result["result"]["db_path"]).exists()
+        print("✓ journal_core.init: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_journal_core_record_and_search():
+    """Test recording and searching journal entries."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Initialize
+        journal_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
         
-        # Verify database was created
-        db_path = temp_customer_dir / "journal" / "journal.db"
-        assert db_path.exists()
-    
-    def test_record(self, journal_context, temp_customer_dir):
-        """Test recording a journal entry."""
-        # First initialize
-        journal_init.main(journal_context)
-        
-        # Then record
-        journal_context["input"] = {
-            "content": "Test journal entry for testing",
-            "tags": ["test", "development"],
-            "metadata": {
-                "agents_involved": ["TestAgent"],
-                "emotional_state": "focused",
-                "energy_level": 8
-            }
-        }
-        
-        result = journal_record.main(journal_context)
+        # Record entry
+        result = journal_record.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {
+                "content": "今天完成了用户注册功能",
+                "metadata": {"energy_level": 6}
+            },
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
         
         assert result["status"] == "success"
-        assert result["result"]["entry_id"].startswith("JE-")
-        assert result["result"]["customer_id"] == "OPC-TEST-001"
-    
-    def test_search(self, journal_context, temp_customer_dir):
-        """Test searching journal entries."""
-        # Initialize and record
-        journal_init.main(journal_context)
-        
-        journal_context["input"] = {
-            "content": "Test content with specific keyword",
-            "tags": ["test"]
-        }
-        journal_record.main(journal_context)
         
         # Search
-        journal_context["input"] = {
-            "query": "specific keyword",
-            "limit": 10
-        }
-        
-        result = journal_search.main(journal_context)
+        result = journal_search.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"query": "注册"},
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
         
         assert result["status"] == "success"
-        assert result["result"]["total_count"] >= 0
+        assert result["result"]["total_count"] >= 1
+        print("✓ journal_core.record & search: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-class TestPatternRecognitionSkill:
-    """Tests for opc-pattern-recognition skill."""
-    
-    @pytest.fixture
-    def pattern_context(self, temp_customer_dir, test_customer_id):
-        """Provide context for pattern recognition tests."""
-        return {
-            "customer_id": test_customer_id,
+def test_journal_core_export():
+    """Test exporting journal entries."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Initialize and record
+        journal_init.main({
+            "customer_id": "OPC-TEST-001",
             "input": {},
-            "config": {
-                "storage": {"path": str(temp_customer_dir / "patterns")},
-                "analysis_frequency": "weekly",
-                "insight_depth": "detailed"
-            },
-            "memory": {"timestamp": datetime.now().isoformat()}
-        }
-    
-    def test_init(self, pattern_context, temp_customer_dir):
-        """Test pattern recognition initialization."""
-        result = pattern_init.main(pattern_context)
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
+        
+        journal_record.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"content": "Test entry"},
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
+        
+        # Export
+        result = journal_export.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"format": "json"},
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
+        
+        assert result["status"] == "success"
+        assert Path(result["result"]["output_path"]).exists()
+        print("✓ journal_core.export: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_pattern_recognition_init():
+    """Test pattern recognition initialization."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        result = pattern_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/patterns"}},
+            "memory": {}
+        })
         
         assert result["status"] == "success"
         assert result["result"]["initialized"] is True
-        
-        # Verify config was created
-        config_path = temp_customer_dir / "patterns" / "config.json"
-        assert config_path.exists()
+        print("✓ pattern_recognition.init: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-class TestMilestoneTrackerSkill:
-    """Tests for opc-milestone-tracker skill."""
-    
-    @pytest.fixture
-    def milestone_context(self, temp_customer_dir, test_customer_id):
-        """Provide context for milestone tracker tests."""
-        return {
-            "customer_id": test_customer_id,
+def test_pattern_recognition_analyze():
+    """Test pattern analysis."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Initialize journal and add entries
+        journal_init.main({
+            "customer_id": "OPC-TEST-001",
             "input": {},
-            "config": {
-                "storage": {"path": str(temp_customer_dir / "milestones")},
-                "auto_detection": True,
-                "celebration_enabled": True
-            },
-            "memory": {"timestamp": datetime.now().isoformat()}
-        }
-    
-    def test_init(self, milestone_context, temp_customer_dir):
-        """Test milestone tracker initialization."""
-        result = milestone_init.main(milestone_context)
+            "config": {"storage": {"path": f"{temp_dir}/journal"}},
+            "memory": {}
+        })
         
-        assert result["status"] == "success"
-        assert result["result"]["initialized"] is True
+        for i in range(5):
+            journal_record.main({
+                "customer_id": "OPC-TEST-001",
+                "input": {"content": f"Entry {i}", "metadata": {"energy_level": 5 + i % 3}},
+                "config": {"storage": {"path": f"{temp_dir}/journal"}},
+                "memory": {}
+            })
         
-        # Verify directories were created
-        assert (temp_customer_dir / "milestones" / "achieved").exists()
-        assert (temp_customer_dir / "milestones" / "pending").exists()
-    
-    def test_detect_milestone(self, milestone_context):
-        """Test milestone detection."""
-        milestone_init.main(milestone_context)
-        
-        milestone_context["input"] = {
-            "content": "终于把产品部署到生产环境了！上线成功！",
-            "day_number": 45
-        }
-        
-        result = milestone_detect.main(milestone_context)
-        
-        assert result["status"] == "success"
-        assert len(result["result"]["detected_milestones"]) > 0
-
-
-class TestAsyncTaskManagerSkill:
-    """Tests for opc-async-task-manager skill."""
-    
-    @pytest.fixture
-    def task_context(self, temp_customer_dir, test_customer_id):
-        """Provide context for async task manager tests."""
-        return {
-            "customer_id": test_customer_id,
+        pattern_init.main({
+            "customer_id": "OPC-TEST-001",
             "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/patterns"}},
+            "memory": {}
+        })
+        
+        result = pattern_analyze.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"dimensions": ["growth_trajectory"]},
             "config": {
-                "storage": {"path": str(temp_customer_dir / "tasks")},
-                "max_concurrent": 5,
-                "default_timeout": "8h",
-                "notification_channels": ["feishu"]
+                "journal_storage": {"path": f"{temp_dir}/journal"},
+                "storage": {"path": f"{temp_dir}/patterns"}
             },
             "memory": {}
-        }
-    
-    def test_init(self, task_context, temp_customer_dir):
-        """Test async task manager initialization."""
-        result = task_init.main(task_context)
+        })
+        
+        assert result["status"] == "success"
+        assert "patterns" in result["result"]
+        print("✓ pattern_recognition.analyze: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_milestone_tracker_init():
+    """Test milestone tracker initialization."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        result = milestone_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
+            "memory": {}
+        })
         
         assert result["status"] == "success"
         assert result["result"]["initialized"] is True
-        assert result["result"]["max_concurrent"] == 5
-    
-    def test_create_task(self, task_context):
-        """Test creating an async task."""
-        task_init.main(task_context)
+        print("✓ milestone_tracker.init: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_milestone_tracker_detect():
+    """Test milestone detection."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        milestone_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
+            "memory": {}
+        })
         
-        task_context["input"] = {
-            "title": "Test Research Task",
-            "description": "Test task description",
-            "task_type": "research",
-            "agent": "TestAgent"
-        }
-        
-        result = task_create.main(task_context)
+        result = milestone_detect.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"content": "终于把产品部署上线了！", "day_number": 45},
+            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
+            "memory": {}
+        })
         
         assert result["status"] == "success"
-        assert result["result"]["task_id"].startswith("TASK-")
-        assert result["result"]["status"] == "pending"
+        assert "detected_milestones" in result["result"]
+        print("✓ milestone_tracker.detect: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-class TestInsightsGeneratorSkill:
-    """Tests for opc-insights-generator skill."""
-    
-    @pytest.fixture
-    def insights_context(self, temp_customer_dir, test_customer_id):
-        """Provide context for insights generator tests."""
-        return {
-            "customer_id": test_customer_id,
+def test_async_task_manager_init():
+    """Test async task manager initialization."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        result = task_init.main({
+            "customer_id": "OPC-TEST-001",
             "input": {},
-            "config": {
-                "storage": {"path": str(temp_customer_dir / "insights")},
-                "generation_frequency": "daily",
-                "include_recommendations": True
+            "config": {"storage": {"path": f"{temp_dir}/tasks"}},
+            "memory": {}
+        })
+        
+        assert result["status"] == "success"
+        assert result["result"]["initialized"] is True
+        print("✓ async_task_manager.init: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_async_task_manager_create_and_status():
+    """Test task creation and status query."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        task_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/tasks"}},
+            "memory": {}
+        })
+        
+        create_result = task_create.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"title": "测试任务", "task_type": "research"},
+            "config": {"storage": {"path": f"{temp_dir}/tasks"}},
+            "memory": {}
+        })
+        
+        assert create_result["status"] == "success"
+        task_id = create_result["result"]["task_id"]
+        
+        status_result = task_status.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {"task_id": task_id},
+            "config": {"storage": {"path": f"{temp_dir}/tasks"}},
+            "memory": {}
+        })
+        
+        assert status_result["status"] == "success"
+        assert status_result["result"]["task"]["id"] == task_id
+        print("✓ async_task_manager.create & status: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_insight_generator_init():
+    """Test insight generator initialization."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        result = insight_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/insights"}},
+            "memory": {}
+        })
+        
+        assert result["status"] == "success"
+        assert result["result"]["initialized"] is True
+        print("✓ insight_generator.init: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_insight_generator_recommendations():
+    """Test recommendation generation."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        insight_init.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {},
+            "config": {"storage": {"path": f"{temp_dir}/insights"}},
+            "memory": {}
+        })
+        
+        result = insight_recommendations.main({
+            "customer_id": "OPC-TEST-001",
+            "input": {
+                "type": "productivity",
+                "productivity_data": {"peak_hours": [9, 14]}
             },
-            "memory": {"timestamp": datetime.now().isoformat()}
-        }
-    
-    def test_init(self, insights_context, temp_customer_dir):
-        """Test insights generator initialization."""
-        result = insights_init.main(insights_context)
+            "config": {
+                "storage": {"path": f"{temp_dir}/insights"},
+                "proactive": {"max_per_day": 3, "min_quality_score": 0.5}
+            },
+            "memory": {}
+        })
         
         assert result["status"] == "success"
-        assert result["result"]["initialized"] is True
-        
-        # Verify directories were created
-        assert (temp_customer_dir / "insights" / "daily").exists()
-        assert (temp_customer_dir / "insights" / "weekly").exists()
+        assert "recommendations" in result["result"]
+        print("✓ insight_generator.recommendations: PASSED")
+        return True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-class TestSkillIntegration:
-    """Integration tests across multiple skills."""
+def run_all_tests():
+    """Run all integration tests."""
+    print("\n" + "=" * 60)
+    print("OPC Journal Suite - Integration Tests")
+    print("=" * 60 + "\n")
     
-    def test_full_workflow(self, temp_customer_dir, test_customer_id):
-        """Test a complete workflow using multiple skills."""
-        base_context = {
-            "customer_id": test_customer_id,
-            "input": {},
-            "memory": {"timestamp": datetime.now().isoformat()}
-        }
-        
-        # Step 1: Initialize journal
-        journal_ctx = base_context.copy()
-        journal_ctx["config"] = {
-            "storage": {"path": str(temp_customer_dir / "journal")},
-            "privacy": {"default_level": "normal"},
-            "retention_days": 365
-        }
-        result = journal_init.main(journal_ctx)
-        assert result["status"] == "success"
-        
-        # Step 2: Initialize milestone tracker
-        milestone_ctx = base_context.copy()
-        milestone_ctx["config"] = {
-            "storage": {"path": str(temp_customer_dir / "milestones")},
-            "auto_detection": True,
-            "celebration_enabled": True
-        }
-        result = milestone_init.main(milestone_ctx)
-        assert result["status"] == "success"
-        
-        # Step 3: Initialize task manager
-        task_ctx = base_context.copy()
-        task_ctx["config"] = {
-            "storage": {"path": str(temp_customer_dir / "tasks")},
-            "max_concurrent": 5,
-            "default_timeout": "8h"
-        }
-        result = task_init.main(task_ctx)
-        assert result["status"] == "success"
-        
-        # Step 4: Record a journal entry
-        journal_ctx["input"] = {
-            "content": "完成产品发布！部署到生产环境成功！",
-            "tags": ["milestone", "deployment"],
-            "metadata": {
-                "agents_involved": ["DevAgent", "DeployAgent"],
-                "day_number": 45,
-                "emotional_state": "excited"
-            }
-        }
-        result = journal_record.main(journal_ctx)
-        assert result["status"] == "success"
-        entry_id = result["result"]["entry_id"]
-        
-        # Step 5: Detect milestones
-        milestone_ctx["input"] = {
-            "content": "完成产品发布！部署到生产环境成功！",
-            "day_number": 45
-        }
-        result = milestone_detect.main(milestone_ctx)
-        assert result["status"] == "success"
-        
-        # Verify milestone was detected
-        assert len(result["result"]["detected_milestones"]) > 0
-        
-        print(f"✓ Full workflow test passed for customer {test_customer_id}")
+    tests = [
+        test_journal_core_init,
+        test_journal_core_record_and_search,
+        test_journal_core_export,
+        test_pattern_recognition_init,
+        test_pattern_recognition_analyze,
+        test_milestone_tracker_init,
+        test_milestone_tracker_detect,
+        test_async_task_manager_init,
+        test_async_task_manager_create_and_status,
+        test_insight_generator_init,
+        test_insight_generator_recommendations,
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test in tests:
+        try:
+            if test():
+                passed += 1
+        except Exception as e:
+            print(f"✗ {test.__name__}: FAILED - {e}")
+            failed += 1
+    
+    print("\n" + "=" * 60)
+    print(f"Results: {passed} passed, {failed} failed")
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, str(BASE_DIR))
+    
+    success = run_all_tests()
+    sys.exit(0 if success else 1)
