@@ -23,9 +23,11 @@ class VectorStore:
             self.client = QdrantClient(host=self.host, port=self.port)
             return True
         except ImportError:
-            # Mock client for testing
-            self.client = MockQdrantClient()
-            return True
+            # Re-raise ImportError instead of using mock in production
+            raise ImportError(
+                "qdrant_client is required for production use. "
+                "Install with: pip install qdrant-client"
+            )
     
     def create_collection(self, vector_size: int = 384) -> bool:
         """Create a vector collection."""
@@ -146,76 +148,6 @@ class VectorStore:
         return True
 
 
-class MockQdrantClient:
-    """Mock Qdrant client for testing."""
-    
-    def __init__(self):
-        self.collections = {}
-        self.vectors = {}
-    
-    def create_collection(self, collection_name: str, vectors_config) -> None:
-        self.collections[collection_name] = {"vectors_config": vectors_config}
-        self.vectors[collection_name] = {}
-    
-    def delete_collection(self, collection_name: str) -> None:
-        if collection_name in self.collections:
-            del self.collections[collection_name]
-            del self.vectors[collection_name]
-    
-    def collection_exists(self, collection_name: str) -> bool:
-        return collection_name in self.collections
-    
-    def upsert(self, collection_name: str, points) -> None:
-        if collection_name not in self.vectors:
-            self.vectors[collection_name] = {}
-        for point in points:
-            self.vectors[collection_name][point.id] = point
-    
-    def search(self, collection_name: str, query_vector, limit: int = 10, score_threshold: float = 0.0, query_filter=None):
-        from unittest.mock import Mock
-        
-        results = []
-        for i in range(min(limit, 2)):
-            mock = Mock()
-            mock.id = f"doc{i+1}"
-            mock.score = 0.95 - (i * 0.1)
-            mock.payload = {"text": f"result{i+1}"}
-            results.append(mock)
-        return results
-    
-    def delete(self, collection_name: str, points_selector) -> None:
-        if collection_name in self.vectors:
-            for point_id in points_selector:
-                if point_id in self.vectors[collection_name]:
-                    del self.vectors[collection_name][point_id]
-    
-    def retrieve(self, collection_name: str, ids: list):
-        from unittest.mock import Mock
-        
-        results = []
-        for id in ids:
-            if collection_name in self.vectors and id in self.vectors[collection_name]:
-                results.append(self.vectors[collection_name][id])
-            else:
-                mock = Mock()
-                mock.id = id
-                mock.payload = {"text": "Test"}
-                results.append(mock)
-        return results
-    
-    def count(self, collection_name: str):
-        from unittest.mock import Mock
-        
-        mock = Mock()
-        mock.count = len(self.vectors.get(collection_name, {}))
-        return mock
-    
-    def scroll(self, collection_name: str, limit: int = 100, offset=None):
-        vectors = self.vectors.get(collection_name, {})
-        results = list(vectors.values())[:limit]
-        return results, None
-
-
 class EmbeddingGenerator:
     """Generate embeddings for text."""
     
@@ -226,12 +158,8 @@ class EmbeddingGenerator:
     def _load_model(self):
         """Load the embedding model."""
         if self.model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self.model = SentenceTransformer(self.model_name)
-            except ImportError:
-                # Return mock model for testing
-                self.model = MockModel()
+            from sentence_transformers import SentenceTransformer
+            self.model = SentenceTransformer(self.model_name)
     
     def generate(self, text: str) -> list[float]:
         """Generate embedding for text."""
@@ -254,18 +182,6 @@ class EmbeddingGenerator:
         if length == 0:
             return vector
         return [x / length for x in vector]
-
-
-class MockModel:
-    """Mock embedding model for testing."""
-    
-    def encode(self, texts):
-        """Mock encode method."""
-        import numpy as np
-        
-        if isinstance(texts, str):
-            return np.array([0.1] * 384)
-        return [np.array([0.1] * 384) for _ in texts]
 
 
 class SemanticSearch:

@@ -115,6 +115,10 @@ class JournalManager:
     def __init__(self, connection):
         """Initialize with database connection."""
         self.connection = connection
+        # Ensure row factory is set for dictionary-style access
+        if hasattr(self.connection, 'row_factory') and self.connection.row_factory is None:
+            import sqlite3
+            self.connection.row_factory = sqlite3.Row
     
     def create_table(self) -> None:
         """Create journal entries table."""

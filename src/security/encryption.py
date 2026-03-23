@@ -3,6 +3,7 @@ Security Encryption Module - Encryption functionality.
 """
 import base64
 import hashlib
+import json
 import os
 import secrets
 import uuid

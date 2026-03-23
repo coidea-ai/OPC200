@@ -129,20 +129,103 @@ class CronParser:
         next_run = from_time + timedelta(minutes=1)
         next_run = next_run.replace(second=0, microsecond=0)
         
-        # Find next matching time (simple implementation)
-        for _ in range(366 * 24 * 60):  # Max search one year in minutes
-            if (next_run.minute in parsed["minutes"] and
-                next_run.hour in parsed["hours"] and
-                next_run.month in parsed["months"]):
-                
-                # Check day constraints
-                if (next_run.day in parsed["days_of_month"] or
-                    next_run.weekday() in parsed["days_of_week"]):
-                    return next_run
-            
-            next_run += timedelta(minutes=1)
+        # Use mathematical calculation instead of brute force
+        return self._calculate_next_run(next_run, parsed)
+    
+    def _calculate_next_run(self, start: datetime, parsed: dict) -> datetime:
+        """Calculate next run time using mathematical approach."""
+        # Get ordered valid values
+        minutes = sorted(parsed["minutes"])
+        hours = sorted(parsed["hours"])
+        days_of_month = sorted(parsed["days_of_month"])
+        months = sorted(parsed["months"])
+        days_of_week = sorted(parsed["days_of_week"])
         
-        raise ValueError("Could not find next run time")
+        current = start
+        max_iterations = 366 * 24 * 60  # Safety limit: one year in minutes
+        iterations = 0
+        
+        while iterations < max_iterations:
+            iterations += 1
+            
+            # Check month
+            if current.month not in months:
+                # Find next valid month
+                next_month = self._find_next_value(current.month, months)
+                if next_month is None or next_month <= current.month:
+                    # Move to next year, first valid month
+                    current = current.replace(year=current.year + 1, month=months[0], day=1, hour=0, minute=0)
+                else:
+                    current = current.replace(month=next_month, day=1, hour=0, minute=0)
+                continue
+            
+            # Check day constraints
+            day_valid = (
+                current.day in days_of_month or 
+                current.weekday() in days_of_week
+            )
+            
+            if not day_valid:
+                # Find next valid day
+                next_day = self._find_next_valid_day(current, days_of_month, days_of_week)
+                if next_day is None or next_day <= current.day:
+                    # Move to next month
+                    if current.month == 12:
+                        current = current.replace(year=current.year + 1, month=1, day=1, hour=0, minute=0)
+                    else:
+                        current = current.replace(month=current.month + 1, day=1, hour=0, minute=0)
+                else:
+                    current = current.replace(day=next_day, hour=0, minute=0)
+                continue
+            
+            # Check hour
+            if current.hour not in hours:
+                next_hour = self._find_next_value(current.hour, hours)
+                if next_hour is None or next_hour <= current.hour:
+                    # Move to next day
+                    current = current + timedelta(days=1)
+                    current = current.replace(hour=hours[0], minute=0)
+                else:
+                    current = current.replace(hour=next_hour, minute=0)
+                continue
+            
+            # Check minute
+            if current.minute not in minutes:
+                next_minute = self._find_next_value(current.minute, minutes)
+                if next_minute is None or next_minute <= current.minute:
+                    # Move to next hour
+                    next_hour_idx = hours.index(current.hour) + 1 if current.hour in hours else 0
+                    if next_hour_idx >= len(hours):
+                        current = current + timedelta(days=1)
+                        current = current.replace(hour=hours[0], minute=minutes[0])
+                    else:
+                        current = current.replace(hour=hours[next_hour_idx], minute=minutes[0])
+                else:
+                    current = current.replace(minute=next_minute)
+                continue
+            
+            # All constraints satisfied
+            return current
+        
+        raise ValueError("Could not find next run time within one year")
+    
+    def _find_next_value(self, current: int, valid_values: list[int]) -> Optional[int]:
+        """Find the next valid value greater than current."""
+        for val in valid_values:
+            if val > current:
+                return val
+        return None
+    
+    def _find_next_valid_day(self, current: datetime, days_of_month: list[int], days_of_week: list[int]) -> Optional[int]:
+        """Find the next valid day in the current month."""
+        import calendar
+        
+        _, last_day = calendar.monthrange(current.year, current.month)
+        
+        for day in range(current.day + 1, last_day + 1):
+            if day in days_of_month or current.replace(day=day).weekday() in days_of_week:
+                return day
+        return None
 
 
 @dataclass
