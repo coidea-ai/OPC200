@@ -178,7 +178,7 @@ class VaultAccessControl:
         ]
         
         # Add new grant
-        grant: dict[str, Any] = {  # type: ignore[assignment]
+        grant: dict[str, Any] = {
             "user_id": user_id,
             "resource": resource,
             "permissions": permissions,

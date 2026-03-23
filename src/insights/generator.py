@@ -388,7 +388,7 @@ class PatternInsightGenerator:
                             current_streak += 1
                             longest_streak = max(longest_streak, current_streak)
                         elif hasattr(last_date, "day"):
-                            delta = entry_date - last_date  # type: ignore[operator]
+                            delta = entry_date - last_date
                             if delta.days <= 1:
                                 current_streak += 1
                                 longest_streak = max(longest_streak, current_streak)
