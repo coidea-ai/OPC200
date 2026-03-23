@@ -135,7 +135,7 @@ class SQLiteStorage:
         """Check if migration is needed."""
         return self.get_schema_version() < target_version
     
-    def insert_entry(self, entry) -> bool:
+    def insert_entry(self, entry, auto_commit: bool = True) -> bool:
         """Insert a journal entry."""
         cursor = self.connection.cursor()
         cursor.execute("""
@@ -149,7 +149,8 @@ class SQLiteStorage:
             entry.created_at.isoformat(),
             entry.updated_at.isoformat(),
         ))
-        self.connection.commit()
+        if auto_commit:
+            self.connection.commit()
         return True
     
     def get_entry(self, entry_id: str):
@@ -195,7 +196,7 @@ class SQLiteStorage:
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM journal_entries
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC, id ASC
             LIMIT ? OFFSET ?
         """, (limit, offset))
         

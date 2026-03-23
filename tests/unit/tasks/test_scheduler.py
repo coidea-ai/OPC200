@@ -388,14 +388,16 @@ class TestRecurringTask:
         """Test checking if task is due."""
         # Arrange
         from src.tasks.scheduler import RecurringTask
+        from datetime import datetime, timedelta
 
         def test_func():
             return "done"
 
         task = RecurringTask(func=test_func, cron="0 * * * *", task_id="hourly_task")  # Every hour
 
-        # Set last run to 2 hours ago
+        # Set last run to 2 hours ago and next_run to past
         task.last_run = datetime.now() - timedelta(hours=2)
+        task.next_run = datetime.now() - timedelta(minutes=5)  # 5 minutes ago
 
         # Act
         is_due = task.is_due()

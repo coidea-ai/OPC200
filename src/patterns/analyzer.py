@@ -68,22 +68,26 @@ class BehaviorAnalyzer:
         day_confidence = most_common_day[1] / total
         
         # Determine pattern type
-        if hour_confidence > DAILY_CONFIDENCE_THRESHOLD:
-            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-            return {
-                "detected": True,
-                "type": "daily",
-                "peak_hour": most_common_hour[0],
-                "confidence": hour_confidence,
-                "sample_size": total
-            }
-        elif day_confidence > WEEKLY_CONFIDENCE_THRESHOLD:
-            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        # Weekly: activities consistently happen on same day of week
+        # Daily: activities consistently happen at same hour
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        
+        # Check weekly pattern first (if same day of week with high confidence)
+        if day_confidence > WEEKLY_CONFIDENCE_THRESHOLD:
             return {
                 "detected": True,
                 "type": "weekly",
                 "peak_day": day_names[most_common_day[0]],
                 "confidence": day_confidence,
+                "sample_size": total
+            }
+        # Then check daily pattern (same hour)
+        elif hour_confidence > DAILY_CONFIDENCE_THRESHOLD:
+            return {
+                "detected": True,
+                "type": "daily",
+                "peak_hour": most_common_hour[0],
+                "confidence": hour_confidence,
                 "sample_size": total
             }
         
@@ -114,8 +118,15 @@ class TrendAnalyzer:
         correlation = np.corrcoef(x, y)[0, 1]
         r_squared = correlation ** 2 if not np.isnan(correlation) else 0
         
-        # Determine direction
-        if abs(slope) < 0.01:
+        # Determine direction using relative threshold
+        # Use coefficient of variation to determine stability
+        mean_val = np.mean(y)
+        if mean_val != 0:
+            relative_slope = abs(slope) / mean_val
+        else:
+            relative_slope = abs(slope)
+        
+        if relative_slope < 0.001:  # Relative threshold
             direction = "stable"
         elif slope > 0:
             direction = "increasing"
@@ -358,7 +369,22 @@ class PatternStore:
                 data = json.loads(pattern_file.read_text())
                 saved_at = datetime.fromisoformat(data.get("saved_at", "2000-01-01"))
                 
-                if saved_at < cutoff:
+                # Check if any pattern in the file has an old detected_at
+                patterns = data.get("patterns", {})
+                has_old_pattern = False
+                for pattern_name, pattern_data in patterns.items():
+                    detected_at_str = pattern_data.get("detected_at")
+                    if detected_at_str:
+                        try:
+                            detected_at = datetime.fromisoformat(detected_at_str)
+                            if detected_at < cutoff:
+                                has_old_pattern = True
+                                break
+                        except (ValueError, TypeError):
+                            continue
+                
+                # Delete if saved_at is old OR has an old pattern
+                if saved_at < cutoff or has_old_pattern:
                     pattern_file.unlink()
             except (json.JSONDecodeError, ValueError):
                 continue

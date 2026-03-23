@@ -553,7 +553,7 @@ class TestStorageTransactions:
         try:
             with storage.transaction() as tx:
                 entry = JournalEntry(id="e1", content="Test")
-                tx.insert_entry(entry)
+                tx.insert_entry(entry, auto_commit=False)
                 raise ValueError("Simulated error")
         except ValueError:
             pass

@@ -135,7 +135,9 @@ class SecureRandom:
     @staticmethod
     def generate_string(length: int = 32) -> str:
         """Generate random alphanumeric string."""
-        return secrets.token_urlsafe(length)[:length]
+        import string
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
     
     @staticmethod
     def generate_uuid() -> str:
@@ -315,10 +317,10 @@ class FileEncryption:
         for file_path in source_dir.rglob("*"):
             if file_path.is_file():
                 relative_path = file_path.relative_to(source_dir)
-                output_path = output_dir / relative_path
+                output_path = output_dir / f"{relative_path}.enc"
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                self.encryption_service.encrypt_file(file_path, output_path.with_suffix(".enc"))
+                self.encryption_service.encrypt_file(file_path, output_path)
         
         return True
     
@@ -328,6 +330,7 @@ class FileEncryption:
         
         for file_path in source_dir.rglob("*.enc"):
             relative_path = file_path.relative_to(source_dir)
+            # Remove .enc suffix
             output_path = output_dir / relative_path.with_suffix("")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             

@@ -459,12 +459,16 @@ class TestVaultIntegrity:
         # Assert
         assert result is True
 
-    def test_detect_tampering(self, temp_dir, mock_encryption_service):
+    def test_detect_tampering(self, temp_dir):
         """Test detecting tampered files."""
         # Arrange
         from src.security.vault import DataVault, VaultIntegrity
+        from src.security.encryption import EncryptionService
 
-        vault = DataVault(base_path=temp_dir, encryption_service=mock_encryption_service)
+        # Use real encryption service for tampering detection
+        key = EncryptionService.generate_key()
+        enc_service = EncryptionService(key=key)
+        vault = DataVault(base_path=temp_dir, encryption_service=enc_service)
 
         integrity = VaultIntegrity(vault)
 

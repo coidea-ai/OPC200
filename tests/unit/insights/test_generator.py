@@ -37,8 +37,11 @@ class TestInsightGenerator:
             {"type": "task_completed", "description": "Code review"},
         ]
 
-        # Act
-        insight = generator.generate_daily_summary(activities, date=datetime(2024, 3, 15))
+        # Act - Use new TypedDict signature
+        insight = generator.generate_daily_summary({
+            "activities": activities,
+            "date": datetime(2024, 3, 15)
+        })
 
         # Assert
         assert insight["type"] == "daily_summary"
@@ -61,8 +64,11 @@ class TestInsightGenerator:
             {"date": "2024-03-15", "tasks_completed": 6, "focus_hours": 7},
         ]
 
-        # Act
-        insight = generator.generate_weekly_review(daily_summaries, week_start=datetime(2024, 3, 11))
+        # Act - Use new TypedDict signature
+        insight = generator.generate_weekly_review({
+            "daily_summaries": daily_summaries,
+            "week_start": datetime(2024, 3, 11)
+        })
 
         # Assert
         assert insight["type"] == "weekly_review"
@@ -297,7 +303,8 @@ class TestPatternInsights:
 
         # Assert
         assert "peak_hours" in patterns
-        assert "afternoon" in str(patterns["peak_hours"]).lower()
+        # Hour 14 (2 PM / afternoon) should be in peak hours with highest output
+        assert 14 in patterns["peak_hours"]
 
     def test_identify_improvement_areas(self):
         """Test identifying areas for improvement."""

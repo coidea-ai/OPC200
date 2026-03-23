@@ -128,7 +128,18 @@ class CronParser:
     def validate(self, cron: str) -> bool:
         """Validate a cron expression."""
         try:
-            self.parse(cron)
+            parsed = self.parse(cron)
+            # Validate value ranges
+            if not all(0 <= m <= 59 for m in parsed["minutes"]):
+                return False
+            if not all(0 <= h <= 23 for h in parsed["hours"]):
+                return False
+            if not all(1 <= d <= 31 for d in parsed["days_of_month"]):
+                return False
+            if not all(1 <= m <= 12 for m in parsed["months"]):
+                return False
+            if not all(0 <= d <= 6 for d in parsed["days_of_week"]):
+                return False
             return True
         except ValueError:
             return False
@@ -335,6 +346,11 @@ class RecurringTask:
             self.next_run = self._next_run_cache
             self._cache_valid = True
     
+    @property
+    def id(self) -> str:
+        """Alias for task_id for compatibility."""
+        return self.task_id
+    
     def get_next_run(self, from_time: Optional[datetime] = None) -> datetime:
         """Calculate next run time with caching.
         
@@ -367,6 +383,12 @@ class RecurringTask:
         
         if self.next_run is None:
             return True
+        
+        # If last_run is significantly before next_run, task is overdue
+        if self.last_run is not None:
+            # If next_run was calculated before last_run, recalculate
+            if self.next_run <= self.last_run:
+                self.next_run = self.get_next_run()
         
         return datetime.now() >= self.next_run
     
@@ -424,8 +446,18 @@ class SchedulerPersistence:
         with open(state_file, 'r') as f:
             state = json.loads(f.read())
         
-        # Note: Actual job functions cannot be restored from state
-        # This would require job registration system
+        # Restore jobs with placeholder functions
+        for job_data in state.get("jobs", []):
+            job_id = job_data["id"]
+            # Create placeholder job that can be updated when real function is registered
+            scheduler.jobs[job_id] = {
+                "id": job_id,
+                "func": None,  # Placeholder - will be set when job is registered
+                "trigger": job_data.get("trigger", "unknown"),
+                "paused": job_data.get("paused", False),
+                "created_at": job_data.get("created_at"),
+                "restored": True,  # Mark as restored from persistence
+            }
         
         return True
     
@@ -464,7 +496,20 @@ class SchedulerMetrics:
         if job is None:
             return {}
         
-        # Note: In real implementation, would track actual executions
+        # Handle RecurringTask objects stored directly in jobs
+        if hasattr(job, 'execution_count'):
+            execution_count = job.execution_count
+            success_count = getattr(job, 'success_count', 0)
+            failure_count = getattr(job, 'failure_count', 0)
+            total = execution_count
+            success_rate = success_count / total if total > 0 else 0.0
+            return {
+                "job_id": job_id,
+                "execution_count": execution_count,
+                "success_rate": success_rate,
+            }
+        
+        # Handle regular job dict
         return {
             "job_id": job_id,
             "execution_count": 0,

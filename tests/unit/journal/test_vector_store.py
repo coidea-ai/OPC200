@@ -107,7 +107,8 @@ class TestVectorStore:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.collection_exists.return_value = True
+        # Mock by adding to collections dict
+        mock_qdrant_client.collections["test_collection"] = {}
 
         # Act
         result = store.collection_exists()
@@ -284,6 +285,7 @@ class TestVectorStore:
         """Test counting vectors in collection."""
         # Arrange
         from src.journal.vector_store import VectorStore
+        from unittest.mock import Mock
 
         store = VectorStore(
             host="localhost",
@@ -291,7 +293,11 @@ class TestVectorStore:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.count.return_value = Mock(count=100)
+        
+        # Set up mock count return value via side_effect override
+        count_result = Mock()
+        count_result.count = 100
+        mock_qdrant_client._count_impl = lambda collection_name: count_result
 
         # Act
         result = store.count()
@@ -304,6 +310,7 @@ class TestVectorStore:
         """Test scrolling through vectors."""
         # Arrange
         from src.journal.vector_store import VectorStore
+        from unittest.mock import Mock
 
         store = VectorStore(
             host="localhost",
@@ -311,7 +318,9 @@ class TestVectorStore:
             collection_name="test_collection",
         )
         store.client = mock_qdrant_client
-        mock_qdrant_client.scroll.return_value = ([Mock(id="doc1"), Mock(id="doc2")], "next_page_token")
+        
+        # Set up mock scroll return value via side_effect override
+        mock_qdrant_client._scroll_impl = lambda collection_name, limit=100, offset=None: ([Mock(id="doc1"), Mock(id="doc2")], "next_page_token")
 
         # Act
         results, next_page = store.scroll(limit=2)

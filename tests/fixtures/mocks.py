@@ -3,7 +3,7 @@ Mock fixtures for testing.
 """
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 import numpy as np
 
 
@@ -13,26 +13,40 @@ class MockQdrantClient:
     def __init__(self):
         self.collections = {}
         self.vectors = {}
+        # Wrap methods with MagicMock for call tracking
+        self.create_collection = MagicMock(side_effect=self._create_collection)
+        self.delete_collection = MagicMock(side_effect=self._delete_collection)
+        self.collection_exists = MagicMock(side_effect=self._collection_exists)
+        self.upsert = MagicMock(side_effect=self._upsert)
+        self.search = MagicMock(side_effect=self._search)
+        self.delete = MagicMock(side_effect=self._delete)
+        # These methods can be overridden by tests
+        self._retrieve_impl = self._retrieve
+        self._count_impl = self._count
+        self._scroll_impl = self._scroll
+        self.retrieve = MagicMock(side_effect=lambda *args, **kwargs: self._retrieve_impl(*args, **kwargs))
+        self.count = MagicMock(side_effect=lambda *args, **kwargs: self._count_impl(*args, **kwargs))
+        self.scroll = MagicMock(side_effect=lambda *args, **kwargs: self._scroll_impl(*args, **kwargs))
 
-    def create_collection(self, collection_name: str, vectors_config) -> None:
+    def _create_collection(self, collection_name: str, vectors_config) -> None:
         self.collections[collection_name] = {"vectors_config": vectors_config}
         self.vectors[collection_name] = {}
 
-    def delete_collection(self, collection_name: str) -> None:
+    def _delete_collection(self, collection_name: str) -> None:
         if collection_name in self.collections:
             del self.collections[collection_name]
             del self.vectors[collection_name]
 
-    def collection_exists(self, collection_name: str) -> bool:
+    def _collection_exists(self, collection_name: str) -> bool:
         return collection_name in self.collections
 
-    def upsert(self, collection_name: str, points) -> None:
+    def _upsert(self, collection_name: str, points) -> None:
         if collection_name not in self.vectors:
             self.vectors[collection_name] = {}
         for point in points:
             self.vectors[collection_name][point.id] = point
 
-    def search(self, collection_name: str, query_vector, limit: int = 10, score_threshold: float = 0.0, query_filter=None):
+    def _search(self, collection_name: str, query_vector, limit: int = 10, score_threshold: float = 0.0, query_filter=None):
         results = []
         for i in range(min(limit, 2)):
             mock = Mock()
@@ -42,13 +56,13 @@ class MockQdrantClient:
             results.append(mock)
         return results
 
-    def delete(self, collection_name: str, points_selector) -> None:
+    def _delete(self, collection_name: str, points_selector) -> None:
         if collection_name in self.vectors:
             for point_id in points_selector:
                 if point_id in self.vectors[collection_name]:
                     del self.vectors[collection_name][point_id]
 
-    def retrieve(self, collection_name: str, ids: list):
+    def _retrieve(self, collection_name: str, ids: list):
         results = []
         for id in ids:
             if collection_name in self.vectors and id in self.vectors[collection_name]:
@@ -61,12 +75,12 @@ class MockQdrantClient:
                 results.append(mock)
         return results
 
-    def count(self, collection_name: str):
+    def _count(self, collection_name: str):
         mock = Mock()
         mock.count = len(self.vectors.get(collection_name, {}))
         return mock
 
-    def scroll(self, collection_name: str, limit: int = 100, offset=None):
+    def _scroll(self, collection_name: str, limit: int = 100, offset=None):
         vectors = self.vectors.get(collection_name, {})
         results = list(vectors.values())[:limit]
         return results, None

@@ -7,6 +7,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+# Try to import QdrantClient at module level for patching support
+try:
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import Distance, VectorParams, PointStruct
+except ImportError:
+    QdrantClient = None
+    Distance = None
+    VectorParams = None
+    PointStruct = None
 
 # Retry configuration constants
 DEFAULT_MAX_RETRIES = 3
@@ -91,22 +100,17 @@ class VectorStore:
             QdrantConnectionError: If connection fails after all retries
             ImportError: If qdrant_client is not installed
         """
-        try:
-            from qdrant_client import QdrantClient
-            self.client = QdrantClient(host=self.host, port=self.port)
-            return True
-        except ImportError:
-            # Re-raise ImportError instead of using mock in production
+        if QdrantClient is None:
             raise ImportError(
                 "qdrant_client is required for production use. "
                 "Install with: pip install qdrant-client"
             )
+        self.client = QdrantClient(host=self.host, port=self.port)
+        return True
     
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def create_collection(self, vector_size: int = 384) -> bool:
         """Create a vector collection."""
-        from qdrant_client.models import Distance, VectorParams
-        
         self.client.create_collection(
             collection_name=self.collection_name,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
@@ -116,19 +120,17 @@ class VectorStore:
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def delete_collection(self) -> bool:
         """Delete the vector collection."""
-        self.client.delete_collection(collection_name=self.collection_name)
+        self.client.delete_collection(self.collection_name)
         return True
     
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def collection_exists(self) -> bool:
         """Check if collection exists."""
-        return self.client.collection_exists(collection_name=self.collection_name)
+        return self.client.collection_exists(self.collection_name)
     
     @with_retry(max_retries=DEFAULT_MAX_RETRIES, retry_delay=DEFAULT_RETRY_DELAY)
     def upsert(self, id: str, vector: list[float], payload: dict) -> bool:
         """Upsert a single vector."""
-        from qdrant_client.models import PointStruct
-        
         self.client.upsert(
             collection_name=self.collection_name,
             points=[PointStruct(id=id, vector=vector, payload=payload)]

@@ -28,6 +28,12 @@ def temp_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def temp_db_path(tmp_path: Path) -> Path:
+    """Provide a temporary database path for tests."""
+    return tmp_path / "test.db"
+
+
+@pytest.fixture
 def in_memory_db() -> Generator[sqlite3.Connection, None, None]:
     """Create an in-memory SQLite database for testing."""
     conn = sqlite3.connect(":memory:")
