@@ -1,283 +1,322 @@
 # OPC200 项目文件结构
 
+> **版本**: v2.2 | **更新日期**: 2026-03-24
+
 ```
 opc200/                                      # 项目根目录
 │
 ├── README.md                                # 项目总览与快速开始
 ├── SYSTEM.md                                # 架构方案（核心文档）
 ├── KNOWLEDGE_BASE.md                        # 知识库与最佳实践
-├── OPERATIONS.md                            # 运维手册
-├── docker-compose.yml                       # 服务编排
-├── .env.example                             # 环境变量模板
+├── STRUCTURE.md                             # 本文件：项目结构说明
+├── LICENSE                                  # MIT 许可证
+│
+├── VERSION                                  # 版本号
+├── CHANGELOG.md                             # 变更日志
+│
+├── Makefile                                 # 开发命令
+├── pyproject.toml                           # Python 项目配置
+├── .pre-commit-config.yaml                  # Pre-commit hooks
 ├── .gitignore                               # Git 忽略规则
+│
+├── requirements.txt                         # 生产依赖
+├── requirements-dev.txt                     # 开发依赖
+└── requirements-test.txt                    # 测试依赖
+│
+├── Dockerfile.gateway                       # Gateway 镜像
+├── Dockerfile.journal                       # Journal 服务镜像
+├── Dockerfile.test                          # 测试环境镜像
+├── Dockerfile.prod                          # 生产环境镜像
+│
+├── docker-compose.yml                       # 开发环境编排
+├── docker-compose.test.yml                  # 测试环境编排
+└── docker-compose.prod.yml                  # 生产环境编排
+│
+├── .github/                                 # GitHub 配置
+│   └── workflows/                           # CI/CD 工作流
+│       ├── ci.yml                           # 持续集成
+│       ├── security-audit.yml               # 安全审计
+│       ├── deploy-staging.yml               # 测试环境部署
+│       └── deploy-production.yml            # 生产环境部署
+│
+├── src/                                     # Python 核心模块
+│   ├── __init__.py
+│   │
+│   ├── journal/                             # 日志模块
+│   │   ├── __init__.py
+│   │   ├── core.py                          # 日志CRUD、查询、摘要
+│   │   ├── storage.py                       # 加密存储、备份
+│   │   └── vector_store.py                  # 向量搜索、嵌入
+│   │
+│   ├── security/                            # 安全模块
+│   │   ├── __init__.py
+│   │   ├── vault.py                         # 数据保险箱
+│   │   └── encryption.py                    # 加密工具集
+│   │
+│   ├── patterns/                            # 模式分析
+│   │   ├── __init__.py
+│   │   └── analyzer.py                      # 行为模式检测
+│   │
+│   ├── tasks/                               # 任务调度
+│   │   ├── __init__.py
+│   │   └── scheduler.py                     # 异步任务调度
+│   │
+│   └── insights/                            # 洞察生成
+│       ├── __init__.py
+│       └── generator.py                     # 洞察与建议
+│
+├── tests/                                   # 测试套件（TDD）
+│   ├── conftest.py                          # pytest 配置和 fixtures
+│   ├── pytest.ini                           # pytest 配置
+│   │
+│   ├── unit/                                # 单元测试
+│   │   ├── journal/
+│   │   │   ├── test_core.py
+│   │   │   ├── test_storage.py
+│   │   │   └── test_vector_store.py
+│   │   ├── security/
+│   │   │   ├── test_vault.py
+│   │   │   └── test_encryption.py
+│   │   ├── patterns/
+│   │   │   └── test_analyzer.py
+│   │   ├── tasks/
+│   │   │   └── test_scheduler.py
+│   │   └── insights/
+│   │       └── test_generator.py
+│   │
+│   ├── integration/                         # 集成测试
+│   │   ├── test_journal_flow.py
+│   │   ├── test_security_flow.py
+│   │   └── test_end_to_end.py
+│   │
+│   └── e2e/                                 # 端到端测试
+│       └── test_user_journey.py
 │
 ├── skills/                                  # OpenClaw Skills（可发布）
 │   │
-│   ├── opc-journal-suite/                   # 套件总控
-│   │   ├── SKILL.md                         # Skill 定义与使用说明
-│   │   ├── README.md                        # 详细文档
-│   │   ├── config.yml                       # 默认配置
-│   │   └── scripts/
-│   │       └── install-suite.sh             # 一键安装脚本
-│   │
-│   ├── opc-journal-core/                    # 核心日志
-│   │   ├── SKILL.md
-│   │   ├── config.yml
-│   │   └── scripts/
-│   │       ├── init.py                      # 初始化 Journal
-│   │       ├── record.py                    # 记录条目
-│   │       ├── query.py                     # 查询检索
-│   │       ├── digest.py                    # 生成摘要
-│   │       └── templates/
-│   │           └── entry_template.yml       # 条目模板
-│   │
-│   ├── opc-pattern-recognition/             # 模式识别
-│   │   ├── SKILL.md
-│   │   ├── config.yml
-│   │   └── scripts/
-│   │       ├── analyzer.py                  # 分析器
-│   │       ├── patterns.py                  # 模式定义
-│   │       └── predictor.py                 # 预测模型
-│   │
-│   ├── opc-milestone-tracker/               # 里程碑追踪
-│   │   ├── SKILL.md
-│   │   ├── config.yml
-│   │   └── scripts/
-│   │       ├── detector.py                  # 里程碑检测
-│   │       ├── reporter.py                  # 报告生成
-│   │       └── celebration.py               # 庆祝仪式
-│   │
-│   ├── opc-async-task-manager/              # 异步任务管理
-│   │   ├── SKILL.md
-│   │   ├── config.yml
-│   │   └── scripts/
-│   │       ├── scheduler.py                 # 任务调度
-│   │       ├── executor.py                  # 任务执行
-│   │       └── notifier.py                  # 完成通知
-│   │
-│   └── opc-insight-generator/               # 洞察生成
-│       ├── SKILL.md
-│       ├── config.yml
-│       └── scripts/
-│           ├── generator.py                 # 洞察生成
-│           └── recommender.py               # 建议推荐
-│
-├── platform/                                # 平台核心（不发布）
-│   │
-│   ├── coordination/                        # 调度引擎
-│   │   ├── router.py                        # 部署模式路由
-│   │   ├── tailscale-controller.py          # Tailscale 控制
-│   │   ├── load-balancer.py                 # 负载均衡
-│   │   └── health-check.py                  # 健康检查
-│   │
-│   ├── knowledge-base/                      # 统一知识库
-│   │   ├── shared/                          # 共享知识
-│   │   │   ├── best-practices/              # 最佳实践
-│   │   │   ├── runbooks/                    # 运维手册
-│   │   │   └── templates/                   # 模板库
-│   │   │
-│   │   ├── cloud-only/                      # 云端功能
-│   │   │   └── advanced-analytics/          # 高级分析
-│   │   │
-│   │   └── offline-packages/                # 离线安装包
-│   │       ├── opc-journal-suite-v1.0.0.tar.gz
-│   │       └── agent-team-orch-v2.1.0.tar.gz
-│   │
-│   └── monitoring/                          # 统一监控
-│       ├── cloud-collector/                 # 云端采集器
-│       │   ├── metrics.py
-│       │   └── alerts.yml
+│   └── opc-journal-suite/                   # OPC Journal Suite
+│       ├── SKILL.md                         # 套件总控文档
 │       │
-│       └── onprem-collector/                # 本地采集器（VPN）
-│           ├── agent.py
-│           └── tailscale-metrics.py
+│       ├── opc-journal-core/                # 核心日志
+│       │   ├── SKILL.md
+│       │   ├── config.yml
+│       │   └── scripts/
+│       │       ├── init.py
+│       │       ├── record.py
+│       │       ├── query.py
+│       │       └── digest.py
+│       │
+│       ├── opc-pattern-recognition/         # 模式识别
+│       │   ├── SKILL.md
+│       │   ├── config.yml
+│       │   └── scripts/
+│       │       ├── analyzer.py
+│       │       └── predictor.py
+│       │
+│       ├── opc-milestone-tracker/           # 里程碑追踪
+│       │   ├── SKILL.md
+│       │   ├── config.yml
+│       │   └── scripts/
+│       │       ├── detector.py
+│       │       └── celebration.py
+│       │
+│       ├── opc-async-task-manager/          # 异步任务
+│       │   ├── SKILL.md
+│       │   ├── config.yml
+│       │   └── scripts/
+│       │       ├── scheduler.py
+│       │       └── executor.py
+│       │
+│       └── opc-insight-generator/           # 洞察生成
+│           ├── SKILL.md
+│           ├── config.yml
+│           └── scripts/
+│               └── generator.py
 │
-├── customers/                               # 客户管理
-│   │
-│   ├── _template/                           # 部署模板（复用）
-│   │   ├── on-premise/                      # 本地模板
-│   │   │   ├── deployment/
-│   │   │   │   ├── docker-compose.yml
-│   │   │   │   ├── install.sh               # 安装脚本
-│   │   │   │   ├── tailscale-setup.sh       # VPN 设置
-│   │   │   │   └── skills-install.sh        # Skills 安装
-│   │   │   │
-│   │   │   ├── data-vault/                  # 数据保险箱
-│   │   │   │   ├── journal/                 # Journal 存储
-│   │   │   │   ├── conversations/           # 对话历史
-│   │   │   │   ├── user-profile/            # 用户画像
-│   │   │   │   └── backup/                  # 本地备份
-│   │   │   │
-│   │   │   ├── tailscale/                   # VPN 配置
-│   │   │   │   ├── auth-key
-│   │   │   │   └── node-info.yml
-│   │   │   │
-│   │   │   └── config/
-│   │   │       ├── gateway.yml
-│   │   │       └── skills.yml
-│   │   │
-│   │   └── cloud-hosted/                    # 云端模板
-│   │       └── ...
-│   │
-│   ├── on-premise/                          # 150 本地客户
-│   │   ├── registry.yml                     # 本地客户注册表
-│   │   │
-│   │   ├── OPC-001/                         # 客户实例
-│   │   │   ├── deployment/                  # 部署配置
-│   │   │   ├── data-vault/                  # 数据（加密）
-│   │   │   └── tailscale/                   # VPN 配置
-│   │   │
-│   │   ├── OPC-002/
-│   │   │   └── ...
-│   │   │
-│   │   └── OPC-150/
-│   │       └── ...
-│   │
-│   ├── cloud-hosted/                        # 50 云端客户
-│   │   ├── registry.yml
-│   │   ├── OPC-151/
-│   │   ├── OPC-152/
-│   │   └── ...
-│   │
-│   └── registry/                            # 统一注册中心
-│       ├── master-index.yml                 # 主索引
-│       ├── tailscale-nodes.yml              # VPN 节点
-│       └── profiles/                        # 客户画像
-│           ├── OPC-001.yml
-│           └── ...
-│
-├── support/                                 # 支持与运维
-│   │
-│   ├── tailscale/                           # VPN 管理
-│   │   ├── control-server/                  # 控制服务器
-│   │   ├── acl-configs/                     # 访问控制
-│   │   └── emergency-access/                # 紧急访问
-│   │
-│   ├── runbooks/                            # 运维手册
-│   │   ├── onboarding.md                    # 客户接入
-│   │   ├── troubleshooting.md               # 故障排查
-│   │   ├── emergency-response.md            # 紧急响应
-│   │   └── skills-update.md                 # Skills 更新
-│   │
-│   └── tools/                               # 支持工具
-│       ├── customer-init.sh                 # 客户初始化
-│       ├── health-check.sh                  # 健康检查
-│       ├── backup-manager.py                # 备份管理
-│       └── vpn-connect.sh                   # VPN 连接
-│
-├── scripts/                                 # 自动化脚本
+├── scripts/                                 # 运维脚本
 │   ├── setup/                               # 初始化脚本
-│   │   ├── customer-init.sh                 # ⭐ 客户初始化
-│   │   ├── init-tailscale.sh
-│   │   ├── init-gateway.sh
-│   │   └── init-monitoring.sh
+│   │   └── customer-init.sh                 # ⭐ 客户初始化
 │   │
 │   ├── deploy/                              # 部署脚本
 │   │   ├── deploy-onprem.sh                 # ⭐ 本地部署
 │   │   ├── deploy-cloud.sh                  # ⭐ 云端部署
-│   │   ├── install-skills.sh                # ⭐ Skills 安装
-│   │   └── rolling-update.sh
+│   │   └── install-skills.sh                # ⭐ Skills 安装
 │   │
 │   ├── maintenance/                         # 维护脚本
 │   │   ├── health-check.sh                  # ⭐ 健康检查
-│   │   ├── backup-manager.sh                # ⭐ 备份管理
-│   │   ├── update-skills.sh
-│   │   ├── rotate-logs.sh
-│   │   ├── cleanup.sh
-│   │   └── offline-pack-sync.sh             # ⭐ 离线包同步
+│   │   └── backup-manager.sh                # ⭐ 备份管理
 │   │
 │   ├── support/                             # 支持脚本
-│   │   ├── vpn-manager.sh                   # ⭐ VPN 管理
-│   │   ├── emergency-access.sh
-│   │   ├── remote-session.sh
-│   │   └── customer-communication.sh
+│   │   └── vpn-manager.sh                   # ⭐ VPN 管理
 │   │
-│   ├── recovery/                            # 恢复脚本
-│   │   ├── emergency-recovery.sh            # ⭐ 紧急恢复
-│   │   ├── data-vault-repair.sh
-│   │   ├── gateway-rebuild.sh
-│   │   └── tailscale-reconnect.sh
-│   │
-│   └── monitoring/                          # 监控脚本
-│       ├── metrics-collector.sh
-│       ├── alert-generator.sh
-│       └── report-generator.sh
+│   └── recovery/                            # 恢复脚本
+│       └── emergency-recovery.sh            # ⭐ 紧急恢复
+│
+├── config/                                  # 配置模板
+│   ├── gateway.yml                          # Gateway 配置
+│   ├── gateway-secure.yml                   # 安全加固配置
+│   ├── tailscale.yml                        # VPN 配置
+│   ├── skills.yml                           # Skills 配置
+│   └── security.yml                         # 安全配置
+│
+├── docs/                                    # 项目文档
+│   ├── SCRIPTS.md                           # 脚本使用手册
+│   ├── DEPLOYMENT.md                        # 部署指南
+│   ├── DEVELOPMENT.md                       # 开发指南
+│   ├── SECURITY.md                          # 安全指南
+│   ├── API.md                               # API 文档
+│   └── USER_MANUAL.md                       # 用户手册
+│
+├── examples/                                # 示例文件
+│   ├── customer-config-example.yml          # 客户配置示例
+│   ├── journal-entry-example.yml            # 日志条目示例
+│   └── milestone-definition-example.yml     # 里程碑定义示例
+│
+├── security/                                # 安全相关
+│   └── tailscale-acl.yml                    # VPN 访问控制
 │
 ├── monitoring/                              # 监控配置
-│   ├── prometheus/
-│   │   ├── prometheus.yml
-│   │   └── rules/
-│   ├── grafana/
-│   │   ├── dashboards/
-│   │   └── datasources.yml
-│   └── alerts/
-│       └── alertmanager.yml
+│   ├── prometheus.yml                       # Prometheus 配置
+│   └── grafana-dashboard.json               # Grafana 仪表板
 │
-├── disaster-recovery/                       # 故障恢复
-│   ├── plans/
-│   │   ├── gateway-failure.md
-│   │   ├── data-corruption.md
-│   │   └── vpn-outage.md
-│   ├── backups/
-│   └── tests/
-│       └── drill-schedule.yml
-│
-├── docs/                                    # 文档
-│   ├── architecture/                        # 架构文档
-│   │   ├── overview.md
-│   │   ├── journal-experience.md
-│   │   └── skills-design.md
-│   │
-│   ├── deployment-guides/                   # 部署指南
-│   │   ├── cloud-hosted.md
-│   │   ├── on-premise.md
-│   │   └── tailscale-setup.md
-│   │
-│   ├── api-reference/                       # API 文档
-│   │   └── skills-api.md
-│   │
-│   └── user-guides/                         # 用户指南
-│       ├── getting-started.md
-│       ├── journal-guide.md
-│       └── faq.md
-│
-├── tests/                                   # 测试
-│   ├── unit/                                # 单元测试
-│   ├── integration/                         # 集成测试
-│   └── e2e/                                 # 端到端测试
+├── templates/                               # 模板文件
+│   ├── journal-entry-template.yml
+│   ├── milestone-template.yml
+│   └── report-template.md
 │
 └── memory/                                  # 项目记忆（内部）
-    ├── 2026-03-21.md                        # 每日记录
-    └── MEMORY.md                            # 长期记忆
+    └── 2026-03-21.md                        # 每日记录
 ```
+
+---
+
+## 开发工作流
+
+### 1. 本地开发
+
+```bash
+# 安装依赖
+make install-dev
+
+# 运行测试
+make test              # 所有测试
+make test-unit         # 仅单元测试
+make test-integration  # 仅集成测试
+make coverage          # 覆盖率报告
+
+# 代码质量
+make lint              # 代码检查
+make format            # 格式化
+make type-check        # 类型检查
+make security          # 安全扫描
+make pre-commit        # 提交前检查
+
+# Docker
+make docker-build-test # 构建测试镜像
+make docker-test       # Docker 中运行测试
+make docker-run-prod   # 运行生产环境
+```
+
+### 2. 测试驱动开发（TDD）
+
+```
+红 → 绿 → 重构
+│     │      │
+│     │      └── 优化代码结构
+│     └───────── 实现功能使测试通过
+└─────────────── 编写失败的测试
+```
+
+**TDD 目录对应:**
+```
+tests/unit/           → 开发阶段持续运行
+tests/integration/    → 功能完成后运行
+tests/e2e/            → 发布前运行
+```
+
+### 3. CI/CD 流水线
+
+```
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  Push   │───▶│   CI    │───▶│ Staging │───▶│Production│
+│ to Git  │    │  Test   │    │ Deploy  │    │ Deploy  │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘
+      │              │              │              │
+      │              │              │              │
+      ▼              ▼              ▼              ▼
+  Trigger      Unit/Integ      Auto on        Tag push
+                + E2E         develop        v*.*.*
+```
+
+**工作流文件:**
+- `.github/workflows/ci.yml` - push/PR 时触发
+- `.github/workflows/security-audit.yml` - 每天凌晨2点
+- `.github/workflows/deploy-staging.yml` - develop 分支
+- `.github/workflows/deploy-production.yml` - v* 标签
 
 ---
 
 ## 关键路径说明
 
-### 1. Skills 开发路径
+### 1. 应用代码路径
+```
+src/
+├── journal/          # 日志核心功能
+├── security/         # 数据保险箱和加密
+├── patterns/         # 行为分析
+├── tasks/            # 异步任务
+└── insights/         # 洞察生成
+```
+
+### 2. 测试路径
+```
+tests/
+├── unit/             # 隔离测试，快速反馈
+├── integration/      # 模块间协作测试
+└── e2e/              # 完整用户场景测试
+```
+
+### 3. Skills 开发路径
 ```
 skills/opc-{name}/
-├── SKILL.md              # 必须：Skill 定义
-├── config.yml            # 可选：默认配置
-└── scripts/              # 必须：执行脚本
+├── SKILL.md          # Skill 定义（必须）
+├── config.yml        # 默认配置
+└── scripts/          # 执行脚本（必须）
     └── *.py
 ```
 
-### 2. 客户部署路径
+### 4. 配置路径
 ```
-customers/on-premise/OPC-{XXX}/
-├── deployment/           # 部署配置
-├── data-vault/           # 数据保险箱（敏感）
-└── tailscale/            # VPN 配置
+config/
+├── gateway.yml       # Gateway 基础配置
+├── gateway-secure.yml # 安全加固配置
+├── tailscale.yml     # VPN 网络配置
+├── skills.yml        # Skills 加载配置
+└── security.yml      # 数据分级和保险箱
 ```
 
-### 3. 文档读取顺序
+### 5. 运维脚本路径
 ```
-1. README.md              # 先读我
-2. SYSTEM.md              # 架构方案
-3. KNOWLEDGE_BASE.md      # 知识库
-4. OPERATIONS.md          # 运维手册
+scripts/
+├── setup/            # 初始化
+├── deploy/           # 部署
+├── maintenance/      # 维护
+├── support/          # 支持
+└── recovery/         # 恢复
+```
+
+---
+
+## 文档读取顺序
+
+```
+1. README.md              # 项目概览
+2. SYSTEM.md              # 架构设计
+3. STRUCTURE.md           # 本文件（了解结构）
+4. docs/DEPLOYMENT.md     # 部署指南
+5. docs/DEVELOPMENT.md    # 开发指南
+6. docs/SECURITY.md       # 安全指南
+7. KNOWLEDGE_BASE.md      # 知识库
 ```
 
 ---
@@ -286,31 +325,47 @@ customers/on-premise/OPC-{XXX}/
 
 | 目录 | 预估大小 | 说明 |
 |------|---------|------|
-| `skills/` | ~500 KB | 代码 + 文档 |
-| `platform/` | ~1 MB | 核心平台代码 |
-| `customers/` | ~50 MB | 配置（不含数据） |
-| `docs/` | ~2 MB | 完整文档 |
-| `monitoring/` | ~500 KB | 监控配置 |
-| **总计** | **~55 MB** | 不含客户数据 |
+| `src/` | ~50 KB | Python 核心代码 |
+| `tests/` | ~100 KB | 测试代码 |
+| `skills/` | ~200 KB | Skills 代码 + 文档 |
+| `scripts/` | ~100 KB | Bash 脚本 |
+| `docs/` | ~200 KB | Markdown 文档 |
+| `config/` | ~20 KB | YAML 配置 |
+| **总计** | **~670 KB** | 不含 Git 历史 |
 
 ---
 
-## 待创建文件清单
+## 技术栈
 
-**高优先级（启动前）:**
-- [ ] `README.md`
-- [ ] `OPERATIONS.md`
-- [ ] `docker-compose.yml`
-- [ ] `skills/*/scripts/*.py`
-- [ ] `platform/coordination/*.py`
-- [ ] `scripts/setup/*.sh`
+| 类别 | 技术 |
+|------|------|
+| 语言 | Python 3.11+ |
+| 框架 | OpenClaw Gateway |
+| 数据库 | SQLite + Qdrant |
+| 网络 | Tailscale VPN |
+| 容器 | Docker + Docker Compose |
+| CI/CD | GitHub Actions |
+| 测试 | pytest + coverage |
+| 代码质量 | Black + isort + mypy + pylint |
+| 安全 | bandit + safety + detect-secrets |
 
-**中优先级（试点前）:**
-- [ ] `docs/deployment-guides/*.md`
-- [ ] `support/runbooks/*.md`
-- [ ] `monitoring/*`
-- [ ] `tests/*`
+---
 
-**低优先级（运营后）:**
-- [ ] `disaster-recovery/*`
-- [ ] `docs/user-guides/*`
+## 完成状态
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 文档 | ✅ | README, SYSTEM, KNOWLEDGE_BASE, 开发部署安全指南 |
+| 架构 | ✅ | v2.2 架构设计完成 |
+| Skills | ✅ | 6个 OPC Journal Suite Skills |
+| 脚本 | ✅ | 8个运维脚本 |
+| Python 核心 | ✅ | src/ 14个模块 |
+| 测试 | ✅ | 12个测试文件，TDD 完成 |
+| CI/CD | ✅ | 4个 GitHub Actions 工作流 |
+| Docker | ✅ | 4个 Dockerfile + 3个 compose |
+| 配置 | ✅ | 5个配置模板 |
+| 代码质量 | ✅ | Black, mypy, pylint, pre-commit |
+
+---
+
+*最后更新: 2026-03-24*
