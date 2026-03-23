@@ -202,6 +202,9 @@ class TestJournalBackupFlow:
         # Act - Restore
         restore_result = storage.restore_from_backup(backup_path)
 
+        # Re-create manager with new connection after restore
+        manager = JournalManager(storage.connection)
+
         # Assert
         assert backup_result is True
         assert restore_result is True

@@ -118,7 +118,9 @@ class TestUserJourney:
             assert task_id.startswith("task_")
 
             # Execute task
-            result = await queue.execute(lambda: asyncio.coroutine(sample_task)())
+            async def async_sample_task():
+                return sample_task()
+            result = await queue.execute(async_sample_task)
 
         asyncio.run(run_test())
 

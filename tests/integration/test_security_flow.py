@@ -263,11 +263,11 @@ class TestEndToEndEncryptionFlow:
         """Test full encryption workflow from file to vault."""
         # Arrange
         from src.security.vault import DataVault
-        from src.security.encryption import EncryptionService, KeyManager
+        from src.security.encryption import EncryptionService
 
-        # Setup
-        key_manager = KeyManager(keys_path=temp_dir / "keys")
-        key_id, key = key_manager.generate_key(key_type="master")
+        # Setup - Use EncryptionService directly for key generation
+        key = EncryptionService.generate_key()
+        key_id = "master_key_001"
 
         encryption_service = EncryptionService(key=key)
         vault = DataVault(base_path=temp_dir, encryption_service=encryption_service)
