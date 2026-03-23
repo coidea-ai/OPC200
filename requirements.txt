@@ -29,3 +29,6 @@ rich>=13.0.0
 
 # Logging
 structlog>=23.0.0
+
+# Monitoring
+prometheus-client>=0.19.0
