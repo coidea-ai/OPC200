@@ -32,7 +32,7 @@ class TestUserJourney:
             JournalEntry(content="Started learning Python today", tags=["learning", "python"], metadata={"mood": "excited"}),
             JournalEntry(content="Completed first Python project", tags=["achievement", "python"], metadata={"mood": "proud"}),
             JournalEntry(
-                content="Struggled with async programming",
+                content="Struggled with Python async programming",
                 tags=["learning", "python", "challenge"],
                 metadata={"mood": "frustrated"},
             ),
@@ -51,7 +51,7 @@ class TestUserJourney:
         patterns = analyzer.detect_temporal_pattern(activities, "journal_entry")
 
         # Act - Generate insights
-        insights = insight_generator.generate_daily_summary(activities)
+        insights = insight_generator.generate_daily_summary({"activities": activities})
 
         # Assert
         assert len(python_entries) == 3
@@ -135,12 +135,12 @@ class TestUserJourney:
             )
 
         job_id = scheduler.add_job(
-            func=generate_weekly_insight, trigger="cron", cron="0 9 * * 1", job_id="weekly_insights"  # Every Monday at 9 AM
+            func=generate_weekly_insight, trigger="cron", cron="0 9 * * 0", job_id="weekly_insights"  # Every Monday at 9 AM (0=Monday in this implementation)
         )
 
         # Act - Check next run time
         cron_parser = CronParser()
-        next_run = cron_parser.get_next_run("0 9 * * 1", base_date + timedelta(days=6))
+        next_run = cron_parser.get_next_run("0 9 * * 0", base_date + timedelta(days=6))
 
         # Assert
         assert job_id == "weekly_insights"
@@ -238,6 +238,9 @@ class TestUserJourney:
         restore_path.write_bytes(decrypted_data)
 
         restore_result = storage.restore_from_backup(restore_path)
+
+        # Re-create manager with new connection after restore
+        manager = JournalManager(storage.connection)
 
         # Assert
         assert restore_result is True

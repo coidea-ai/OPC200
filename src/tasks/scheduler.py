@@ -77,6 +77,8 @@ class CronParser:
             "days_of_month": self._parse_field(parts[2], 1, 31),
             "months": self._parse_field(parts[3], 1, 12),
             "days_of_week": self._parse_field(parts[4], 0, 6),
+            "_dom_wildcard": parts[2] == "*",  # Track if day of month was wildcard
+            "_dow_wildcard": parts[4] == "*",  # Track if day of week was wildcard
         }
     
     def _parse_step_notation(self, range_part: str, step: int, min_val: int, max_val: int) -> list[int]:
@@ -186,14 +188,30 @@ class CronParser:
                 continue
             
             # Check day constraints
-            day_valid = (
-                current.day in days_of_month or 
-                current.weekday() in days_of_week
-            )
+            # Standard cron behavior:
+            # - If DOM is wildcard and DOW is specified: use DOW
+            # - If DOM is specified and DOW is wildcard: use DOM
+            # - If both are specified: OR relationship
+            # - If both are wildcards: all days are valid
+            dom_wildcard = parsed.get("_dom_wildcard", False)
+            dow_wildcard = parsed.get("_dow_wildcard", False)
+            
+            if dom_wildcard and not dow_wildcard:
+                # Only day of week matters
+                day_valid = current.weekday() in days_of_week
+            elif dow_wildcard and not dom_wildcard:
+                # Only day of month matters
+                day_valid = current.day in days_of_month
+            else:
+                # Both specified or both wildcards: OR relationship
+                day_valid = (
+                    current.day in days_of_month or 
+                    current.weekday() in days_of_week
+                )
             
             if not day_valid:
                 # Find next valid day
-                next_day = self._find_next_valid_day(current, days_of_month, days_of_week)
+                next_day = self._find_next_valid_day(current, days_of_month, days_of_week, dom_wildcard, dow_wildcard)
                 if next_day is None or next_day <= current.day:
                     # Move to next month
                     if current.month == 12:
@@ -242,15 +260,25 @@ class CronParser:
                 return val
         return None
     
-    def _find_next_valid_day(self, current: datetime, days_of_month: list[int], days_of_week: list[int]) -> Optional[int]:
+    def _find_next_valid_day(self, current: datetime, days_of_month: list[int], days_of_week: list[int], dom_wildcard: bool = False, dow_wildcard: bool = False) -> Optional[int]:
         """Find the next valid day in the current month."""
         import calendar
         
         _, last_day = calendar.monthrange(current.year, current.month)
         
         for day in range(current.day + 1, last_day + 1):
-            if day in days_of_month or current.replace(day=day).weekday() in days_of_week:
-                return day
+            if dom_wildcard and not dow_wildcard:
+                # Only day of week matters
+                if current.replace(day=day).weekday() in days_of_week:
+                    return day
+            elif dow_wildcard and not dom_wildcard:
+                # Only day of month matters
+                if day in days_of_month:
+                    return day
+            else:
+                # Both specified or both wildcards: OR relationship
+                if day in days_of_month or current.replace(day=day).weekday() in days_of_week:
+                    return day
         return None
 
 
