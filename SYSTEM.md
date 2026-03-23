@@ -109,6 +109,41 @@ acls:
 
 ## 三、敏感信息控制体系（本地部署）
 
+### 3.0 Agent-Blind Credentials 架构
+
+OPC200 采用 [OpenClaw RFC #9676](https://github.com/openclaw/openclaw/discussions/9676) 提出的 Agent-Blind Credentials 安全架构：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│               Agent-Blind Credentials 架构                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   Agent 层（只可见元数据）                                    │
+│   ┌─────────────────────────────────────────────────────┐  │
+│   │ • 凭证名称                                           │  │
+│   │ • 凭证类型 (api_key/password/token)                 │  │
+│   │ • 元数据 (service, scope, expires_at)               │  │
+│   │ • 轮换提示                                           │  │
+│   │                                                     │  │
+│   │ ❌ 凭证值（加密存储，Agent 无法访问）                  │  │
+│   └─────────────────────────────────────────────────────┘  │
+│                         │                                   │
+│                         ▼ 服务层授权                         │
+│   ┌─────────────────────────────────────────────────────┐  │
+│   │              SecureVault (数据保险箱)                │  │
+│   │ • AES-256-GCM 加密                                  │  │
+│   │ • 审计日志                                          │  │
+│   │ • 自动轮换提醒                                      │  │
+│   └─────────────────────────────────────────────────────┘  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**安全优势**:
+- Agent 即使被提示注入攻击，也无法泄露凭证值
+- 凭证访问需要明确的服务层授权
+- 所有访问操作都被审计
+
 ### 3.1 数据分级
 
 ```yaml
@@ -282,13 +317,44 @@ Day 1 ─── Day 30 ─── Day 60 ─── Day 100
 设定目标  首次胜利   多 Agent   百日成就
 ```
 
-### 5.2 三层记忆
+### 5.2 三层记忆（基于 OpenClaw Memory Masterclass）
 
-| 层次 | 用户感知 | 技术实现 |
-|------|---------|---------|
-| **即时** | "它记得我5分钟前说的话" | 会话上下文 |
-| **短期** | "它记得上周的讨论" | 语义检索 (memory_search) |
-| **长期** | "它了解我的工作风格" | 模式识别 + 用户画像 |
+| 层次 | 用户感知 | 技术实现 | OpenClaw 配置 |
+|------|---------|---------|--------------|
+| **即时** | "它记得我5分钟前说的话" | 会话上下文 | `context_window` |
+| **短期** | "它记得上周的讨论" | 语义检索 | `memory_search` + 向量存储 |
+| **长期** | "它了解我的工作风格" | 模式识别 + 用户画像 | `MEMORY.md` + 定期分析 |
+
+**OpenClaw 三层防御配置**:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "compaction": {
+        "reserveTokensFloor": 40000,
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 4000,
+          "systemPrompt": "Session nearing compaction. Store durable memories now.",
+          "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store."
+        }
+      }
+    }
+  },
+  "memory": {
+    "heartbeatCheck": {
+      "enabled": true,
+      "checkIntervalMinutes": 30
+    }
+  }
+}
+```
+
+**文件架构**:
+- `SOUL.md` - 人格与行为规则（每会话读取）
+- `MEMORY.md` - 精选长期记忆（每会话读取，保持简洁 < 100 行）
+- `memory/YYYY-MM-DD.md` - 日常日志（自动归档）
 
 ### 5.3 7×24 陪伴节奏
 

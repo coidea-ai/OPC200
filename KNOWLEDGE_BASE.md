@@ -506,6 +506,169 @@ clawhub install coidea/opc-pattern-recognition
 | 日期 | 版本 | 更新内容 |
 |------|------|---------|
 | 2026.03.21 | v1.0 | 初始版本，整合 OpenClaw 动态与 OPC 最佳实践 |
+| 2026.03.24 | v1.1 | 添加多层记忆配置、Agent-Blind Credentials、故障排除 |
+
+---
+
+## 七、故障排除指南
+
+### 7.1 Gateway 连接问题
+
+**症状**: Gateway 无法启动或连接失败
+
+**排查步骤**:
+```bash
+# 1. 检查端口占用
+sudo lsof -i :18789
+
+# 2. 检查配置文件
+openclaw gateway config validate
+
+# 3. 查看日志
+tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
+
+# 4. 重置 Gateway
+openclaw gateway stop
+rm -rf ~/.openclaw/gateway/*.pid
+openclaw gateway start
+```
+
+### 7.2 记忆丢失问题
+
+**症状**: Agent 不记得之前的对话
+
+**排查步骤**:
+```bash
+# 1. 检查 memory 目录
+ls -la memory/
+
+# 2. 验证三层记忆配置
+cat ~/.openclaw/config.json | jq '.agents.defaults.compaction.memoryFlush'
+
+# 3. 手动触发记忆刷新
+# 在对话中提示："请保存重要信息到 memory/"
+
+# 4. 检查文件权限
+ls -la ~/.openclaw/workspace/memory/
+```
+
+**预防措施**:
+- 确保 `memoryFlush.enabled` 为 true
+- 设置合理的 `reserveTokensFloor` (推荐 40000)
+- 定期备份 `memory/` 目录
+
+### 7.3 Skill 安装失败
+
+**症状**: `clawhub install` 命令失败
+
+**排查步骤**:
+```bash
+# 1. 检查网络连接
+ping clawhub.ai
+
+# 2. 更新 Skill 索引
+clawhub update
+
+# 3. 手动安装
+clawhub install author/skill-name --verbose
+
+# 4. 检查权限
+ls -la ~/.openclaw/skills/
+```
+
+### 7.4 Tailscale 连接问题
+
+**症状**: VPN 连接失败或无法访问客户节点
+
+**排查步骤**:
+```bash
+# 1. 检查 Tailscale 状态
+tailscale status
+
+# 2. 重新认证
+tailscale up --force-reauth
+
+# 3. 检查 ACL 配置
+tailscale debug via /localapi/v2/acl
+
+# 4. 检查防火墙
+sudo iptables -L | grep tailscale
+```
+
+### 7.5 数据保险箱访问失败
+
+**症状**: 无法访问加密数据
+
+**排查步骤**:
+```bash
+# 1. 检查保险箱路径
+ls -la /data/opc200/vault/
+
+# 2. 验证密钥
+openssl enc -aes-256-cbc -d -in /data/opc200/vault/keys/master.key
+
+# 3. 检查权限
+stat /data/opc200/vault/
+
+# 4. 恢复备份
+./scripts/recovery/data-vault-repair.sh --backup /backups/vault-$(date -d "yesterday" +%Y%m%d).tar.gz
+```
+
+---
+
+## 八、性能优化建议
+
+### 8.1 大上下文处理
+
+**问题**: 长会话导致 token 消耗过高
+
+**解决方案**:
+```json
+{
+  "agents": {
+    "defaults": {
+      "compaction": {
+        "reserveTokensFloor": 40000,
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 4000
+        }
+      },
+      "contextManagement": {
+        "summarizeThreshold": 100000,
+        "autoSummarize": true
+      }
+    }
+  }
+}
+```
+
+### 8.2 向量存储优化
+
+**问题**: 语义搜索响应慢
+
+**解决方案**:
+- 使用 Qdrant 替代内存存储（生产环境）
+- 定期清理旧向量（保留 90 天）
+- 使用量化减少内存占用
+
+### 8.3 数据库优化
+
+**问题**: Journal 查询慢
+
+**解决方案**:
+```sql
+-- 添加索引
+CREATE INDEX IF NOT EXISTS idx_journal_time_type 
+ON journal_entries(timestamp, entry_type);
+
+-- 定期清理
+DELETE FROM journal_entries 
+WHERE timestamp < datetime('now', '-1 year');
+
+-- 备份和重建
+VACUUM;
+```
 
 ---
 

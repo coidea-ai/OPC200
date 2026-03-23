@@ -1,0 +1,299 @@
+# OPC200 里程碑定义示例
+# 定义用户成长过程中的里程碑和庆祝方式
+
+# 连续记录里程碑
+consistency_milestones:
+  - id: "consistency_7"
+    name: "7天连续记录"
+    description: "连续7天保持记录习惯"
+    type: "consistency"
+    requirement:
+      consecutive_days: 7
+    celebration:
+      message: "🎉 一周坚持！"
+      animation: "confetti"
+      channels: ["ui", "feishu"]
+    reward:
+      badge: "streak-7"
+      points: 100
+    
+  - id: "consistency_30"
+    name: "30天连续记录"
+    description: "连续30天保持记录习惯"
+    type: "consistency"
+    requirement:
+      consecutive_days: 30
+    celebration:
+      message: "🌟 一个月里程碑！你的坚持令人钦佩！"
+      animation: "fireworks"
+      channels: ["ui", "feishu", "email"]
+    reward:
+      badge: "streak-30"
+      points: 500
+    
+  - id: "consistency_100"
+    name: "百日成就"
+    description: "连续100天保持记录习惯"
+    type: "consistency"
+    requirement:
+      consecutive_days: 100
+    celebration:
+      message: "🏆 百日成就达成！你已经成为记录大师！"
+      animation: "trophy"
+      channels: ["ui", "feishu", "email"]
+      special: true
+    reward:
+      badge: "streak-100"
+      points: 2000
+      unlock_feature: "advanced_analytics"
+
+# 数量里程碑
+volume_milestones:
+  - id: "volume_50"
+    name: "记录达人"
+    description: "累计记录50条条目"
+    type: "volume"
+    requirement:
+      total_entries: 50
+    celebration:
+      message: "📝 50条记录达成！"
+      animation: "stars"
+    reward:
+      badge: "scribe-50"
+      points: 200
+    
+  - id: "volume_100"
+    name: "记录大师"
+    description: "累计记录100条条目"
+    type: "volume"
+    requirement:
+      total_entries: 100
+    celebration:
+      message: "📚 100条记录达成！"
+      animation: "celebration"
+    reward:
+      badge: "scribe-100"
+      points: 500
+    
+  - id: "volume_500"
+    name: "记录传奇"
+    description: "累计记录500条条目"
+    type: "volume"
+    requirement:
+      total_entries: 500
+    celebration:
+      message: "👑 500条记录！你是真正的记录传奇！"
+      animation: "crown"
+      special: true
+    reward:
+      badge: "scribe-500"
+      points: 3000
+
+# 类型专长里程碑
+type_milestones:
+  - id: "type_thought_50"
+    name: "思考者"
+    description: "记录50条想法"
+    type: "type_specific"
+    requirement:
+      entry_type: "thought"
+      count: 50
+    celebration:
+      message: "💭 思考者徽章解锁！"
+    reward:
+      badge: "thinker"
+      
+  - id: "type_action_50"
+    name: "行动派"
+    description: "记录50个行动"
+    type: "type_specific"
+    requirement:
+      entry_type: "action"
+      count: 50
+    celebration:
+      message: "⚡ 行动派徽章解锁！"
+    reward:
+      badge: "doer"
+      
+  - id: "type_milestone_10"
+    name: "里程碑猎人"
+    description: "记录10个里程碑"
+    type: "type_specific"
+    requirement:
+      entry_type: "milestone"
+      count: 10
+    celebration:
+      message: "🎯 里程碑猎人！"
+    reward:
+      badge: "milestone-hunter"
+
+# 成就里程碑
+achievement_milestones:
+  - id: "early_bird"
+    name: "早起鸟"
+    description: "连续7天在8点前记录"
+    type: "achievement"
+    requirement:
+      pattern: "early_morning"
+      consecutive_days: 7
+      condition: "entry.hour < 8"
+    celebration:
+      message: "🌅 早起鸟！新的一天从记录开始！"
+    reward:
+      badge: "early-bird"
+      
+  - id: "night_owl"
+    name: "夜猫子"
+    description: "连续7天在晚上10点后记录"
+    type: "achievement"
+    requirement:
+      pattern: "late_night"
+      consecutive_days: 7
+      condition: "entry.hour >= 22"
+    celebration:
+      message: "🦉 夜猫子！深夜的思考同样珍贵！"
+    reward:
+      badge: "night-owl"
+      
+  - id: "weekend_warrior"
+    name: "周末战士"
+    description: "连续4个周末都有记录"
+    type: "achievement"
+    requirement:
+      pattern: "weekend_activity"
+      consecutive_weeks: 4
+      condition: "entry.weekday IN [5,6]"
+    celebration:
+      message: "💪 周末战士！坚持不懈！"
+    reward:
+      badge: "weekend-warrior"
+
+# 业务里程碑
+business_milestones:
+  - id: "first_customer"
+    name: "第一滴血"
+    description: "获得第一个付费客户"
+    type: "business"
+    requirement:
+      event: "customer_signup"
+      count: 1
+    celebration:
+      message: "🎉 恭喜！第一个客户！商业模式得到验证！"
+      special: true
+    reward:
+      badge: "first-blood"
+      points: 1000
+      
+  - id: "mrr_1k"
+    name: "月收入1000"
+    description: "月经常性收入达到1000"
+    type: "business"
+    requirement:
+      event: "mrr_reached"
+      threshold: 1000
+    celebration:
+      message: "💰 月收入突破1000！稳步前进！"
+    reward:
+      badge: "mrr-1k"
+      
+  - id: "mrr_10k"
+    name: "月收入10000"
+    description: "月经常性收入达到10000"
+    type: "business"
+    requirement:
+      event: "mrr_reached"
+      threshold: 10000
+    celebration:
+      message: "🚀 月收入突破10000！里程碑式的成就！"
+      special: true
+    reward:
+      badge: "mrr-10k"
+      unlock_feature: "premium_support"
+
+# 技能里程碑
+skill_milestones:
+  - id: "skill_journal_master"
+    name: "Journal 大师"
+    description: "掌握 Journal 的所有功能"
+    type: "skill"
+    requirement:
+      skills_used: ["record", "query", "search", "export"]
+      min_usage_each: 10
+    celebration:
+      message: "📔 Journal 大师！你已经完全掌握了记录的艺术！"
+    reward:
+      badge: "journal-master"
+      
+  - id: "skill_pattern_explorer"
+    name: "模式探索者"
+    description: "首次查看自己的模式分析"
+    type: "skill"
+    requirement:
+      action: "view_pattern_analysis"
+      count: 1
+    celebration:
+      message: "🔍 模式探索者！开始了解自己！"
+    reward:
+      badge: "pattern-explorer"
+
+# 社交里程碑
+social_milestones:
+  - id: "feedback_giver"
+    name: "反馈者"
+    description: "提交3次产品反馈"
+    type: "social"
+    requirement:
+      action: "submit_feedback"
+      count: 3
+    celebration:
+      message: "🗣️ 感谢你的反馈！我们一起让产品更好！"
+    reward:
+      badge: "feedback-giver"
+
+# 里程碑检测配置
+detection:
+  # 检测频率
+  check_interval_hours: 1
+  
+  # 实时检测触发
+  real_time_triggers:
+    - on_entry_create
+    - on_daily_summary
+  
+  # 防重复机制
+  deduplication:
+    window_hours: 24  # 同一里程碑24小时内不重复触发
+    
+  # 通知冷却
+  notification_cooldown:
+    same_type_hours: 4  # 同类型里程碑4小时内只通知一次
+
+# 庆祝效果配置
+celebrations:
+  # 动画效果
+  animations:
+    confetti:
+      type: "particle"
+      duration_seconds: 3
+      intensity: "medium"
+    
+    fireworks:
+      type: "particle"
+      duration_seconds: 5
+      intensity: "high"
+    
+    trophy:
+      type: "modal"
+      duration_seconds: 10
+      show_share_button: true
+  
+  # 音效
+  sound_effects:
+    enabled: true
+    volume: 0.5
+    
+  # 分享配置
+  sharing:
+    enabled: true
+    platforms: ["twitter", "linkedin", "wechat"]
+    template: "我刚刚在 OPC200 达成了 {milestone_name}！#OPC200 #OnePersonCompany"

@@ -1,0 +1,226 @@
+# OPC200 客户配置示例
+# 用于初始化新客户部署
+
+# 基本信息
+customer:
+  id: "OPC-001"
+  name: "示例客户"
+  email: "customer@example.com"
+  plan: "on-premise"  # on-premise / cloud-hosted
+  created_at: "2026-03-24T00:00:00Z"
+
+# 部署配置
+deployment:
+  mode: "on-premise"
+  region: "cn-beijing"
+  
+  # Gateway 配置
+  gateway:
+    bind: "127.0.0.1:18789"
+    auth_type: "token"
+    max_sessions: 10
+  
+  # Tailscale VPN 配置（本地部署）
+  tailscale:
+    enabled: true
+    hostname: "opc-001"
+    tags:
+      - "tag:opc"
+    
+    # 紧急访问授权
+    emergency_access:
+      enabled: true
+      authorized_support_engineers:
+        - "support@coidea.ai"
+      max_duration: "4h"
+      requires_approval: true
+  
+  # 云端配置（如果是 cloud-hosted）
+  cloud:
+    # cluster: "opc200-prod"
+    # namespace: "opc-151"
+    # ingress_domain: "opc-151.opc200.coidea.ai"
+    resources:
+      cpu: "2"
+      memory: "4Gi"
+      storage: "100Gi"
+
+# 数据配置
+data:
+  # 数据驻留
+  residency: "cn"
+  
+  # 数据分级存储
+  classification:
+    tier_1_paths:  # 绝不上云
+      - "/data/sensitive"
+      - "/data/proprietary"
+    
+    tier_2_paths:  # 脱敏后可同步
+      - "/data/analytics"
+    
+    tier_3_paths:  # 可安全共享
+      - "/data/knowledge"
+  
+  # 备份策略
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # 每天凌晨2点
+    retention_days: 30
+    encryption: true
+    
+    # 云端备份（仅 tier 2/3）
+    cloud_backup:
+      enabled: false
+      # provider: "s3"
+      # bucket: "opc200-backups"
+      # region: "cn-north-1"
+
+# Journal 配置
+journal:
+  enabled: true
+  
+  # 存储配置
+  storage:
+    type: "sqlite"
+    path: "/data/journal.db"
+    backup_enabled: true
+  
+  # 向量搜索
+  vector_search:
+    enabled: true
+    provider: "qdrant"  # memory / qdrant
+    qdrant_host: "localhost"
+    qdrant_port: 6333
+  
+  # 嵌入配置
+  embedding:
+    provider: "openai"
+    model: "text-embedding-3-small"
+    # 备选：本地模型
+    # provider: "local"
+    # model: "/models/all-MiniLM-L6-v2"
+
+# Skills 配置
+skills:
+  # 自动安装
+  auto_install:
+    - "opc-journal-suite"
+    - "agent-team-orchestration"
+    - "active-maintenance"
+  
+  # 更新策略
+  updates:
+    auto_update: true
+    channel: "stable"  # stable / beta
+    maintenance_window: "02:00-04:00"
+  
+  # 自定义 Skills
+  custom:
+    - name: "my-custom-skill"
+      path: "/skills/my-custom-skill"
+      enabled: true
+
+# 安全配置
+security:
+  # 数据保险箱
+  vault:
+    enabled: true
+    encryption: "aes-256-gcm"
+    key_rotation_days: 90
+  
+  # 审计
+  audit:
+    enabled: true
+    log_level: "info"
+    retention_days: 365
+  
+  # 访问控制
+  access_control:
+    # 允许的 IP 范围
+    allowed_ips:
+      - "127.0.0.1/32"
+      - "100.64.0.0/10"  # Tailscale 网络
+    
+    # 2FA 配置（云端）
+    mfa:
+      enabled: false
+      # provider: "totp"
+
+# 通知配置
+notifications:
+  channels:
+    # 飞书
+    feishu:
+      enabled: true
+      webhook: "${FEISHU_WEBHOOK_URL}"
+      
+    # 邮件
+    email:
+      enabled: false
+      # smtp_host: "smtp.example.com"
+      # smtp_port: 587
+      # username: "${SMTP_USER}"
+      # password: "${SMTP_PASS}"
+      # from: "opc200@coidea.ai"
+      # to: "customer@example.com"
+  
+  # 通知事件
+  events:
+    - type: "milestone"
+      channels: ["feishu"]
+    - type: "daily_digest"
+      channels: ["feishu"]
+      schedule: "08:00"
+    - type: "security_alert"
+      channels: ["feishu", "email"]
+      priority: ["high", "critical"]
+
+# 集成配置
+integrations:
+  # GitHub
+  github:
+    enabled: false
+    # token_ref: "vault://github-token"
+  
+  # 飞书
+  feishu:
+    enabled: true
+    app_id: "${FEISHU_APP_ID}"
+    app_secret: "${FEISHU_APP_SECRET}"
+  
+  # 其他 API
+  external_apis:
+    - name: "weather"
+      enabled: true
+      endpoint: "https://api.weather.com/v1"
+      # api_key_ref: "vault://weather-api-key"
+
+# 监控配置
+monitoring:
+  enabled: true
+  
+  # Prometheus
+  prometheus:
+    enabled: true
+    port: 9090
+  
+  # 健康检查
+  health_check:
+    interval_seconds: 60
+    timeout_seconds: 10
+  
+  # 告警
+  alerts:
+    enabled: true
+    channels: ["feishu"]
+    rules:
+      - metric: "gateway_response_time"
+        threshold: "> 5000ms"
+        severity: "warning"
+      - metric: "disk_usage"
+        threshold: "> 80%"
+        severity: "critical"
+      - metric: "memory_usage"
+        threshold: "> 90%"
+        severity: "critical"

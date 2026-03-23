@@ -1,0 +1,154 @@
+# OPC200 Tailscale VPN 配置
+# Tailscale 安全组网配置
+
+# 控制服务器配置
+control_server:
+  # 使用 Tailscale 官方控制平面或自建 Headscale
+  type: "tailscale"  # tailscale / headscale
+  
+  # 如果是自建 Headscale
+  # headscale_url: "https://headscale.opc200.co"
+  
+  # OAuth 客户端（用于程序化访问）
+  oauth:
+    client_id: "${TAILSCALE_CLIENT_ID}"
+    client_secret: "${TAILSCALE_CLIENT_SECRET}"
+
+# ACL 配置（访问控制列表）
+acls:
+  # 支持工程师可以访问所有客户节点
+  - action: accept
+    src:
+      - "group:support"
+    dst:
+      - "tag:opc:*"
+    
+  # 监控节点可以访问所有客户（只读监控）
+  - action: accept
+    src:
+      - "tag:monitor"
+    dst:
+      - "tag:opc:9100"  # Prometheus 端口
+    
+  # 知识库节点只读访问
+  - action: accept
+    src:
+      - "tag:opc"
+    dst:
+      - "tag:knowledge:80"
+      - "tag:knowledge:443"
+    
+  # 客户节点间完全隔离
+  - action: deny
+    src:
+      - "tag:opc"
+    dst:
+      - "tag:opc"
+
+# 标签定义
+tags:
+  # 支持团队标签
+  tag:support:
+    - group:support
+    
+  # 客户节点标签（由支持中心分配）
+  tag:opc:
+    - group:support
+    
+  # 监控节点标签
+  tag:monitor:
+    - group:ops
+    
+  # 知识库节点标签
+  tag:knowledge:
+    - group:ops
+
+# SSH 访问控制
+ssh:
+  - action: check
+    src:
+      - "group:support"
+    dst:
+      - "tag:opc"
+    users:
+      - "autogroup:nonroot"
+      - "root"
+
+# 设备配置
+devices:
+  # 客户端默认配置
+  defaults:
+    # 启用 MagicDNS
+    magic_dns: true
+    
+    # 启用 HTTPS 证书
+    https_cert: true
+    
+    # 网络优化
+    # udp_gro: true
+    
+    # 日志
+    log_level: "info"
+  
+  # 特定节点配置
+  nodes:
+    # 支持中心节点
+    support-hub:
+      tags:
+        - "tag:support"
+      
+    # 客户节点模板
+    opc-template:
+      tags:
+        - "tag:opc"
+      # 客户端路由（访问客户本地网络）
+      # advertise_routes:
+      #   - "192.168.1.0/24"
+
+# 紧急访问配置（Break-glass）
+emergency_access:
+  enabled: true
+  
+  # 紧急访问密钥（定期轮换）
+  auth_key_ttl: "4h"
+  
+  # 审计
+  audit_log: "/var/log/opc200/tailscale-emergency.log"
+  
+  # 通知
+  notification:
+    webhook: "${OPC200_ALERT_WEBHOOK}"
+    on_access: true
+    on_revoke: true
+
+# 网络优化
+network:
+  # MTU 设置
+  mtu: 1280
+  
+  # DNS 配置
+  dns:
+    # 覆盖本地 DNS
+    override_local_dns: true
+    
+    # 全局 DNS 服务器
+    nameservers:
+      - "1.1.1.1"
+      - "8.8.8.8"
+    
+    # 搜索域
+    search_domains:
+      - "opc200.local"
+      - "tailnet.opc200.co"
+
+# 监控集成
+monitoring:
+  # Prometheus 导出
+  prometheus:
+    enabled: true
+    port: 9098
+  
+  # 健康检查
+  health_check:
+    interval_seconds: 60
+    endpoint: "http://localhost:18789/health"

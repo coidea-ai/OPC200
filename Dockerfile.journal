@@ -1,0 +1,56 @@
+# OPC200 Journal 服务 Docker 镜像
+# Journal 核心服务 + Python 运行环境
+
+FROM python:3.11-slim-bookworm
+
+LABEL maintainer="coidea.ai"
+LABEL version="2.2.0"
+LABEL description="OPC200 Journal Service"
+
+# 安全：以非 root 用户运行
+RUN groupadd -r opc200 && useradd -r -g opc200 -s /bin/false opc200
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libsqlite3-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY src/ ./src/
+COPY config/skills.yml ./config/skills.yml
+
+# 创建数据目录
+RUN mkdir -p /data /var/log/opc200 && \
+    chown -R opc200:opc200 /app /data /var/log/opc200
+
+# 清理构建依赖
+RUN apt-get purge -y gcc && \
+    apt-get autoremove -y && \
+    apt-get clean
+
+# 切换到非 root 用户
+USER opc200
+
+# 设置 Python 路径
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import src; print('OK')" || exit 1
+
+# 暴露 API 端口
+EXPOSE 8080
+
+# 启动命令
+CMD ["python", "-m", "src.journal.api"]

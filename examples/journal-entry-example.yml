@@ -1,0 +1,137 @@
+# OPC200 Journal 条目示例
+# 展示不同类型日志条目的结构
+
+# 类型1: 想法记录 (thought)
+entry_thought:
+  id: "a1b2c3d4e5f67890"
+  timestamp: "2026-03-24T09:15:30+08:00"
+  entry_type: "thought"
+  content: |
+    今天重新考虑了产品定位，发现目标客户画像还不够清晰。
+    需要更多访谈来验证假设。
+  metadata:
+    context: "产品规划会议后"
+    related_topics: ["产品定位", "用户研究"]
+    mood: "思考中"
+  tags: ["产品", "反思", "战略"]
+  sentiment: 0.2  # 略偏正面
+
+# 类型2: 行动记录 (action)
+entry_action:
+  id: "b2c3d4e5f6a78901"
+  timestamp: "2026-03-24T10:30:00+08:00"
+  entry_type: "action"
+  content: |
+    完成了 landing page 的初版设计，使用了新的配色方案。
+    已上传到 Figma 并分享给团队。
+  metadata:
+    task_id: "TASK-001"
+    project: "官网改版"
+    tools_used: ["Figma", "Notion"]
+    time_spent_minutes: 90
+    status: "completed"
+  tags: ["设计", "落地页", "完成"]
+  sentiment: 0.8  # 正面
+
+# 类型3: 里程碑 (milestone)
+entry_milestone:
+  id: "c3d4e5f6a7b89012"
+  timestamp: "2026-03-24T14:00:00+08:00"
+  entry_type: "milestone"
+  content: |
+    🎉 成功签约第一个付费客户！
+    这是 OPC200 项目的第一个正式客户，标志着商业模式的初步验证。
+  metadata:
+    milestone_type: "customer"
+    value: 1
+    customer_id: "CUST-001"
+    deal_value: "¥50,000"
+  tags: ["里程碑", "客户", "签约"]
+  sentiment: 1.0  # 非常正面
+
+# 类型4: 洞察 (insight)
+entry_insight:
+  id: "d4e5f6a7b8c90123"
+  timestamp: "2026-03-24T16:45:00+08:00"
+  entry_type: "insight"
+  content: |
+    通过分析最近的用户反馈，发现客户最看重的是：
+    1. 数据安全控制
+    2. 离线可用性
+    3. 7x24 响应速度
+    
+    这验证了我们本地部署策略的价值主张。
+  metadata:
+    insight_type: "customer_needs"
+    evidence_count: 15
+    confidence: 0.85
+    sources: ["访谈", "问卷", "反馈"]
+  tags: ["洞察", "用户需求", "验证"]
+  sentiment: 0.6
+
+# 类型5: 系统记录 (system)
+entry_system:
+  id: "e5f6a7b8c9d01234"
+  timestamp: "2026-03-24T02:00:00+08:00"
+  entry_type: "system"
+  content: |
+    自动备份完成
+    - 备份文件: backup_20260324_020000.tar.gz
+    - 大小: 1.2 GB
+    - 耗时: 5分32秒
+    - 状态: 成功
+  metadata:
+    event_type: "backup"
+    backup_size_gb: 1.2
+    duration_seconds: 332
+    status: "success"
+  tags: ["系统", "备份"]
+  sentiment: null
+
+# 类型6: 情绪记录 (mood)
+entry_mood:
+  id: "f6a7b8c9d0e12345"
+  timestamp: "2026-03-24T20:00:00+08:00"
+  entry_type: "thought"
+  content: |
+    今天感觉有点疲惫，可能是连续几天高强度工作的原因。
+    明天需要安排一些休息时间。
+  metadata:
+    mood: "tired"
+    energy_level: 4  # 1-10
+    stress_level: 7
+  tags: ["情绪", "健康", "休息"]
+  sentiment: -0.3  # 略偏负面
+
+# 类型7: 学习记录 (learning)
+entry_learning:
+  id: "a7b8c9d0e1f23456"
+  timestamp: "2026-03-24T21:30:00+08:00"
+  entry_type: "thought"
+  content: |
+    学习了 Tailscale 的 ACL 配置，理解了如何通过网络标签实现细粒度访问控制。
+    
+    关键要点：
+    - tag:opc 用于标记客户节点
+    - group:support 用于支持团队
+    - 默认拒绝策略更安全
+  metadata:
+    topic: "Tailscale ACL"
+    source: "官方文档"
+    time_spent_minutes: 45
+    related_skills: ["networking", "security"]
+  tags: ["学习", "Tailscale", "网络"]
+  sentiment: 0.7
+
+# 批量导入示例
+batch_entries:
+  entries:
+    - ${entry_thought}
+    - ${entry_action}
+    - ${entry_milestone}
+    - ${entry_insight}
+  
+  import_options:
+    skip_duplicates: true
+    validate_schema: true
+    generate_summaries: true
