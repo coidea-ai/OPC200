@@ -49,6 +49,7 @@ def main(context: dict) -> dict:
     
     try:
         customer_id = context.get("customer_id")
+        input_data = context.get("input", {})
         config = context.get("config", {})
         memory = context.get("memory", {})
         
@@ -61,9 +62,14 @@ def main(context: dict) -> dict:
         
         logger.info(f"Initializing journal core for customer: {customer_id}")
         
-        # Get storage path from config or use default
+        # Get storage path from input.data_dir, config.storage.path, or use default
         storage_config = config.get("storage", {})
-        base_path = Path(storage_config.get("path", f"customers/{customer_id}/journal"))
+        if input_data.get("data_dir"):
+            base_path = Path(input_data["data_dir"]) / customer_id / "journal"
+        elif storage_config.get("path"):
+            base_path = Path(storage_config["path"])
+        else:
+            base_path = Path(f"customers/{customer_id}/journal")
         base_path.mkdir(parents=True, exist_ok=True)
         
         # Initialize database
