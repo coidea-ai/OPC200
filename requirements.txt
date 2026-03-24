@@ -1,5 +1,8 @@
 # Production dependencies for OPC200
 
+# Python compatibility
+typing-extensions>=4.0.0; python_version<"3.11"
+
 # Cryptography
 cryptography>=41.0.0
 pycryptodome>=3.19.0

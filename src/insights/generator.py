@@ -5,7 +5,13 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, NotRequired, Optional, TypedDict
+from typing import Any, Optional, TypedDict
+
+# Python 3.10 compatibility: NotRequired is only available in 3.11+
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 
 # Date format constants
