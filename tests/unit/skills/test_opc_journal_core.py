@@ -1,10 +1,10 @@
 """Unit tests for opc-journal-core skill.
 
 TDD Approach: Tests cover initialization, recording, searching, and exporting
-with both success and failure scenarios.
 """
 import importlib.util
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -12,11 +12,23 @@ from pathlib import Path
 
 import pytest
 
-# Load module helper
+# Ensure project root is in path for all skill imports
+_PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+os.environ["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + os.environ.get("PYTHONPATH", "")
+
+# Load module helper - simpler approach using regular import after path setup
 def load_module(module_name, file_path):
+    """Load a skill module by dynamically importing it."""
+    # Add the skills directory to path for relative imports within skills
+    skills_dir = str(file_path.parent)
+    if skills_dir not in sys.path:
+        sys.path.insert(0, skills_dir)
+    
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
