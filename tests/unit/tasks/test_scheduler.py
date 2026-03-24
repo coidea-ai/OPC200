@@ -333,6 +333,7 @@ class TestTaskQueue:
     async def test_task_timeout(self):
         """Test task timeout handling."""
         # Arrange
+        import asyncio
         from src.tasks.scheduler import TaskQueue
 
         queue = TaskQueue(default_timeout=1)  # 1 second timeout
@@ -341,8 +342,8 @@ class TestTaskQueue:
             await asyncio.sleep(10)
             return "result"
 
-        # Act & Assert
-        with pytest.raises(TimeoutError):
+        # Act & Assert - use asyncio.TimeoutError for compatibility
+        with pytest.raises(asyncio.TimeoutError):
             await queue.execute(slow_task)
 
 
