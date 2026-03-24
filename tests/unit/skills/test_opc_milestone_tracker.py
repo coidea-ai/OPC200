@@ -17,9 +17,24 @@ _PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-# Pre-load src package into sys.modules before executing skills
+# Pre-load ALL src submodules before loading src package itself
+# This is needed because src/__init__.py imports from src.exceptions etc.
+_src_dir = Path(_PROJECT_ROOT) / "src"
+for _py_file in _src_dir.rglob("*.py"):
+    if _py_file.name == "__init__.py":
+        continue
+    _rel_path = _py_file.relative_to(_PROJECT_ROOT)
+    _parts = list(_rel_path.parts[:-1]) + [_py_file.stem]
+    _module_name = ".".join(_parts)
+    if _module_name not in sys.modules:
+        _spec = importlib.util.spec_from_file_location(_module_name, _py_file)
+        _mod = importlib.util.module_from_spec(_spec)
+        sys.modules[_module_name] = _mod
+        _spec.loader.exec_module(_mod)
+
+# Now load src package
 if "src" not in sys.modules:
-    _src_spec = importlib.util.spec_from_file_location("src", Path(_PROJECT_ROOT) / "src" / "__init__.py")
+    _src_spec = importlib.util.spec_from_file_location("src", _src_dir / "__init__.py")
     _src_module = importlib.util.module_from_spec(_src_spec)
     sys.modules["src"] = _src_module
     _src_spec.loader.exec_module(_src_module)
