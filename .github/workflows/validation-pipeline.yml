@@ -467,6 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [code-quality, test-matrix, build-image]
     if: always()
+    continue-on-error: true
     steps:
       - name: Send Slack notification
         uses: 8398a7/action-slack@v3
