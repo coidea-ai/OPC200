@@ -2,6 +2,7 @@
 
 TDD Approach: Tests cover pattern initialization, analysis, and outlier detection
 """
+import importlib.util
 import json
 import os
 import shutil
@@ -11,32 +12,36 @@ from pathlib import Path
 
 import pytest
 
+# Ensure project root is in path
+_PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+# Pre-load src package into sys.modules before executing skills
+if "src" not in sys.modules:
+    _src_spec = importlib.util.spec_from_file_location("src", Path(_PROJECT_ROOT) / "src" / "__init__.py")
+    _src_module = importlib.util.module_from_spec(_src_spec)
+    sys.modules["src"] = _src_module
+    _src_spec.loader.exec_module(_src_module)
+
 # Load module helper - use exec() with proper sys.path setup
 def load_module(module_name, file_path):
     """Load a skill module by executing it with proper import context."""
-    # Calculate project root
     project_root = str(Path(__file__).parent.parent.parent.parent.resolve())
     
-    # Create a copy of sys module's path for isolation
-    import sys as _sys
-    _original_path = _sys.path.copy()
-    
-    # Ensure project root is in path
-    if project_root not in _sys.path:
-        _sys.path.insert(0, project_root)
+    _original_path = sys.path.copy()
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
     
     try:
-        # Create namespace with access to real sys
         namespace = {
             '__name__': module_name,
             '__file__': str(file_path),
         }
         
-        # Read and execute the skill script
         code = file_path.read_text()
         exec(code, namespace)
         
-        # Return a simple module-like object
         class SkillModule:
             pass
         
@@ -47,8 +52,7 @@ def load_module(module_name, file_path):
         
         return module
     finally:
-        # Restore original sys.path
-        _sys.path[:] = _original_path
+        sys.path[:] = _original_path
 
 
 # Load the skill scripts
