@@ -198,17 +198,27 @@ class InputValidator:
         """Validate search query."""
         if not isinstance(query, str):
             raise ValidationError(f"Query must be a string, got {type(query).__name__}")
-        
+
         query = query.strip()
-        
+
         if not query:
             raise ValidationError("Search query cannot be empty")
-        
+
         if len(query) > 1000:
             raise ValidationError(f"Search query too long: {len(query)} > 1000")
-        
-        # Escape special SQLite LIKE characters if they appear at start
-        # User can still use % and _ for pattern matching
+
+        # Check for SQL injection patterns
+        sql_injection_patterns = [
+            r"'\s*;\s*",
+            r"--",
+            r"/\*",
+            r"\*/",
+            r"\b(drop|delete|insert|update|select|union|exec|execute)\b",
+        ]
+        for pattern in sql_injection_patterns:
+            if re.search(pattern, query, re.IGNORECASE):
+                raise ValidationError(f"Search query contains potentially unsafe pattern")
+
         return query
 
 
