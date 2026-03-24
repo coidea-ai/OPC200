@@ -11,29 +11,44 @@ from pathlib import Path
 
 import pytest
 
-# Load module helper - use exec() in current context
+# Load module helper - use exec() with proper sys.path setup
 def load_module(module_name, file_path):
-    """Load a skill module by executing it in current context."""
-    # Create a module-like namespace
-    namespace = {
-        '__name__': module_name,
-        '__file__': str(file_path),
-    }
+    """Load a skill module by executing it with proper import context."""
+    # Calculate project root
+    project_root = str(Path(__file__).parent.parent.parent.parent.resolve())
     
-    # Read and execute the skill script in current context
-    code = file_path.read_text()
-    exec(code, namespace)
+    # Create a copy of sys module's path for isolation
+    import sys as _sys
+    _original_path = _sys.path.copy()
     
-    # Return a simple module-like object with the exported functions
-    class SkillModule:
-        pass
+    # Ensure project root is in path
+    if project_root not in _sys.path:
+        _sys.path.insert(0, project_root)
     
-    module = SkillModule()
-    for key, value in namespace.items():
-        if not key.startswith('__'):
-            setattr(module, key, value)
-    
-    return module
+    try:
+        # Create namespace with access to real sys
+        namespace = {
+            '__name__': module_name,
+            '__file__': str(file_path),
+        }
+        
+        # Read and execute the skill script
+        code = file_path.read_text()
+        exec(code, namespace)
+        
+        # Return a simple module-like object
+        class SkillModule:
+            pass
+        
+        module = SkillModule()
+        for key, value in namespace.items():
+            if not key.startswith('__'):
+                setattr(module, key, value)
+        
+        return module
+    finally:
+        # Restore original sys.path
+        _sys.path[:] = _original_path
 
 
 # Load the skill scripts
