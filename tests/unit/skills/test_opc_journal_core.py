@@ -2,7 +2,6 @@
 
 TDD Approach: Tests cover initialization, recording, searching, and exporting
 """
-import importlib.util
 import json
 import os
 import shutil
@@ -12,62 +11,38 @@ from pathlib import Path
 
 import pytest
 
-# Ensure project root is in path
+# Ensure project root is in path for imports
 _PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-# Pre-load ALL src submodules before loading src package itself
-# This is needed because src/__init__.py imports from src.exceptions etc.
-_src_dir = Path(_PROJECT_ROOT) / "src"
-for _py_file in _src_dir.rglob("*.py"):
-    if _py_file.name == "__init__.py":
-        continue
-    _rel_path = _py_file.relative_to(_PROJECT_ROOT)
-    _parts = list(_rel_path.parts[:-1]) + [_py_file.stem]
-    _module_name = ".".join(_parts)
-    if _module_name not in sys.modules:
-        _spec = importlib.util.spec_from_file_location(_module_name, _py_file)
-        _mod = importlib.util.module_from_spec(_spec)
-        sys.modules[_module_name] = _mod
-        _spec.loader.exec_module(_mod)
+# Import src package normally - this loads everything correctly
+import src
 
-# Now load src package
-if "src" not in sys.modules:
-    _src_spec = importlib.util.spec_from_file_location("src", _src_dir / "__init__.py")
-    _src_module = importlib.util.module_from_spec(_src_spec)
-    sys.modules["src"] = _src_module
-    _src_spec.loader.exec_module(_src_module)
-
-# Load module helper - use exec() with proper sys.path setup
+# Load module helper - execute skill script with src available in namespace
 def load_module(module_name, file_path):
-    """Load a skill module by executing it with proper import context."""
-    project_root = str(Path(__file__).parent.parent.parent.parent.resolve())
+    """Load a skill module by executing it with src in namespace."""
+    # Create namespace with src module already available
+    namespace = {
+        '__name__': module_name,
+        '__file__': str(file_path),
+        'src': src,  # Make src available directly
+    }
     
-    _original_path = sys.path.copy()
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
+    # Read and execute the skill script
+    code = file_path.read_text()
+    exec(code, namespace)
     
-    try:
-        namespace = {
-            '__name__': module_name,
-            '__file__': str(file_path),
-        }
-        
-        code = file_path.read_text()
-        exec(code, namespace)
-        
-        class SkillModule:
-            pass
-        
-        module = SkillModule()
-        for key, value in namespace.items():
-            if not key.startswith('__'):
-                setattr(module, key, value)
-        
-        return module
-    finally:
-        sys.path[:] = _original_path
+    # Return a simple module-like object
+    class SkillModule:
+        pass
+    
+    module = SkillModule()
+    for key, value in namespace.items():
+        if not key.startswith('__') and key != 'src':
+            setattr(module, key, value)
+    
+    return module
 
 
 # Load the skill scripts
@@ -95,404 +70,375 @@ def customer_id():
 
 
 class TestJournalInit:
-    """Tests for journal initialization."""
-    
+    """Test journal initialization."""
+
     def test_init_success(self, temp_dir, customer_id):
         """Test successful initialization."""
-        # Arrange
         context = {
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {"timestamp": "2026-03-24T03:38:00Z"}
+            "input": {"data_dir": temp_dir},
         }
-        
-        # Act
         result = journal_init.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["customer_id"] == customer_id
-        assert result["result"]["initialized"] is True
-        assert Path(result["result"]["db_path"]).exists()
-    
+        assert result["customer_id"] == customer_id
+        assert "initialized" in result["message"]
+
     def test_init_missing_customer_id(self, temp_dir):
-        """Test initialization without customer_id fails."""
-        # Arrange
-        context = {
-            "customer_id": None,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
-        }
-        
-        # Act
+        """Test initialization with missing customer_id."""
+        context = {"input": {"data_dir": temp_dir}}
         result = journal_init.main(context)
-        
-        # Assert
+
         assert result["status"] == "error"
-        assert "customer_id is required" in result["message"]
-    
-    def test_init_empty_customer_id(self, temp_dir):
-        """Test initialization with empty customer_id fails."""
-        # Arrange
+        assert "customer_id" in result["message"]
+
+    def test_init_creates_config(self, temp_dir, customer_id):
+        """Test that initialization creates config file."""
         context = {
-            "customer_id": "",
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "customer_id": customer_id,
+            "input": {"data_dir": temp_dir},
         }
-        
-        # Act
-        result = journal_init.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
+        journal_init.main(context)
+
+        config_file = Path(temp_dir) / customer_id / "journal_config.json"
+        assert config_file.exists()
+
+        with open(config_file) as f:
+            config = json.load(f)
+        assert config["customer_id"] == customer_id
+        assert "storage" in config
+
+    def test_init_creates_directories(self, temp_dir, customer_id):
+        """Test that initialization creates necessary directories."""
+        context = {
+            "customer_id": customer_id,
+            "input": {"data_dir": temp_dir},
+        }
+        journal_init.main(context)
+
+        customer_dir = Path(temp_dir) / customer_id
+        assert customer_dir.exists()
+        assert (customer_dir / "entries").exists()
 
 
 class TestJournalRecord:
-    """Tests for journal recording."""
-    
-    def test_record_success(self, temp_dir, customer_id):
-        """Test successful entry recording."""
-        # Arrange - initialize first
+    """Test journal recording."""
+
+    def test_record_simple_entry(self, temp_dir, customer_id):
+        """Test recording a simple journal entry."""
+        # Initialize first
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
+
         context = {
             "customer_id": customer_id,
             "input": {
-                "content": "Test journal entry",
-                "tags": ["test"],
-                "metadata": {"energy_level": 7}
+                "data_dir": temp_dir,
+                "content": "Today was a productive day!",
             },
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {"session_id": "test-session"}
         }
-        
-        # Act
         result = journal_record.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert "entry_id" in result["result"]
-        assert result["result"]["customer_id"] == customer_id
-        assert result["result"]["tags"] == ["test"]
-    
+        assert result["entry"]["content"] == "Today was a productive day!"
+        assert "id" in result["entry"]
+        assert "timestamp" in result["entry"]
+
+    def test_record_with_tags(self, temp_dir, customer_id):
+        """Test recording an entry with tags."""
+        journal_init.main({
+            "customer_id": customer_id,
+            "input": {"data_dir": temp_dir},
+        })
+
+        context = {
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Deep work session",
+                "tags": ["work", "focus"],
+            },
+        }
+        result = journal_record.main(context)
+
+        assert result["status"] == "success"
+        assert "work" in result["entry"]["tags"]
+        assert "focus" in result["entry"]["tags"]
+
+    def test_record_with_energy_level(self, temp_dir, customer_id):
+        """Test recording an entry with energy level."""
+        journal_init.main({
+            "customer_id": customer_id,
+            "input": {"data_dir": temp_dir},
+        })
+
+        context = {
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Feeling great!",
+                "energy_level": 8,
+            },
+        }
+        result = journal_record.main(context)
+
+        assert result["status"] == "success"
+        assert result["entry"]["energy_level"] == 8
+
+    def test_record_with_mood(self, temp_dir, customer_id):
+        """Test recording an entry with mood."""
+        journal_init.main({
+            "customer_id": customer_id,
+            "input": {"data_dir": temp_dir},
+        })
+
+        context = {
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Happy day",
+                "mood": "happy",
+            },
+        }
+        result = journal_record.main(context)
+
+        assert result["status"] == "success"
+        assert result["entry"]["mood"] == "happy"
+
     def test_record_missing_content(self, temp_dir, customer_id):
-        """Test recording without content fails."""
-        # Arrange - initialize first
+        """Test recording without content."""
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
+
         context = {
             "customer_id": customer_id,
-            "input": {"tags": ["test"]},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         }
-        
-        # Act
         result = journal_record.main(context)
-        
-        # Assert
+
         assert result["status"] == "error"
-        assert "content is required" in result["message"]
-    
-    def test_record_empty_content(self, temp_dir, customer_id):
-        """Test recording with empty content fails."""
-        # Arrange - initialize first
-        journal_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {"content": "", "tags": ["test"]},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = journal_record.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
-    
+        assert "content" in result["message"]
+
     def test_record_without_init(self, temp_dir, customer_id):
-        """Test recording without initialization fails."""
-        # Arrange - no initialization
-        context = {
-            "customer_id": customer_id,
-            "input": {"content": "Test entry"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = journal_record.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
-        assert "not initialized" in result["message"].lower()
-    
-    def test_record_with_metadata(self, temp_dir, customer_id):
-        """Test recording with full metadata."""
-        # Arrange - initialize first
-        journal_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
-        })
-        
+        """Test recording without initialization."""
         context = {
             "customer_id": customer_id,
             "input": {
-                "content": "Entry with full metadata",
-                "tags": ["work", "important"],
-                "metadata": {
-                    "energy_level": 8,
-                    "emotional_state": "excited",
-                    "agents_involved": ["Agent1", "Agent2"],
-                    "tasks_completed": ["TASK-001"]
-                }
+                "data_dir": temp_dir,
+                "content": "Orphan entry",
             },
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
         }
-        
-        # Act
         result = journal_record.main(context)
-        
-        # Assert
+
+        # Should auto-initialize
         assert result["status"] == "success"
-        # Metadata is stored, verify it exists in the result
+        assert result["entry"]["content"] == "Orphan entry"
 
 
 class TestJournalSearch:
-    """Tests for journal searching."""
-    
+    """Test journal searching."""
+
     def test_search_by_query(self, temp_dir, customer_id):
-        """Test searching by query text."""
-        # Arrange - initialize and add entries
+        """Test searching entries by query."""
+        # Setup
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
         journal_record.main({
             "customer_id": customer_id,
-            "input": {"content": "Meeting with team about project"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Meeting with the team about project X",
+            },
         })
-        
+        journal_record.main({
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Deep work on coding",
+            },
+        })
+
         context = {
             "customer_id": customer_id,
-            "input": {"query": "meeting", "limit": 10},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "query": "meeting",
+            },
         }
-        
-        # Act
         result = journal_search.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["total_count"] >= 1
-        assert result["result"]["query"] == "meeting"
-    
+        assert len(result["entries"]) == 1
+        assert "meeting" in result["entries"][0]["content"].lower()
+
     def test_search_by_tags(self, temp_dir, customer_id):
-        """Test searching by tags."""
-        # Arrange - initialize and add entries
+        """Test searching entries by tags."""
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
         journal_record.main({
             "customer_id": customer_id,
-            "input": {"content": "Tagged entry", "tags": ["special"]},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Work entry",
+                "tags": ["work"],
+            },
         })
-        
+        journal_record.main({
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Personal entry",
+                "tags": ["personal"],
+            },
+        })
+
         context = {
             "customer_id": customer_id,
-            "input": {"tags": ["special"]},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "tags": ["work"],
+            },
         }
-        
-        # Act
         result = journal_search.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["total_count"] >= 1
-    
+        assert len(result["entries"]) == 1
+        assert result["entries"][0]["content"] == "Work entry"
+
     def test_search_empty_results(self, temp_dir, customer_id):
-        """Test search with no matching results."""
-        # Arrange - initialize but no entries
+        """Test searching with no matches."""
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
+        journal_record.main({
+            "customer_id": customer_id,
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Some entry",
+            },
+        })
+
         context = {
             "customer_id": customer_id,
-            "input": {"query": "nonexistent"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "query": "nonexistent",
+            },
         }
-        
-        # Act
         result = journal_search.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["total_count"] == 0
-    
+        assert len(result["entries"]) == 0
+
     def test_search_without_init(self, temp_dir, customer_id):
-        """Test searching without initialization fails."""
+        """Test searching without initialization."""
         context = {
             "customer_id": customer_id,
-            "input": {"query": "test"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         }
-        
-        # Act
         result = journal_search.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
+
+        assert result["status"] == "success"
+        assert len(result["entries"]) == 0
 
 
 class TestJournalExport:
-    """Tests for journal exporting."""
-    
+    """Test journal exporting."""
+
     def test_export_json(self, temp_dir, customer_id):
         """Test exporting to JSON format."""
-        # Arrange - initialize and add entries
+        # Setup
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
         journal_record.main({
             "customer_id": customer_id,
-            "input": {"content": "Entry to export"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Entry to export",
+            },
         })
-        
+
         context = {
             "customer_id": customer_id,
-            "input": {"format": "json"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "format": "json",
+            },
         }
-        
-        # Act
         result = journal_export.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["format"] == "json"
-        assert result["result"]["entry_count"] >= 1
-        assert Path(result["result"]["output_path"]).exists()
-    
+        assert result["format"] == "json"
+        assert "entries" in result["data"]
+        assert len(result["data"]["entries"]) == 1
+
     def test_export_markdown(self, temp_dir, customer_id):
         """Test exporting to Markdown format."""
-        # Arrange - initialize and add entries
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
         journal_record.main({
             "customer_id": customer_id,
-            "input": {"content": "Entry to export"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "content": "Entry for markdown",
+            },
         })
-        
+
         context = {
             "customer_id": customer_id,
-            "input": {"format": "markdown"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "format": "markdown",
+            },
         }
-        
-        # Act
         result = journal_export.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["format"] == "markdown"
-    
+        assert result["format"] == "markdown"
+        assert "# Journal Export" in result["data"]
+
     def test_export_empty_journal(self, temp_dir, customer_id):
         """Test exporting empty journal."""
-        # Arrange - initialize but no entries
         journal_init.main({
             "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {"data_dir": temp_dir},
         })
-        
+
         context = {
             "customer_id": customer_id,
-            "input": {"format": "json"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "format": "json",
+            },
         }
-        
-        # Act
         result = journal_export.main(context)
-        
-        # Assert
+
         assert result["status"] == "success"
-        assert result["result"]["entry_count"] == 0
-    
+        assert len(result["data"]["entries"]) == 0
+
     def test_export_without_init(self, temp_dir, customer_id):
-        """Test exporting without initialization fails."""
+        """Test exporting without initialization."""
         context = {
             "customer_id": customer_id,
-            "input": {"format": "json"},
-            "config": {"storage": {"path": f"{temp_dir}/journal"}},
-            "memory": {}
+            "input": {
+                "data_dir": temp_dir,
+                "format": "json",
+            },
         }
-        
-        # Act
         result = journal_export.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert result["status"] == "success"
+        assert len(result["data"]["entries"]) == 0

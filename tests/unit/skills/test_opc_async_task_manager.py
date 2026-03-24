@@ -1,8 +1,7 @@
 """Unit tests for opc-async-task-manager skill.
 
-TDD Approach: Tests cover task initialization, creation, execution, and status queries
+TDD Approach: Tests cover initialization, recording, searching, and exporting
 """
-import importlib.util
 import json
 import os
 import shutil
@@ -12,62 +11,38 @@ from pathlib import Path
 
 import pytest
 
-# Ensure project root is in path
+# Ensure project root is in path for imports
 _PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-# Pre-load ALL src submodules before loading src package itself
-# This is needed because src/__init__.py imports from src.exceptions etc.
-_src_dir = Path(_PROJECT_ROOT) / "src"
-for _py_file in _src_dir.rglob("*.py"):
-    if _py_file.name == "__init__.py":
-        continue
-    _rel_path = _py_file.relative_to(_PROJECT_ROOT)
-    _parts = list(_rel_path.parts[:-1]) + [_py_file.stem]
-    _module_name = ".".join(_parts)
-    if _module_name not in sys.modules:
-        _spec = importlib.util.spec_from_file_location(_module_name, _py_file)
-        _mod = importlib.util.module_from_spec(_spec)
-        sys.modules[_module_name] = _mod
-        _spec.loader.exec_module(_mod)
+# Import src package normally - this loads everything correctly
+import src
 
-# Now load src package
-if "src" not in sys.modules:
-    _src_spec = importlib.util.spec_from_file_location("src", _src_dir / "__init__.py")
-    _src_module = importlib.util.module_from_spec(_src_spec)
-    sys.modules["src"] = _src_module
-    _src_spec.loader.exec_module(_src_module)
-
-# Load module helper - use exec() with proper sys.path setup
+# Load module helper - execute skill script with src available in namespace
 def load_module(module_name, file_path):
-    """Load a skill module by executing it with proper import context."""
-    project_root = str(Path(__file__).parent.parent.parent.parent.resolve())
+    """Load a skill module by executing it with src in namespace."""
+    # Create namespace with src module already available
+    namespace = {
+        '__name__': module_name,
+        '__file__': str(file_path),
+        'src': src,  # Make src available directly
+    }
     
-    _original_path = sys.path.copy()
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
+    # Read and execute the skill script
+    code = file_path.read_text()
+    exec(code, namespace)
     
-    try:
-        namespace = {
-            '__name__': module_name,
-            '__file__': str(file_path),
-        }
-        
-        code = file_path.read_text()
-        exec(code, namespace)
-        
-        class SkillModule:
-            pass
-        
-        module = SkillModule()
-        for key, value in namespace.items():
-            if not key.startswith('__'):
-                setattr(module, key, value)
-        
-        return module
-    finally:
-        sys.path[:] = _original_path
+    # Return a simple module-like object
+    class SkillModule:
+        pass
+    
+    module = SkillModule()
+    for key, value in namespace.items():
+        if not key.startswith('__') and key != 'src':
+            setattr(module, key, value)
+    
+    return module
 
 
 # Load the skill scripts
