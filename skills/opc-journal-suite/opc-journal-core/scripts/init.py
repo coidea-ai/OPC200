@@ -16,9 +16,20 @@ import os
 import sqlite3
 from typing import Any, Optional
 
-from src.journal.core import JournalManager
-from src.journal.storage import SQLiteStorage
-from src.utils.logging import Logger, get_logger
+# Try import with fallback to ensure src is found
+try:
+    from src.journal.core import JournalManager
+    from src.journal.storage import SQLiteStorage
+    from src.utils.logging import Logger, get_logger
+except ImportError as e:
+    # If import fails, try adding current working directory
+    import os as _os
+    _cwd = _os.getcwd()
+    if _cwd not in sys.path:
+        sys.path.insert(0, _cwd)
+    from src.journal.core import JournalManager
+    from src.journal.storage import SQLiteStorage
+    from src.utils.logging import Logger, get_logger
 
 
 def main(context: dict) -> dict:

@@ -21,18 +21,28 @@ os.environ["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + os.environ.get("PYTHONPA
 # Pre-import src package to ensure it's available for skill scripts
 import src
 
-# Load module helper - simpler approach using regular import after path setup
+# Load module helper - use exec() in current context to avoid importlib.util isolation
 def load_module(module_name, file_path):
-    """Load a skill module by dynamically importing it."""
-    # Add the skills directory to path for relative imports within skills
-    skills_dir = str(file_path.parent)
-    if skills_dir not in sys.path:
-        sys.path.insert(0, skills_dir)
+    """Load a skill module by executing it in current context."""
+    # Create a module-like namespace
+    namespace = {
+        '__name__': module_name,
+        '__file__': str(file_path),
+    }
     
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+    # Read and execute the skill script in current context
+    code = file_path.read_text()
+    exec(code, namespace)
+    
+    # Return a simple module-like object with the exported functions
+    class SkillModule:
+        pass
+    
+    module = SkillModule()
+    for key, value in namespace.items():
+        if not key.startswith('__'):
+            setattr(module, key, value)
+    
     return module
 
 
