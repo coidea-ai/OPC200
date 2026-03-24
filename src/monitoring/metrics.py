@@ -85,6 +85,7 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a counter metric."""
+        counter: Any
         if PROMETHEUS_AVAILABLE:
             counter = Counter(
                 name,
@@ -106,6 +107,7 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a histogram metric."""
+        histogram: Any
         if PROMETHEUS_AVAILABLE:
             if buckets:
                 histogram = Histogram(
@@ -135,6 +137,7 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a gauge metric."""
+        gauge: Any
         if PROMETHEUS_AVAILABLE:
             gauge = Gauge(
                 name,
