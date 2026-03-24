@@ -116,7 +116,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install mypy types-all
+          pip install mypy
 
       - name: Run mypy type checking
         run: mypy src --ignore-missing-imports --show-error-codes
@@ -465,14 +465,13 @@ jobs:
   notify:
     name: 📢 Notify
     runs-on: ubuntu-latest
-    needs: [code-quality, test-matrix, build-image, deploy-staging, deploy-pilot, deploy-production]
+    needs: [code-quality, test-matrix, build-image]
     if: always()
     steps:
-      - name: Send notification
+      - name: Send Slack notification
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           channel: '#opc200-deployments'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
