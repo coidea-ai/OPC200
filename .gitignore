@@ -1,6 +1,5 @@
 # OPC200
 
-src/
 *.pyc
 __pycache__/
 *.pyo
