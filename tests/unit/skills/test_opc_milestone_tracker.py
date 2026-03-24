@@ -2,7 +2,6 @@
 
 TDD Approach: Tests cover milestone initialization, detection, and notification
 """
-import importlib.util
 import json
 import os
 import shutil
@@ -12,16 +11,7 @@ from pathlib import Path
 
 import pytest
 
-# Ensure project root is in path for all skill imports
-_PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-os.environ["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + os.environ.get("PYTHONPATH", "")
-
-# Pre-import src package to ensure it's available for skill scripts
-import src
-
-# Load module helper - use exec() in current context to avoid importlib.util isolation
+# Load module helper - use exec() in current context
 def load_module(module_name, file_path):
     """Load a skill module by executing it in current context."""
     # Create a module-like namespace
