@@ -3,33 +3,22 @@
 This module handles the initialization of the journal core skill,
 including configuration loading and database setup.
 """
-# Add project root to path for imports (must be first)
-import sys
-from pathlib import Path
-_script_dir = Path(__file__).parent.resolve()
-_project_root = _script_dir.parent.parent.parent.parent.resolve()
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
 import json
 import os
 import sqlite3
+import sys
+from pathlib import Path
 from typing import Any, Optional
 
-# Try import with fallback to ensure src is found
-try:
-    from src.journal.core import JournalManager
-    from src.journal.storage import SQLiteStorage
-    from src.utils.logging import Logger, get_logger
-except ImportError as e:
-    # If import fails, try adding current working directory
-    import os as _os
-    _cwd = _os.getcwd()
-    if _cwd not in sys.path:
-        sys.path.insert(0, _cwd)
-    from src.journal.core import JournalManager
-    from src.journal.storage import SQLiteStorage
-    from src.utils.logging import Logger, get_logger
+# Add parent directory to path for local imports
+_script_dir = Path(__file__).parent.resolve()
+_skill_root = _script_dir.parent.resolve()
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
+
+from journal.core import JournalManager
+from journal.storage import SQLiteStorage
+from utils.logging import Logger, get_logger
 
 
 def main(context: dict) -> dict:

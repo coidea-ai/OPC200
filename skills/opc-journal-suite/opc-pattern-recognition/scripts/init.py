@@ -7,14 +7,18 @@ This module handles the initialization of the pattern recognition skill.
 import sys
 from pathlib import Path
 _script_dir = Path(__file__).parent.resolve()
-_project_root = _script_dir.parent.parent.parent.parent.resolve()
+_skill_root = _script_dir.parent.resolve()
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 import sys
 from pathlib import Path
 _script_dir = Path(__file__).parent.resolve()
-_project_root = _script_dir.parent.parent.parent.parent.resolve()
+_skill_root = _script_dir.parent.resolve()
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -22,8 +26,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.patterns.analyzer import PatternStore
-from src.utils.logging import get_logger
+from patterns.analyzer import PatternStore
+from utils.logging import get_logger
 
 
 def main(context: dict) -> dict:

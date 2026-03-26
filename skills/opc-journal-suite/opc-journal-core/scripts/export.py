@@ -7,14 +7,18 @@ This module handles exporting journal entries to various formats.
 import sys
 from pathlib import Path
 _script_dir = Path(__file__).parent.resolve()
-_project_root = _script_dir.parent.parent.parent.parent.resolve()
+_skill_root = _script_dir.parent.resolve()
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 import sys
 from pathlib import Path
 _script_dir = Path(__file__).parent.resolve()
-_project_root = _script_dir.parent.parent.parent.parent.resolve()
+_skill_root = _script_dir.parent.resolve()
+if str(_skill_root) not in sys.path:
+    sys.path.insert(0, str(_skill_root))
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -23,9 +27,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from src.journal.core import JournalManager
-from src.journal.storage import SQLiteStorage
-from src.utils.logging import get_logger
+from journal.core import JournalManager
+from journal.storage import SQLiteStorage
+from utils.logging import get_logger
 
 
 def export_to_markdown(entries: list, include_metadata: bool = True) -> str:
