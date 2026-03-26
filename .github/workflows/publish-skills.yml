@@ -45,7 +45,7 @@ jobs:
         run: npm install -g clawhub
 
       - name: Verify ClawHub CLI
-        run: clawhub --version
+        run: clawhub -V
 
       - name: Configure ClawHub Auth
         run: |
