@@ -4,19 +4,24 @@
 
 OPC200 User Journal Experience Suite - Complete growth tracking, memory management, and insight generation for One Person Companies (OPC). Includes journaling, pattern recognition, milestone tracking, async task management, and more.
 
+This is a **coordinating skill** that routes user intents to appropriate sub-skills.
+
 ## Install
+
+Install the full suite (coordinating skill + all sub-skills):
+
+```bash
+clawhub install coidea/opc-journal-suite
+```
+
+Or install individual sub-skills:
 
 ```bash
 clawhub install coidea/opc-journal-core
 clawhub install coidea/opc-pattern-recognition
 clawhub install coidea/opc-milestone-tracker
 clawhub install coidea/opc-async-task-manager
-```
-
-Or install the full suite:
-
-```bash
-clawhub install coidea/opc-journal-suite
+clawhub install coidea/opc-insight-generator
 ```
 
 ## Overview
@@ -29,40 +34,73 @@ OPC Journal Suite is a collection of OpenClaw Skills designed for One Person Com
 - ⏰ **Async Task Management** - 7×24 background task execution and status sync
 - 💡 **Insight Generation** - Personalized recommendations based on historical data
 
-## Skills in this Suite
-
-| Skill | Purpose | Trigger |
-|-------|---------|---------|
-| `opc-journal-core` | Core journaling functions | "journal", "log", "summarize" |
-| `opc-pattern-recognition` | Pattern analysis | "analyze my habits", "why do I always..." |
-| `opc-milestone-tracker` | Milestone tracking | Auto-trigger + "I completed..." |
-| `opc-async-task-manager` | Async tasks | "run in background", "get results tomorrow" |
-| `opc-insight-generator` | Insight generation | "give me advice", "what should I do" |
-
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    OPC Journal Suite                         │
+│              (Coordinating Skill - Unified Entry)            │
 ├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Journal    │  │   Pattern    │  │  Milestone   │      │
-│  │    Core      │◄─┤ Recognition  │◄─┤   Tracker    │      │
-│  └──────┬───────┘  └──────────────┘  └──────────────┘      │
-│         │                                                   │
-│         │  ┌──────────────┐  ┌──────────────┐              │
-│         └──┤    Async     │  │   Insight    │              │
-│            │  Task Mgr    │  │  Generator   │              │
-│            └──────────────┘  └──────────────┘              │
-│                                                             │
-│  Shared Storage:                                            │
-│  ├── journal/entries/        # Journal entries              │
-│  ├── journal/insights/       # Extracted insights           │
-│  ├── journal/milestones/     # Milestones                   │
-│  └── tasks/async/            # Async tasks                  │
-│                                                             │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │           Intent Detection & Routing                │   │
+│  │         (scripts/coordinate.py - 25 tests)          │   │
+│  └───────────────────────┬─────────────────────────────┘   │
+│                          │                                  │
+│         ┌────────────────┼────────────────┐               │
+│         │                │                │               │
+│         ▼                ▼                ▼               │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐      │
+│  │   Journal    │ │   Pattern    │ │  Milestone   │      │
+│  │    Core      │ │ Recognition  │ │   Tracker    │      │
+│  └──────┬───────┘ └──────────────┘ └──────────────┘      │
+│         │                                                  │
+│         │  ┌──────────────┐ ┌──────────────┐             │
+│         └──┤    Async     │ │   Insight    │             │
+│            │  Task Mgr    │ │  Generator   │             │
+│            └──────────────┘ └──────────────┘             │
+│                                                              │
 └─────────────────────────────────────────────────────────────┘
+```
+
+## Unified Entry Point
+
+Instead of calling individual sub-skills, use the suite as a unified entry point:
+
+### Intent-Based Routing
+
+The suite automatically detects user intent and routes to the appropriate sub-skill:
+
+| User Says | Detected Intent | Routed To |
+|-----------|-----------------|-----------|
+| "Record my progress today" | `journal_record` | opc-journal-core |
+| "分析我的工作习惯" | `pattern_analyze` | opc-pattern-recognition |
+| "Detect milestones in my journey" | `milestone_detect` | opc-milestone-tracker |
+| "Run this in background" | `task_create` | opc-async-task-manager |
+| "Give me advice on what to do" | `insight_generate` | opc-insight-generator |
+
+### Usage
+
+```python
+# Unified entry - suite routes to correct sub-skill
+result = opc_journal_suite.coordinate(
+    customer_id="OPC-001",
+    input={"text": "Record my progress today"}
+)
+
+# Result includes delegation info
+{
+    "status": "success",
+    "result": {
+        "action": "delegate",
+        "delegation": {
+            "intent": "journal_record",
+            "confidence": 0.85,
+            "target_skill": "opc-journal-core",
+            "customer_id": "OPC-001"
+        }
+    }
+}
 ```
 
 ## Quick Start
@@ -261,44 +299,63 @@ opc-journal-suite/
 ├── README.md
 ├── SKILL.md                      # This file
 ├── config.yml                    # Default configuration
+├── scripts/
+│   └── coordinate.py             # Intent routing (25 tests)
+├── tests/
+│   ├── __init__.py
+│   └── test_coordinate.py        # Coordination tests (25 cases)
 │
-├── opc-journal-core/
+├── opc-journal-core/             # Sub-skill (11 tests)
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   ├── init.py
 │   │   ├── record.py
-│   │   ├── query.py
-│   │   └── digest.py
-│   └── templates/
-│       └── entry_template.yml
+│   │   ├── search.py
+│   │   └── export.py
+│   └── tests/
+│       └── test_core.py
 │
-├── opc-pattern-recognition/
+├── opc-pattern-recognition/      # Sub-skill (4 tests)
 │   ├── SKILL.md
-│   └── scripts/
-│       ├── analyzer.py
-│       ├── patterns.py
-│       └── predictor.py
+│   ├── scripts/
+│   │   └── analyze.py
+│   └── tests/
+│       └── test_patterns.py
 │
-├── opc-milestone-tracker/
+├── opc-milestone-tracker/        # Sub-skill (6 tests)
 │   ├── SKILL.md
-│   └── scripts/
-│       ├── detector.py
-│       ├── reporter.py
-│       └── celebration.py
+│   ├── scripts/
+│   │   └── detect.py
+│   └── tests/
+│       └── test_milestones.py
 │
-├── opc-async-task-manager/
+├── opc-async-task-manager/       # Sub-skill (6 tests)
 │   ├── SKILL.md
-│   └── scripts/
-│       ├── scheduler.py
-│       ├── executor.py
-│       └── notifier.py
+│   ├── scripts/
+│   │   ├── create.py
+│   │   └── status.py
+│   └── tests/
+│       └── test_tasks.py
 │
-└── opc-insight-generator/
+└── opc-insight-generator/        # Sub-skill (3 tests)
     ├── SKILL.md
-    └── scripts/
-        ├── generator.py
-        └── recommender.py
+    ├── scripts/
+    │   └── daily_summary.py
+    └── tests/
+        └── test_insights.py
 ```
+
+## Test Coverage
+
+| Component | Tests | Status |
+|-----------|-------|--------|
+| opc-journal-suite (coordination) | 25 | ✅ Pass |
+| opc-journal-core | 11 | ✅ Pass |
+| opc-pattern-recognition | 4 | ✅ Pass |
+| opc-milestone-tracker | 6 | ✅ Pass |
+| opc-async-task-manager | 6 | ✅ Pass |
+| opc-insight-generator | 3 | ✅ Pass |
+| **Total** | **55** | ✅ **All Pass** |
 
 ## Development Roadmap
 
