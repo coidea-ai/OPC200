@@ -2,38 +2,38 @@
 
 ## Description
 
-OPC Journal Suite 模式识别模块 - 分析用户行为模式、工作习惯、决策风格，提供个性化洞察和建议。
+OPC Journal Suite Pattern Recognition Module - Analyzes user behavioral patterns, work habits, decision styles, and provides personalized insights and recommendations.
 
 ## When to use
 
-- 用户问"为什么我总是在..."、"分析我的习惯"
-- 自动生成周报/月报洞察
-- 预测用户可能遇到的困难
-- 优化 Agent 与用户的协作方式
+- User asks "Why do I always...", "Analyze my habits"
+- Auto-generate weekly/monthly insights
+- Predict potential difficulties user may encounter
+- Optimize Agent collaboration with user
 
 ## Tools
 
-- `memory_search` - 检索历史数据进行分析
-- `read` - 读取 Journal 条目
-- `write` - 写入分析报告
+- `memory_search` - Retrieve historical data for analysis
+- `read` - Read Journal entries
+- `write` - Write analysis reports
 
 ## Analysis Dimensions
 
-### 1. 工作节奏 (Work Rhythm)
+### 1. Work Rhythm
 
 ```python
 analyze_work_rhythm(
     customer_id="OPC-001",
     metrics=[
-        "productive_hours",      # 高效时段
-        "peak_focus_duration",   # 最长专注时间
-        "break_patterns",        # 休息模式
-        "weekly_energy_curve"    # 周能量曲线
+        "productive_hours",      # Peak productivity hours
+        "peak_focus_duration",   # Maximum focus duration
+        "break_patterns",        # Break patterns
+        "weekly_energy_curve"    # Weekly energy curve
     ]
 )
 ```
 
-**输出示例:**
+**Output Example:**
 ```yaml
 work_rhythm:
   productive_hours:
@@ -47,7 +47,7 @@ work_rhythm:
   low_energy_periods:
     - day: "monday"
       time_range: "09:00-11:00"
-      pattern: "周一早晨启动困难"
+      pattern: "Monday morning startup difficulty"
       
   recommendations:
     - "将重要决策安排在周三下午"

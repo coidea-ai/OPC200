@@ -2,33 +2,33 @@
 
 ## Description
 
-OPC Journal Suite 核心模块 - 提供日志记录、检索、关联和摘要生成的基础能力。
+OPC Journal Suite Core Module - Provides foundational capabilities for journal recording, retrieval, linking, and summary generation.
 
 ## When to use
 
-- 用户说"记录一下"、"总结一下"、"journal"
-- 需要检索历史对话或决策
-- 生成周报/月报/百日报告
-- 新用户 onboarding 初始化
+- User says "log this", "summarize", "journal"
+- Need to retrieve historical conversations or decisions
+- Generate weekly/monthly/100-day reports
+- New user onboarding initialization
 
 ## Tools
 
-- `memory_search` - 检索历史记忆
-- `memory_get` - 获取具体记忆内容
-- `write` - 写入日志文件
-- `read` - 读取历史日志
-- `sessions_list` - 查看会话历史
+- `memory_search` - Retrieve historical memories
+- `memory_get` - Get specific memory content
+- `write` - Write to journal files
+- `read` - Read historical journals
+- `sessions_list` - View session history
 
 ## Usage
 
 ### Initialize Journal
 
 ```python
-# 新用户初始化
+# Initialize new user
 init_journal(
     customer_id="OPC-001",
     day=1,
-    goals=["完成产品MVP", "获得首个付费用户"],
+    goals=["Complete product MVP", "Acquire first paying customer"],
     preferences={
         "communication_style": "friendly_professional",
         "work_hours": "09:00-18:00",
@@ -40,10 +40,10 @@ init_journal(
 ### Record Entry
 
 ```python
-# 记录单条日志
+# Record single journal entry
 entry = create_entry(
     customer_id="OPC-001",
-    content="今天完成了用户注册功能，但遇到数据库连接问题",
+    content="Completed user registration feature today, but encountered database connection issues",
     metadata={
         "agents_involved": ["DevAgent", "Support"],
         "tasks_completed": ["FEAT-001"],

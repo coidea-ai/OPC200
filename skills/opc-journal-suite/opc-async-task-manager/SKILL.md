@@ -2,31 +2,31 @@
 
 ## Description
 
-OPC Journal Suite 异步任务管理模块 - 支持 7×24 后台任务执行，让用户可以"委托后放心离开"，第二天早上收到结果。
+OPC Journal Suite Async Task Management Module - Supports 7×24 background task execution, allowing users to "delegate and rest assured", receiving results the next morning.
 
 ## When to use
 
-- 用户说"后台执行"、"明天早上给我结果"、"我睡了，继续处理"
-- 长时间运行的研究任务
-- 需要等待外部 API 的任务
-- 非紧急但重要的后台处理
+- User says "run in background", "give me results tomorrow morning", "I'm going to sleep, keep processing"
+- Long-running research tasks
+- Tasks waiting for external APIs
+- Non-urgent but important background processing
 
 ## Core Concepts
 
-### 任务生命周期
+### Task Lifecycle
 
 ```
 Created → Queued → Assigned → Running → Complete/Failed → Notified
    │          │          │          │            │           │
-   │          │          │          │            │           └── 通知用户
-   │          │          │          │            └── 结果处理
-   │          │          │          └── 执行中（可监控）
-   │          │          └── 分配给 Agent
-   │          └── 等待资源
-   └── 用户创建任务
+   │          │          │          │            │           └── Notify user
+   │          │          │          │            └── Result processing
+   │          │          │          └── Running (monitorable)
+   │          │          └── Assigned to Agent
+   │          └── Waiting for resources
+   └── User creates task
 ```
 
-### 任务类型
+### Task Types
 
 | 类型 | 执行时间 | 示例 | 优先级 |
 |------|---------|------|--------|

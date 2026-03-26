@@ -2,32 +2,32 @@
 
 ## Description
 
-OPC Journal Suite 里程碑追踪模块 - 自动检测用户旅程中的重要时刻，生成成就报告，提供持续的动力和方向感。
+OPC Journal Suite Milestone Tracking Module - Automatically detects important moments in the user journey, generates achievement reports, and provides continuous motivation and direction.
 
 ## When to use
 
-- 用户说"我完成了..."、"终于搞定了"
-- 自动检测里程碑（首次发布、首笔销售等）
-- 生成百日报告、年度回顾
-- 需要激励用户继续前行
+- User says "I completed...", "Finally done"
+- Auto-detect milestones (first launch, first sale, etc.)
+- Generate 100-day reports, annual reviews
+- Need to motivate user to keep going
 
 ## Milestone Types
 
-### 1. 技术里程碑
+### 1. Technical Milestones
 
 ```yaml
 technical_milestones:
   first_deployment:
-    description: "首次独立部署应用"
+    description: "First independent app deployment"
     criteria:
-      - "完成从开发到生产的完整流程"
-      - "应用可公开访问"
-    celebration: "🚀 里程碑: 首次部署！"
+      - "Complete flow from development to production"
+      - "Application publicly accessible"
+    celebration: "🚀 Milestone: First Deployment!"
     
   first_contribution:
-    description: "首次开源贡献"
+    description: "First open source contribution"
     criteria:
-      - "向开源项目提交 PR"
+      - "Submit PR to open source project"
       - "PR 被合并"
     celebration: "🌟 里程碑: 成为开源贡献者！"
     

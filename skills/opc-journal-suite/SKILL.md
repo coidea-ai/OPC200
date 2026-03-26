@@ -2,7 +2,7 @@
 
 ## Description
 
-OPC200 用户日志体验套件 - 为一人公司（OPC）提供完整的成长追踪、记忆管理和洞察生成能力。包含 Journal 记录、模式识别、里程碑追踪、异步任务管理等模块。
+OPC200 User Journal Experience Suite - Complete growth tracking, memory management, and insight generation for One Person Companies (OPC). Includes journaling, pattern recognition, milestone tracking, async task management, and more.
 
 ## Install
 
@@ -21,23 +21,23 @@ clawhub install coidea/opc-journal-suite
 
 ## Overview
 
-OPC Journal Suite 是一套专门为 One Person Company (OPC) 设计的 OpenClaw Skills，提供：
+OPC Journal Suite is a collection of OpenClaw Skills designed for One Person Company (OPC), providing:
 
-- 📔 **智能日志记录** - 自动记录、关联、检索用户旅程
-- 🧠 **行为模式识别** - 识别工作习惯、决策模式、成长轨迹  
-- 🎯 **里程碑追踪** - 自动检测重要时刻，生成成就报告
-- ⏰ **异步任务管理** - 7×24 后台任务执行与状态同步
-- 💡 **洞察生成** - 基于历史数据提供个性化建议
+- 📔 **Smart Journaling** - Automatic recording, linking, and retrieval of user journey
+- 🧠 **Behavioral Pattern Recognition** - Identify work habits, decision patterns, growth trajectory
+- 🎯 **Milestone Tracking** - Auto-detect important moments, generate achievement reports
+- ⏰ **Async Task Management** - 7×24 background task execution and status sync
+- 💡 **Insight Generation** - Personalized recommendations based on historical data
 
 ## Skills in this Suite
 
 | Skill | Purpose | Trigger |
 |-------|---------|---------|
-| `opc-journal-core` | 核心日志功能 | "记录", "journal", "总结一下" |
-| `opc-pattern-recognition` | 模式识别 | "分析我的习惯", "为什么我总是..." |
-| `opc-milestone-tracker` | 里程碑追踪 | 自动触发 + "我完成了..." |
-| `opc-async-task-manager` | 异步任务 | "后台执行", "明早给我结果" |
-| `opc-insight-generator` | 洞察生成 | "给我建议", "我该怎么办" |
+| `opc-journal-core` | Core journaling functions | "journal", "log", "summarize" |
+| `opc-pattern-recognition` | Pattern analysis | "analyze my habits", "why do I always..." |
+| `opc-milestone-tracker` | Milestone tracking | Auto-trigger + "I completed..." |
+| `opc-async-task-manager` | Async tasks | "run in background", "get results tomorrow" |
+| `opc-insight-generator` | Insight generation | "give me advice", "what should I do" |
 
 ## Architecture
 
@@ -57,10 +57,10 @@ OPC Journal Suite 是一套专门为 One Person Company (OPC) 设计的 OpenClaw
 │            └──────────────┘  └──────────────┘              │
 │                                                             │
 │  Shared Storage:                                            │
-│  ├── journal/entries/        # 日志条目                     │
-│  ├── journal/insights/       # 提炼洞察                     │
-│  ├── journal/milestones/     # 里程碑                       │
-│  └── tasks/async/            # 异步任务                     │
+│  ├── journal/entries/        # Journal entries              │
+│  ├── journal/insights/       # Extracted insights           │
+│  ├── journal/milestones/     # Milestones                   │
+│  └── tasks/async/            # Async tasks                  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -76,7 +76,7 @@ opc-journal-init --customer-id OPC-001 --day 1
 
 ### 2. Record Journal Entry
 
-User: "今天完成了产品原型，但是有点担心技术选型"
+User: "Just finished the product prototype, but a bit worried about tech stack choices"
 
 System automatically:
 - Creates journal entry JE-20260321-001
@@ -88,49 +88,49 @@ System automatically:
 
 Auto-triggered every Sunday:
 ```
-📊 本周模式分析
+📊 Weekly Pattern Analysis
 
-工作节奏:
-• 高效时段: 周三下午、周五上午
-• 低谷时段: 周一早晨
-• 平均专注时长: 2.3 小时
+Work Rhythm:
+• Peak hours: Wed afternoon, Fri morning
+• Low hours: Mon morning
+• Average focus duration: 2.3 hours
 
-决策模式:
-• 风险偏好: 保守型
-• 常见犹豫点: 技术选型、定价策略
-• 求助时机: 通常在问题出现 2 天后
+Decision Patterns:
+• Risk appetite: Conservative
+• Common hesitation points: Tech stack, pricing strategy
+• Help-seeking timing: Usually 2 days after problem occurs
 
-建议:
-"尝试将重要决策安排在周三下午"
-"考虑提前 1 天寻求技术建议"
+Recommendations:
+"Try scheduling important decisions for Wed afternoon"
+"Consider seeking tech advice 1 day earlier"
 ```
 
 ### 4. Milestone Detection
 
 Auto-detected:
 ```
-🎉 里程碑达成: 首次产品发布
+🎉 Milestone Achieved: First Product Launch
 
 Day: 45
 Time: 2026-03-21 14:30
-Context: 独立完成从想法到上线的完整流程
+Context: Independently completed full cycle from idea to launch
 
-Previous milestone: 完成 MVP (Day 28)
-Next predicted: 首笔销售 (预计 Day 52)
+Previous milestone: MVP Completed (Day 28)
+Next predicted: First Sale (Est. Day 52)
 ```
 
 ### 5. Async Task Example
 
-User: "我需要一份竞品分析报告，明天早上要"
+User: "I need a competitive analysis report, due tomorrow morning"
 
-Bot: "收到！已创建异步任务 #RESEARCH-007
-     分配给 Research Agent
-     预计完成: 明早 8:00
-     完成后将发送飞书通知并生成摘要"
+Bot: "Got it! Created async task #RESEARCH-007
+     Assigned to Research Agent
+     Estimated completion: Tomorrow 8:00 AM
+     Will send Feishu notification and generate summary when done"
 
 [Next morning]
-Bot: "☀️ #RESEARCH-007 完成！
-     发现 3 个关键洞察，已同步到您的 Journal"
+Bot: "☀️ #RESEARCH-007 Complete!
+     Discovered 3 key insights, synced to your Journal"
 
 ## Configuration
 
@@ -159,7 +159,7 @@ async_task:
 ## Integration with OPC200
 
 ```yaml
-# OPC200 项目集成配置
+# OPC200 Project Integration Configuration
 
 opc200:
   deployment_modes:
