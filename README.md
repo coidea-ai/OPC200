@@ -118,7 +118,7 @@ opc200/
 npm install -g openclaw
 
 # 2. 安装 OPC Journal Suite
-clawhub install coidea/opc-journal-suite
+clawhub install coidea-ai/opc-journal-suite
 
 # 3. 初始化你的 100 天旅程
 openclaw run "opc-journal-init --day 1 --goals '完成产品原型,获得首个付费用户'"
