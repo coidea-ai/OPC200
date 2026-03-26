@@ -49,8 +49,7 @@ jobs:
 
       - name: Configure ClawHub Auth
         run: |
-          mkdir -p ~/.config/clawhub
-          echo "${{ secrets.CLAWHUB_TOKEN }}" > ~/.config/clawhub/token
+          clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
           clawhub whoami
 
       - name: Dry Run - Validate Suite Package
@@ -102,8 +101,7 @@ jobs:
 
       - name: Configure ClawHub Auth
         run: |
-          mkdir -p ~/.config/clawhub
-          echo "${{ secrets.CLAWHUB_TOKEN }}" > ~/.config/clawhub/token
+          clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
 
       - name: Dry Run - Validate ${{ matrix.skill.dir }}
         if: ${{ github.event.inputs.dry_run == 'true' }}
