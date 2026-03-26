@@ -1,104 +1,46 @@
 """opc-milestone-tracker detect module.
 
-This module detects milestone events from journal entries.
+Detects milestones in user journey.
 """
-
-# Add project root to path for imports (must be first)
-import sys
-from pathlib import Path
-_script_dir = Path(__file__).parent.resolve()
-_skill_root = _script_dir.parent.resolve()
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-import sys
-from pathlib import Path
-_script_dir = Path(__file__).parent.resolve()
-_skill_root = _script_dir.parent.resolve()
-if str(_skill_root) not in sys.path:
-    sys.path.insert(0, str(_skill_root))
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
 import json
-import re
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
-
-from journal.core import JournalManager
-from journal.storage import SQLiteStorage
-from utils.logging import get_logger
 
 
-# Milestone detection patterns
-MILESTONE_PATTERNS = {
-    "first_deployment": {
-        "category": "technical",
-        "keywords": ["部署", "上线", "发布", "production", "go live", "launched"],
-        "evidence_requirements": ["url_accessible"],
-        "celebration": "🚀 里程碑: 首次部署！"
+MILESTONE_DEFINITIONS = {
+    "first_product_launch": {
+        "keywords": ["launched", "shipped", "released", "live"],
+        "description": "First product launch"
     },
-    "first_sale": {
-        "category": "business",
-        "keywords": ["收款", "订单", "销售", "付费", "成交", "sold", "payment received"],
-        "evidence_requirements": [],
-        "celebration": "💰 里程碑: 首笔销售！商业模式验证成功！"
+    "first_customer": {
+        "keywords": ["first customer", "first user", "first sale", "paid user"],
+        "description": "Acquired first customer"
+    },
+    "revenue_milestone": {
+        "keywords": ["$100", "$1k", "$10k", "mrr", "revenue"],
+        "description": "Revenue milestone"
     },
     "mvp_complete": {
-        "category": "business",
-        "keywords": ["MVP完成", "MVP done", "最小可用产品", "prototype complete"],
-        "evidence_requirements": [],
-        "celebration": "✅ 里程碑: MVP 完成！"
-    },
-    "first_contribution": {
-        "category": "technical",
-        "keywords": ["PR合并", "开源贡献", "contribution merged", "open source"],
-        "evidence_requirements": [],
-        "celebration": "🌟 里程碑: 成为开源贡献者！"
-    },
-    "multi_agent_workflow": {
-        "category": "growth",
-        "keywords": ["多Agent协作", "multi-agent", "agent协作", "协作完成"],
-        "evidence_requirements": ["multiple_agents"],
-        "celebration": "🎭 里程碑: 首次多 Agent 协作完成任务！"
-    },
-    "first_agent_delegation": {
-        "category": "growth",
-        "keywords": ["委托Agent", "delegate", "让Agent", "交给Agent"],
-        "evidence_requirements": [],
-        "celebration": "🤖 里程碑: 首次 Agent 委托！"
-    },
-    "hundred_days": {
-        "category": "growth",
-        "keywords": ["100天", "百日", "100 days", "hundred days"],
-        "evidence_requirements": [],
-        "celebration": "🏆 里程碑: 百日坚持！"
+        "keywords": ["mvp done", "mvp complete", "prototype done"],
+        "description": "MVP completed"
     }
 }
 
 
 def main(context: dict) -> dict:
-    """Detect milestone events from journal entries.
+    """Detect milestones from journal entries.
     
     Args:
         context: Dictionary containing:
             - customer_id: The customer identifier
-            - input: Detection parameters
-            - config: Skill configuration
+            - input: Entry content or entries to analyze
             - memory: Memory context
     
     Returns:
         Dictionary with status, result, and message
     """
-    logger = get_logger("opc-milestone-tracker.detect")
-    
     try:
         customer_id = context.get("customer_id")
         input_data = context.get("input", {})
-        config = context.get("config", {})
         
         if not customer_id:
             return {
@@ -107,172 +49,51 @@ def main(context: dict) -> dict:
                 "message": "customer_id is required"
             }
         
-        logger.info(f"Detecting milestones for customer: {customer_id}")
-        
-        # Get storage paths
-        journal_path = Path(
-            config.get("journal_storage", {}).get("path", f"customers/{customer_id}/journal")
-        )
-        milestones_path = Path(
-            config.get("storage", {}).get("path", f"customers/{customer_id}/milestones")
-        )
-        
-        # Load existing milestones
-        milestones_file = milestones_path / "milestones.json"
-        if milestones_file.exists():
-            with open(milestones_file, "r", encoding="utf-8") as f:
-                milestones_data = json.load(f)
-        else:
-            milestones_data = {"customer_id": customer_id, "milestones": [], "stats": {}}
-        
-        # Get already achieved milestones
-        achieved_types = {m["type"] for m in milestones_data.get("milestones", []) if m.get("status") == "achieved"}
-        
-        # Load journal entries
-        db_path = journal_path / "journal.db"
-        entries = []
-        if db_path.exists():
-            storage = SQLiteStorage(db_path=db_path)
-            conn = storage.connection
-            manager = JournalManager(conn)
-            entries = manager.list_entries(limit=10000)
-        
-        # Also check input for direct milestone detection
         content = input_data.get("content", "")
-        agents_involved = input_data.get("agents_involved", [])
+        day = input_data.get("day", 1)
         
-        detected_milestones = []
+        # Simple keyword-based detection
+        detected = []
+        content_lower = content.lower()
         
-        # Detect from journal entries
-        if entries:
-            for entry in entries:
-                entry_agents = entry.metadata.get("agents_involved", [])
-                for milestone_type, pattern in MILESTONE_PATTERNS.items():
-                    # Skip already achieved milestones
-                    if milestone_type in achieved_types:
-                        continue
-                    
-                    # Check keywords
-                    if any(kw in entry.content for kw in pattern["keywords"]):
-                        # Check additional requirements
-                        meets_requirements = True
-                        for req in pattern["evidence_requirements"]:
-                            if req == "multiple_agents" and len(entry_agents) < 2:
-                                meets_requirements = False
-                                break
-                        
-                        if meets_requirements:
-                            milestone = {
-                                "type": milestone_type,
-                                "category": pattern["category"],
-                                "detected_from": "journal_entry",
-                                "entry_id": entry.id,
-                                "date": entry.created_at.isoformat(),
-                                "confidence": calculate_confidence(entry.content, pattern["keywords"]),
-                                "celebration": pattern["celebration"],
-                                "status": "detected"
-                            }
-                            if not any(m["type"] == milestone_type for m in detected_milestones):
-                                detected_milestones.append(milestone)
-        
-        # Detect from input content
-        if content:
-            for milestone_type, pattern in MILESTONE_PATTERNS.items():
-                if milestone_type in achieved_types:
-                    continue
-                
-                if any(kw in content for kw in pattern["keywords"]):
-                    meets_requirements = True
-                    for req in pattern["evidence_requirements"]:
-                        if req == "multiple_agents" and len(agents_involved) < 2:
-                            meets_requirements = False
-                            break
-                    
-                    if meets_requirements:
-                        milestone = {
-                            "type": milestone_type,
-                            "category": pattern["category"],
-                            "detected_from": "input",
-                            "content_preview": content[:100],
-                            "date": datetime.now().isoformat(),
-                            "confidence": calculate_confidence(content, pattern["keywords"]),
-                            "celebration": pattern["celebration"],
-                            "status": "detected"
-                        }
-                        if not any(m["type"] == milestone_type for m in detected_milestones):
-                            detected_milestones.append(milestone)
-        
-        # Calculate day number if available
-        day_number = input_data.get("day_number") or memory_day_number(context.get("memory", {}))
-        
-        # Add day context to detected milestones
-        for milestone in detected_milestones:
-            if day_number:
-                milestone["day_number"] = day_number
-        
-        logger.info(f"Milestone detection completed",
-                   customer_id=customer_id,
-                   detected_count=len(detected_milestones))
+        for milestone_id, definition in MILESTONE_DEFINITIONS.items():
+            for keyword in definition["keywords"]:
+                if keyword in content_lower:
+                    detected.append({
+                        "milestone_id": milestone_id,
+                        "description": definition["description"],
+                        "matched_keyword": keyword,
+                        "day": day,
+                        "confidence": 0.8
+                    })
+                    break
         
         return {
             "status": "success",
             "result": {
                 "customer_id": customer_id,
-                "detected_milestones": detected_milestones,
-                "already_achieved": list(achieved_types),
-                "day_number": day_number,
-                "detected_at": datetime.now().isoformat()
+                "day": day,
+                "milestones_detected": detected,
+                "count": len(detected)
             },
-            "message": f"Detected {len(detected_milestones)} potential milestones"
+            "message": f"Detected {len(detected)} milestones for {customer_id}"
         }
         
     except Exception as e:
-        logger.error(f"Failed to detect milestones", error=str(e))
         return {
             "status": "error",
             "result": None,
-            "message": f"Detection failed: {str(e)}"
+            "message": f"Milestone detection failed: {str(e)}"
         }
 
 
-def calculate_confidence(content: str, keywords: list) -> float:
-    """Calculate confidence score based on keyword matches."""
-    content_lower = content.lower()
-    matches = sum(1 for kw in keywords if kw.lower() in content_lower)
-    return min(1.0, matches / max(1, len(keywords) * 0.5))
-
-
-def memory_day_number(memory: dict) -> Optional[int]:
-    """Extract day number from memory context."""
-    # Try to find day number in memory
-    day = memory.get("day")
-    if day and isinstance(day, int):
-        return day
-    
-    # Try to parse from session info
-    session_info = memory.get("session_info", {})
-    if isinstance(session_info, dict):
-        day = session_info.get("day")
-        if day and isinstance(day, int):
-            return day
-    
-    return None
-
-
 if __name__ == "__main__":
-    # Test entry point
     test_context = {
         "customer_id": "OPC-TEST-001",
         "input": {
-            "content": "终于把产品部署到生产环境了！上线成功！",
-            "agents_involved": ["DevAgent", "DeployAgent"],
-            "day_number": 45
-        },
-        "config": {
-            "journal_storage": {"path": "test_customers/OPC-TEST-001/journal"},
-            "storage": {"path": "test_customers/OPC-TEST-001/milestones"}
-        },
-        "memory": {"day": 45}
+            "content": "Finally launched the product today! Got our first customer within hours.",
+            "day": 28
+        }
     }
     
     result = main(test_context)
