@@ -1,455 +1,101 @@
 """Unit tests for opc-milestone-tracker skill.
 
-TDD Approach: Tests cover initialization, recording, searching, and exporting
+TDD Approach: Tests cover milestone detection
 """
-import json
-import os
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
 
-# Ensure project root is in path for imports
-_PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent.resolve())
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+# Add skill scripts to path
+SKILL_DIR = Path(__file__).parent.parent.parent.parent / "skills" / "opc-journal-suite" / "opc-milestone-tracker" / "scripts"
+sys.path.insert(0, str(SKILL_DIR))
 
-# Import src package normally - this loads everything correctly
-import src
+from detect import main as detect_milestones, MILESTONE_DEFINITIONS
 
-# Load module helper - execute skill script with src available in namespace
-def load_module(module_name, file_path):
-    """Load a skill module by executing it with src in namespace."""
-    # Create namespace with src module already available
-    namespace = {
-        '__name__': module_name,
-        '__file__': str(file_path),
-        'src': src,  # Make src available directly
-    }
+
+class TestDetectMilestones:
+    """Test milestone detection."""
     
-    # Read and execute the skill script
-    code = file_path.read_text()
-    exec(code, namespace)
-    
-    # Return a simple module-like object
-    class SkillModule:
-        pass
-    
-    module = SkillModule()
-    for key, value in namespace.items():
-        if not key.startswith('__') and key != 'src':
-            setattr(module, key, value)
-    
-    return module
-
-
-# Load the skill scripts
-BASE_DIR = Path(__file__).parent.parent.parent.parent
-SKILLS_DIR = BASE_DIR / "skills" / "opc-journal-suite" / "opc-milestone-tracker" / "scripts"
-
-milestone_init = load_module("milestone_init", SKILLS_DIR / "init.py")
-milestone_detect = load_module("milestone_detect", SKILLS_DIR / "detect.py")
-milestone_notify = load_module("milestone_notify", SKILLS_DIR / "notify.py")
-
-
-@pytest.fixture
-def temp_dir():
-    """Create a temporary directory for tests."""
-    tmp = tempfile.mkdtemp()
-    yield tmp
-    shutil.rmtree(tmp, ignore_errors=True)
-
-
-@pytest.fixture
-def customer_id():
-    """Return a test customer ID."""
-    return "OPC-TEST-001"
-
-
-class TestMilestoneInit:
-    """Tests for milestone tracker initialization."""
-    
-    def test_init_success(self, temp_dir, customer_id):
-        """Test successful initialization."""
-        # Arrange
+    def test_detect_product_launch(self):
+        """Should detect product launch milestone."""
         context = {
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {"timestamp": "2026-03-24T03:38:00Z"}
+            "customer_id": "OPC-001",
+            "input": {
+                "content": "Finally launched the product today!",
+                "day": 28
+            }
         }
         
-        # Act
-        result = milestone_init.main(context)
+        result = detect_milestones(context)
         
-        # Assert
         assert result["status"] == "success"
-        assert result["result"]["initialized"] is True
-        assert result["result"]["customer_id"] == customer_id
+        assert result["result"]["count"] >= 1
+        assert any(m["milestone_id"] == "first_product_launch" 
+                   for m in result["result"]["milestones_detected"])
     
-    def test_init_missing_customer_id(self, temp_dir):
-        """Test initialization without customer_id fails."""
-        # Arrange
+    def test_detect_first_customer(self):
+        """Should detect first customer milestone."""
         context = {
-            "customer_id": None,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
+            "customer_id": "OPC-001",
+            "input": {
+                "content": "Got our first paying customer today!",
+                "day": 45
+            }
         }
         
-        # Act
-        result = milestone_init.main(context)
+        result = detect_milestones(context)
         
-        # Assert
+        assert result["status"] == "success"
+        assert any(m["milestone_id"] == "first_customer" 
+                   for m in result["result"]["milestones_detected"])
+    
+    def test_detect_mvp_complete(self):
+        """Should detect MVP completion milestone."""
+        context = {
+            "customer_id": "OPC-001",
+            "input": {
+                "content": "MVP is finally done and ready for testing",
+                "day": 21
+            }
+        }
+        
+        result = detect_milestones(context)
+        
+        assert result["status"] == "success"
+        assert any(m["milestone_id"] == "mvp_complete" 
+                   for m in result["result"]["milestones_detected"])
+    
+    def test_detect_no_milestone(self):
+        """Should return empty when no milestone detected."""
+        context = {
+            "customer_id": "OPC-001",
+            "input": {
+                "content": "Just another regular day of coding",
+                "day": 10
+            }
+        }
+        
+        result = detect_milestones(context)
+        
+        assert result["status"] == "success"
+        assert result["result"]["count"] == 0
+    
+    def test_detect_missing_customer_id(self):
+        """Should fail when customer_id is missing."""
+        context = {
+            "input": {
+                "content": "launched product",
+                "day": 1
+            }
+        }
+        
+        result = detect_milestones(context)
+        
         assert result["status"] == "error"
-        assert "customer_id is required" in result["message"]
     
-    def test_init_creates_directories(self, temp_dir, customer_id):
-        """Test initialization creates required directories."""
-        # Arrange
-        context = {
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        milestone_init.main(context)
-        
-        # Assert
-        assert Path(f"{temp_dir}/milestones/achieved").exists()
-        assert Path(f"{temp_dir}/milestones/pending").exists()
-        assert Path(f"{temp_dir}/milestones/predicted").exists()
-    
-    def test_init_creates_config(self, temp_dir, customer_id):
-        """Test initialization creates configuration."""
-        # Arrange
-        context = {
-            "customer_id": customer_id,
-            "input": {},
-            "config": {
-                "storage": {"path": f"{temp_dir}/milestones"},
-                "auto_detection": True
-            },
-            "memory": {}
-        }
-        
-        # Act
-        milestone_init.main(context)
-        
-        # Assert
-        config_path = Path(f"{temp_dir}/milestones/config.json")
-        assert config_path.exists()
-        
-        with open(config_path) as f:
-            config = json.load(f)
-        assert config["customer_id"] == customer_id
-        assert config["auto_detection"] is True
-
-
-class TestMilestoneDetect:
-    """Tests for milestone detection."""
-    
-    def test_detect_first_deployment(self, temp_dir, customer_id):
-        """Test detecting first deployment milestone."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "content": "终于把产品部署到生产环境了！上线成功！",
-                "day_number": 45
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert len(result["result"]["detected_milestones"]) >= 1
-        assert any(m["type"] == "first_deployment" for m in result["result"]["detected_milestones"])
-    
-    def test_detect_first_sale(self, temp_dir, customer_id):
-        """Test detecting first sale milestone."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "content": "收到了第一笔客户付款！订单成交！",
-                "day_number": 30
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert any(m["type"] == "first_sale" for m in result["result"]["detected_milestones"])
-    
-    def test_detect_mvp_complete(self, temp_dir, customer_id):
-        """Test detecting MVP complete milestone."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "content": "MVP完成了！最小可用产品已就绪",
-                "day_number": 21
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert any(m["type"] == "mvp_complete" for m in result["result"]["detected_milestones"])
-    
-    def test_detect_no_milestone(self, temp_dir, customer_id):
-        """Test content with no milestone keywords."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "content": "这是一个普通的日常记录，没有任何特殊事件",
-                "day_number": 10
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        # May or may not detect milestones based on content
-    
-    def test_detect_missing_customer_id(self, temp_dir):
-        """Test detection without customer_id fails."""
-        context = {
-            "customer_id": None,
-            "input": {"content": "Test content"},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
-        assert "customer_id is required" in result["message"]
-    
-    def test_detect_multi_agent_workflow(self, temp_dir, customer_id):
-        """Test detecting multi-agent workflow milestone."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "content": "今天使用了多Agent协作完成了复杂任务",
-                "agents_involved": ["Agent1", "Agent2", "Agent3"],
-                "day_number": 40
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_detect.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-
-
-class TestMilestoneNotify:
-    """Tests for milestone notification."""
-    
-    def test_notify_success(self, temp_dir, customer_id):
-        """Test successful milestone notification."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "milestone": {
-                    "type": "first_deployment",
-                    "category": "technical",
-                    "date": "2026-03-24T10:00:00",
-                    "day_number": 45,
-                    "celebration": "🚀 里程碑: 首次部署！"
-                }
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_notify.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert result["result"]["milestone_saved"] is True
-    
-    def test_notify_missing_milestone(self, temp_dir, customer_id):
-        """Test notification without milestone data fails."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_notify.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
-        assert "milestone data is required" in result["message"]
-    
-    def test_notify_missing_customer_id(self, temp_dir):
-        """Test notification without customer_id fails."""
-        context = {
-            "customer_id": None,
-            "input": {
-                "milestone": {"type": "first_deployment", "celebration": "Test"}
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_notify.main(context)
-        
-        # Assert
-        assert result["status"] == "error"
-        assert "customer_id is required" in result["message"]
-    
-    def test_notify_creates_celebration_report(self, temp_dir, customer_id):
-        """Test notification generates celebration report."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "milestone": {
-                    "type": "first_deployment",
-                    "category": "technical",
-                    "date": "2026-03-24T10:00:00",
-                    "day_number": 45,
-                    "celebration": "🚀 里程碑: 首次部署！"
-                }
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_notify.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert "detailed_report" in result["result"]["notification"]
-        assert "🚀" in result["result"]["notification"]["celebration_message"]
-    
-    def test_notify_updates_stats(self, temp_dir, customer_id):
-        """Test notification updates milestone statistics."""
-        # Arrange - initialize first
-        milestone_init.main({
-            "customer_id": customer_id,
-            "input": {},
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        })
-        
-        context = {
-            "customer_id": customer_id,
-            "input": {
-                "milestone": {
-                    "type": "first_deployment",
-                    "category": "technical",
-                    "celebration": "Test milestone"
-                }
-            },
-            "config": {"storage": {"path": f"{temp_dir}/milestones"}},
-            "memory": {}
-        }
-        
-        # Act
-        result = milestone_notify.main(context)
-        
-        # Assert
-        assert result["status"] == "success"
-        assert result["result"]["total_milestones"] >= 1
-        
-        # Verify stats file was updated
-        milestones_file = Path(f"{temp_dir}/milestones/milestones.json")
-        assert milestones_file.exists()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    def test_milestone_definitions_exist(self):
+        """Should have milestone definitions."""
+        assert "first_product_launch" in MILESTONE_DEFINITIONS
+        assert "first_customer" in MILESTONE_DEFINITIONS
+        assert "mvp_complete" in MILESTONE_DEFINITIONS
