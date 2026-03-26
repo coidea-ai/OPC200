@@ -8,19 +8,19 @@ from datetime import datetime
 
 MILESTONE_DEFINITIONS = {
     "first_product_launch": {
-        "keywords": ["launched", "shipped", "released", "live"],
+        "keywords": ["launched", "shipped", "released", "live", "product launch"],
         "description": "First product launch"
     },
     "first_customer": {
-        "keywords": ["first customer", "first user", "first sale", "paid user"],
+        "keywords": ["first customer", "first user", "first sale", "paid user", "got our first", "acquired first"],
         "description": "Acquired first customer"
     },
     "revenue_milestone": {
-        "keywords": ["$100", "$1k", "$10k", "mrr", "revenue"],
+        "keywords": ["$100", "$1k", "$10k", "mrr", "revenue", "first dollar"],
         "description": "Revenue milestone"
     },
     "mvp_complete": {
-        "keywords": ["mvp done", "mvp complete", "prototype done"],
+        "keywords": ["mvp done", "mvp complete", "prototype done", "mvp is", "prototype is", "done and ready"],
         "description": "MVP completed"
     }
 }
