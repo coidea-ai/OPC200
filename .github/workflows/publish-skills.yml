@@ -141,12 +141,12 @@ jobs:
           echo "### Install Commands" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo '# Install full suite' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-journal-suite@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-journal-suite@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '# Or install individual skills' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-journal-core@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-pattern-recognition@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-milestone-tracker@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-async-task-manager@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea-ai/opc-insight-generator@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-journal-core@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-pattern-recognition@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-milestone-tracker@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-async-task-manager@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-insight-generator@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
