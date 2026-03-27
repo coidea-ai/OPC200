@@ -1,9 +1,77 @@
 """opc-journal-core initialization module.
 
 Initializes journal for a new customer using OpenClaw native tools.
+Supports both direct execution and delegated execution modes.
 """
 import json
+import sys
 from datetime import datetime
+from pathlib import Path
+
+# Add parent directory to path for utils import
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+try:
+    from utils.storage import (
+        build_memory_path,
+        write_memory_file,
+        create_tool_call,
+        format_result
+    )
+except ImportError:
+    # Fallback for standalone execution
+    def build_memory_path(customer_id: str, date: str = None) -> str:
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+        return f"~/.openclaw/customers/{customer_id}/memory/{date}.md"
+    
+    def write_memory_file(path: str, content: str, mode: str = "a"):
+        import os
+        try:
+            full_path = os.path.expanduser(path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "a") as f:
+                if f.tell() > 0:
+                    f.write("\n\n")
+                f.write(content)
+            return {"success": True, "path": full_path}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def create_tool_call(tool: str, params: dict, sequence: int = 1):
+        return {"tool": tool, "params": params, "sequence": sequence}
+    
+    def format_result(status: str, result: any, message: str, execution_mode: str):
+        return {
+            "status": status,
+            "result": result,
+            "message": message,
+            "execution_mode": execution_mode,
+            "_schema_version": "1.0"
+        }
+
+
+def format_init_entry(entry: dict) -> str:
+    """Format entry as markdown."""
+    goals_md = "\n".join(f"- {g}" for g in entry.get("goals", []))
+    prefs_json = json.dumps(entry.get("preferences", {}), indent=2, ensure_ascii=False)
+    
+    return f"""# Journal Init - {entry['timestamp'][:10]}
+
+**Entry Type**: {entry['entry_type']}  
+**Customer**: {entry['customer_id']}  
+**Day**: {entry['day']}
+
+## Goals
+{goals_md}
+
+## Preferences
+```json
+{prefs_json}
+```
+
+---
+*Version: {entry['version']}*"""
 
 
 def main(context: dict) -> dict:
@@ -13,21 +81,24 @@ def main(context: dict) -> dict:
         context: Dictionary containing:
             - customer_id: The customer identifier
             - input: Initialization parameters (day, goals, preferences)
-            - memory: Memory context
+            - execution_mode: "direct" (default) or "delegated"
     
     Returns:
         Dictionary with status, result, and message
     """
+    execution_mode = context.get("execution_mode", "direct")
+    
     try:
         customer_id = context.get("customer_id")
         input_data = context.get("input", {})
         
         if not customer_id:
-            return {
-                "status": "error",
-                "result": None,
-                "message": "customer_id is required"
-            }
+            return format_result(
+                status="error",
+                result=None,
+                message="customer_id is required",
+                execution_mode=execution_mode
+            )
         
         # Build initialization entry
         init_entry = {
@@ -40,26 +111,61 @@ def main(context: dict) -> dict:
             "version": "1.0"
         }
         
-        # Write to customer's journal memory file
-        memory_path = f"memory/{datetime.now().strftime('%Y-%m-%d')}.md"
+        # Format content and build path
+        content = format_init_entry(init_entry)
+        memory_path = build_memory_path(customer_id)
         
-        return {
-            "status": "success",
-            "result": {
-                "customer_id": customer_id,
-                "initialized": True,
-                "day": init_entry["day"],
-                "goals_count": len(init_entry["goals"])
-            },
-            "message": f"Journal initialized for customer {customer_id} (Day {init_entry['day']})"
-        }
+        if execution_mode == "delegated":
+            # Return tool_calls for Agent to execute
+            return format_result(
+                status="needs_tool_execution",
+                result={
+                    "tool_calls": [
+                        create_tool_call(
+                            tool="write",
+                            params={
+                                "path": memory_path,
+                                "content": content
+                            },
+                            sequence=1
+                        )
+                    ]
+                },
+                message=f"Tool execution required to initialize journal for {customer_id}",
+                execution_mode="delegated"
+            )
+        else:
+            # Direct execution - write file immediately
+            write_result = write_memory_file(memory_path, content)
+            
+            if write_result["success"]:
+                return format_result(
+                    status="success",
+                    result={
+                        "customer_id": customer_id,
+                        "initialized": True,
+                        "day": init_entry["day"],
+                        "goals_count": len(init_entry["goals"]),
+                        "memory_path": memory_path
+                    },
+                    message=f"Journal initialized for {customer_id} (Day {init_entry['day']})",
+                    execution_mode="direct"
+                )
+            else:
+                return format_result(
+                    status="error",
+                    result={"error": write_result.get("error")},
+                    message=f"Failed to write memory file: {write_result.get('error')}",
+                    execution_mode="direct"
+                )
         
     except Exception as e:
-        return {
-            "status": "error",
-            "result": None,
-            "message": f"Initialization failed: {str(e)}"
-        }
+        return format_result(
+            status="error",
+            result=None,
+            message=f"Initialization failed: {str(e)}",
+            execution_mode=execution_mode
+        )
 
 
 if __name__ == "__main__":

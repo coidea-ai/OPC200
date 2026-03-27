@@ -1,10 +1,56 @@
 """opc-journal-core record module.
 
 Records journal entries using OpenClaw native tools.
+Supports both direct execution and delegated execution modes.
+Version: 2.2.2
 """
 import json
+import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
+
+# Add parent directory to path for utils import
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+try:
+    from utils.storage import (
+        build_memory_path,
+        write_memory_file,
+        create_tool_call,
+        format_result
+    )
+except ImportError:
+    # Fallback for standalone execution
+    def build_memory_path(customer_id: str, date: str = None) -> str:
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+        return f"~/.openclaw/customers/{customer_id}/memory/{date}.md"
+    
+    def write_memory_file(path: str, content: str, mode: str = "a"):
+        import os
+        try:
+            full_path = os.path.expanduser(path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "a") as f:
+                if f.tell() > 0:
+                    f.write("\n\n")
+                f.write(content)
+            return {"success": True, "path": full_path}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def create_tool_call(tool: str, params: dict, sequence: int = 1):
+        return {"tool": tool, "params": params, "sequence": sequence}
+    
+    def format_result(status: str, result: any, message: str, execution_mode: str):
+        return {
+            "status": status,
+            "result": result,
+            "message": message,
+            "execution_mode": execution_mode,
+            "_schema_version": "1.0"
+        }
 
 
 def generate_entry_id(customer_id: str) -> str:
