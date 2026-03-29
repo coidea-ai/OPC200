@@ -1,12 +1,18 @@
 # OPC Journal Suite Configuration
-# Version: 2.2.0
+# Version: 2.3.0
+
+# IMPORTANT: This is a LOCAL-ONLY journaling system.
+# No network calls, no external APIs, no data sharing.
+# All data is stored in customer-scoped local directories only.
 
 journal:
   storage_path: "customers/{customer_id}/journal/"
   retention_days: 365
   privacy_level: "standard"  # standard / sensitive / vault
   
-  # Auto-compaction settings
+  # Auto-compaction settings (local only)
+  # This is a prompt-based feature that reminds users to save important memories
+  # No automatic network calls or external sharing
   compaction:
     enabled: true
     reserve_tokens_floor: 40000
@@ -29,7 +35,7 @@ milestone:
   celebration_enabled: true
   min_confidence: 0.7
   
-  # Milestone types
+  # Milestone types for local tracking only
   types:
     - product_launch
     - first_customer
@@ -43,17 +49,50 @@ async_task:
   retry_policy:
     max_retries: 3
     backoff: "exponential"
-  notification_channels:
-    - feishu
-    - email
+  # NOTE: Notification channels are reserved for future versions
+  # Current implementation is local-only (no network calls)
+  # notification_channels: []  # Future: feishu, email
 
 insight:
   generation_frequency: "daily"
   include_recommendations: true
   personalization_enabled: true
 
-# Logging configuration
+# Cron scheduler configuration (v2.3 feature)
+# Enables autonomous task triggering for scheduled journal operations
+cron_scheduler:
+  enabled: true
+  check_interval: "5m"  # How often to check for triggers
+  
+  # Pre-configured schedules
+  schedules:
+    daily_summary:
+      enabled: true
+      schedule: "0 8 * * *"      # 8:00 AM daily
+      description: "Generate daily summary"
+      target_skill: "opc-insight-generator"
+      
+    weekly_pattern:
+      enabled: true
+      schedule: "0 9 * * 0"      # 9:00 AM Sunday
+      description: "Weekly pattern analysis"
+      target_skill: "opc-pattern-recognition"
+      
+    milestone_check:
+      enabled: true
+      schedule: "0 21 * * *"     # 9:00 PM daily
+      description: "Daily milestone detection"
+      target_skill: "opc-milestone-tracker"
+      
+    memory_compaction:
+      enabled: true
+      schedule: "0 23 * * *"     # 11:00 PM daily
+      description: "Daily memory compaction"
+      target_skill: "opc-journal-core"
+
+# Logging configuration (local only)
 logging:
   level: "info"
   format: "json"
   retention_days: 30
+  # No external log aggregation - all logs are local

@@ -80,6 +80,14 @@ INTENT_PATTERNS = {
         r"日报",
         r"今日总结",
     ],
+    "cron_schedule": [
+        r"cron\s+schedule",
+        r"schedule\s+task",
+        r"auto.*trigger",
+        r"定时任务",
+        r"自动执行",
+        r"设置定时",
+    ],
 }
 
 
@@ -117,6 +125,7 @@ def get_skill_for_intent(intent: str) -> str | None:
         "task_status": "opc-async-task-manager",
         "insight_generate": "opc-insight-generator",
         "daily_summary": "opc-insight-generator",
+        "cron_schedule": "opc-journal-suite",
     }
     return skill_map.get(intent)
 

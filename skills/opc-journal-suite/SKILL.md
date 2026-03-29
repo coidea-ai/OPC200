@@ -1,8 +1,14 @@
 # opc-journal-suite
 
+**Version**: 2.3.0  
+**Status**: Production Ready  
+**Last Updated**: 2026-03-30
+
 ## Description
 
 OPC200 User Journal Experience Suite - Complete growth tracking, memory management, and insight generation for One Person Companies (OPC). Includes journaling, pattern recognition, milestone tracking, async task management, and more.
+
+**LOCAL-ONLY**: This is a local-only skill. No network calls, no external APIs, no data sharing. All data is stored in customer-scoped local directories only.
 
 This is a **coordinating skill** that routes user intents to appropriate sub-skills.
 
@@ -31,8 +37,10 @@ OPC Journal Suite is a collection of OpenClaw Skills designed for One Person Com
 - 📔 **Smart Journaling** - Automatic recording, linking, and retrieval of user journey
 - 🧠 **Behavioral Pattern Recognition** - Identify work habits, decision patterns, growth trajectory
 - 🎯 **Milestone Tracking** - Auto-detect important moments, generate achievement reports
-- ⏰ **Async Task Management** - 7×24 background task execution and status sync
+- ⏰ **Async Task Management** - Local task creation and tracking (no external execution)
 - 💡 **Insight Generation** - Personalized recommendations based on historical data
+
+**Privacy First**: All processing is local. No data leaves your machine.
 
 ## Architecture
 
@@ -162,13 +170,14 @@ Next predicted: First Sale (Est. Day 52)
 User: "I need a competitive analysis report, due tomorrow morning"
 
 Bot: "Got it! Created async task #RESEARCH-007
-     Assigned to Research Agent
      Estimated completion: Tomorrow 8:00 AM
-     Will send Feishu notification and generate summary when done"
+     Will generate summary when done"
 
 [Next morning]
-Bot: "☀️ #RESEARCH-007 Complete!
+Bot: "☀️ #RESEARCH-007 Ready!
      Discovered 3 key insights, synced to your Journal"
+
+**Note**: Tasks are tracked locally. No external execution or notification services are used.
 
 ## Configuration
 
@@ -191,38 +200,30 @@ milestone:
 async_task:
   max_concurrent: 5
   default_timeout: "8h"
-  notification_channels: ["feishu", "email"]
+  # NOTE: Notification channels are reserved for future versions
+  # Current implementation is local-only
 ```
 
-## Integration with OPC200
+## Data Privacy & Security
 
+### Local-Only Design
+- ✅ All data stored in `~/.openclaw/customers/{customer_id}/`
+- ✅ No network calls
+- ✅ No external APIs
+- ✅ No data sharing
+- ✅ No credentials required
+
+### Privacy Levels
 ```yaml
-# OPC200 Project Integration Configuration
-
-opc200:
-  deployment_modes:
-    cloud_hosted:
-      journal_storage: "centralized"
-      pattern_analysis: "server_side"
-      async_execution: "shared_pool"
-      
-    on_premise:
-      journal_storage: "local_only"
-      pattern_analysis: "local_with_sync"
-      async_execution: "local_queue"
-      privacy: "maximum"
-      
-    edge_node:
-      journal_storage: "hybrid"
-      pattern_analysis: "distributed"
-      async_execution: "edge_cloud_coordinated"
-
-support_hub:
-  access_levels:
-    - view_anonymous_patterns    # 脱敏模式分析
-    - read_journal_with_consent  # 授权后访问
-    - emergency_override         # 紧急访问（审计）
+privacy_level: "standard"   # Normal operation
+privacy_level: "sensitive"  # Extra care with personal data
+privacy_level: "vault"      # Maximum privacy, minimal retention
 ```
+
+### Data Retention
+- Configurable `retention_days` (default: 365)
+- Automatic cleanup of old entries
+- Customer-scoped isolation
 
 ## API Reference
 
@@ -276,20 +277,18 @@ prediction = pattern_analyzer.predict(
 ### Async Task Manager
 
 ```python
-# Create async task
+# Create async task (local tracking only)
 task = async_manager.create(
     customer_id="OPC-001",
     task_type:"research",
     description:"竞品分析报告",
-    deadline:"tomorrow 08:00",
-    agent:"ResearchAgent"
+    deadline:"tomorrow 08:00"
 )
 
 # Check status
 status = async_manager.status(task.id)
 
-# On completion
-async_manager.on_complete(task.id, callback=notify_user)
+# Task results are stored locally, no external callbacks
 ```
 
 ## Directory Structure
@@ -357,6 +356,8 @@ opc-journal-suite/
 | opc-insight-generator | 3 | ✅ Pass |
 | **Total** | **55** | ✅ **All Pass** |
 
+All tests are local unit tests with no network dependencies.
+
 ## Development Roadmap
 
 | Version | Features | ETA |
@@ -381,5 +382,6 @@ MIT License - OPC200 Project
 ## Support
 
 - GitHub Issues: https://github.com/coidea-sys/opc-journal-suite/issues
-- OPC200 Support: feishu://opc200-support
 - Documentation: https://docs.opc200.co/journal-suite
+
+**Note**: This is a local-only skill. For support, please open a GitHub issue rather than using external channels.
