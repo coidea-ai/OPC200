@@ -1,90 +1,182 @@
 # OPC200 CODEOWNERS
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-
-# Global default - Danny owns everything
-* @danny
-
-# =============================================================================
-# Core Application
-# =============================================================================
-
-# Smart Contracts
-/contracts/ @danny
-/tests/contracts/ @danny
-
-# Backend API
-/src/ @danny
-/tests/unit/ @danny
-/tests/integration/ @danny
-
-# Database & Migrations
-/migrations/ @danny
-*.sql @danny
-
-# Configuration
-/config/ @danny
-*.yaml @danny
-*.yml @danny
+#
+# 格式: <pattern> <owner1> <owner2> ...
+# 最后匹配的规则生效
+# 所有匹配的owner都需要审批
 
 # =============================================================================
-# Skills (Critical - AI Agent Functionality)
+# 全局默认 - 需要至少一个Owner审批
 # =============================================================================
-
-/skills/ @danny
-/skills/opc-journal-suite/ @danny
-/skills/README.md @danny
+* @coidea-ai/owners
 
 # =============================================================================
-# CI/CD & DevOps
+# 核心系统 - 安全关键（需要Owner审批）
 # =============================================================================
 
-/.github/ @danny
-/.github/workflows/ @danny
-/.github/actions/ @danny
-/.pre-commit-config.yaml @danny
-/Dockerfile @danny
-docker-compose*.yml @danny
+# 智能合约（安全关键）
+/contracts/ @coidea-ai/owners @coidea-ai/security
+/contracts/**/security* @coidea-ai/owners
+/contracts/**/access* @coidea-ai/owners
+
+# 认证授权模块
+/src/auth/ @coidea-ai/owners @coidea-ai/security
+/src/permissions/ @coidea-ai/owners @coidea-ai/security
+/src/roles/ @coidea-ai/owners @coidea-ai/security
+
+# 支付和财务
+/src/payments/ @coidea-ai/owners
+/src/billing/ @coidea-ai/owners
+/src/wallet/ @coidea-ai/owners
+
+# 数据库Schema变更（需要DBA审批）
+/migrations/ @coidea-ai/owners @coidea-ai/maintainers
+*.sql @coidea-ai/maintainers
+
+# 核心配置
+/config/production* @coidea-ai/owners
+/config/security* @coidea-ai/owners
 
 # =============================================================================
-# Documentation
+# Skills 系统（Maintainer可以审批）
 # =============================================================================
 
-/docs/ @danny
-*.md @danny
-README.md @danny
-ARCHITECTURE.md @danny
-PROJECT_STATUS.md @danny
+/skills/ @coidea-ai/maintainers @coidea-ai/owners
+/skills/opc-journal-suite/ @coidea-ai/maintainers @coidea-ai/owners
+/skills/opc-journal-suite/scripts/ @coidea-ai/maintainers
+/skills/*/tests/ @coidea-ai/maintainers @coidea-ai/qa
+
+# Skills配置（影响所有用户，需要双重审批）
+/skills/**/config.yml @coidea-ai/maintainers @coidea-ai/owners
+/skills/**/SKILL.md @coidea-ai/maintainers @coidea-ai/docs
 
 # =============================================================================
-# Training & AI
+# CI/CD 和基础设施（Ops团队可以审批）
 # =============================================================================
 
-/insclaw-training/ @danny
-/insclaw-training/**/*.md @danny
+/.github/ @coidea-ai/ops @coidea-ai/owners
+/.github/workflows/ @coidea-ai/ops
+/.github/actions/ @coidea-ai/ops
+/.github/scripts/ @coidea-ai/ops
+
+# 基础设施代码
+/terraform/ @coidea-ai/ops @coidea-ai/infrastructure
+/k8s/ @coidea-ai/ops @coidea-ai/infrastructure
+/helm/ @coidea-ai/ops
+
+# 容器配置
+Dockerfile @coidea-ai/ops
+docker-compose*.yml @coidea-ai/ops
+.dockerignore @coidea-ai/ops
 
 # =============================================================================
-# Infrastructure
+# 前端/UI（UI团队可以审批）
 # =============================================================================
 
-/terraform/ @danny
-/k8s/ @danny
-/helm/ @danny
+/src/ui/ @coidea-ai/ui @coidea-ai/maintainers
+/src/components/ @coidea-ai/ui
+/src/pages/ @coidea-ai/ui
+/src/styles/ @coidea-ai/ui
+
+/public/ @coidea-ai/ui
+*.css @coidea-ai/ui
+*.scss @coidea-ai/ui
+*.less @coidea-ai/ui
+
+# 前端配置
+vite.config.* @coidea-ai/ui
+tsconfig*.json @coidea-ai/ui
+tailwind.config.* @coidea-ai/ui
 
 # =============================================================================
-# Dependencies (Security Sensitive)
+# 文档（Docs团队可以审批）
 # =============================================================================
 
-/requirements*.txt @danny
-/package.json @danny
-/package-lock.json @danny
-yarn.lock @danny
-Pipfile @danny
-poetry.lock @danny
+/docs/ @coidea-ai/docs @coidea-ai/maintainers
+*.md @coidea-ai/docs
+README.md @coidea-ai/docs @coidea-ai/owners
+CONTRIBUTING.md @coidea-ai/docs @coidea-ai/owners
+ARCHITECTURE.md @coidea-ai/owners
+API.md @coidea-ai/docs @coidea-ai/maintainers
 
 # =============================================================================
-# Security & Compliance
+# 测试（QA团队可以审批）
 # =============================================================================
 
-SECURITY.md @danny
-AUDIT_REPORT.md @danny
-LICENSE @danny
+/tests/ @coidea-ai/qa @coidea-ai/maintainers
+/tests/e2e/ @coidea-ai/qa
+/tests/integration/ @coidea-ai/qa @coidea-ai/maintainers
+/tests/performance/ @coidea-ai/qa
+
+*.test.js @coidea-ai/qa
+*.test.ts @coidea-ai/qa
+*.test.py @coidea-ai/qa
+*.spec.js @coidea-ai/qa
+*.spec.ts @coidea-ai/qa
+
+# =============================================================================
+# 依赖（需要Owner或Security审批）
+# =============================================================================
+
+/requirements*.txt @coidea-ai/owners @coidea-ai/security
+requirements/ @coidea-ai/owners @coidea-ai/security
+
+/package.json @coidea-ai/ui @coidea-ai/owners
+/package-lock.json @coidea-ai/ui @coidea-ai/owners
+yarn.lock @coidea-ai/ui @coidea-ai/owners
+pnpm-lock.yaml @coidea-ai/ui @coidea-ai/owners
+
+Pipfile @coidea-ai/owners @coidea-ai/security
+poetry.lock @coidea-ai/owners @coidea-ai/security
+
+# =============================================================================
+# 安全和合规（只有Owner）
+# =============================================================================
+
+SECURITY.md @coidea-ai/owners
+SECURITY @coidea-ai/owners
+AUDIT_REPORT.md @coidea-ai/owners
+LICENSE @coidea-ai/owners
+.pii* @coidea-ai/owners
+*.key @coidea-ai/owners
+*.pem @coidea-ai/owners
+*.p12 @coidea-ai/owners
+*.crt @coidea-ai/owners
+secrets* @coidea-ai/owners
+
+# =============================================================================
+# 开发工具配置（Maintainer可以审批）
+# =============================================================================
+
+.pre-commit-config.yaml @coidea-ai/maintainers
+.pylintrc @coidea-ai/maintainers
+.eslintrc* @coidea-ai/maintainers
+.prettierrc* @coidea-ai/maintainers
+
+# Git忽略文件
+.gitignore @coidea-ai/maintainers
+.gitattributes @coidea-ai/maintainers
+
+# =============================================================================
+# 训练和AI（Owner审批）
+# =============================================================================
+
+/insclaw-training/ @coidea-ai/owners
+/models/ @coidea-ai/owners
+/training-data/ @coidea-ai/owners
+
+# =============================================================================
+# 工作流模板（维护者可以审批）
+# =============================================================================
+
+/.github/pull_request_template.md @coidea-ai/maintainers
+/.github/issue_template/ @coidea-ai/maintainers @coidea-ai/docs
+/.github/dependabot.yml @coidea-ai/ops @coidea-ai/owners
+
+# =============================================================================
+# 个人工作区（不强制审查）
+# =============================================================================
+
+/personal/ @coidea-ai/contributors
+/experiments/ @coidea-ai/contributors
+/drafts/ @coidea-ai/contributors

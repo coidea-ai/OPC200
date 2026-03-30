@@ -1,0 +1,161 @@
+# =============================================================================
+# Permission Check
+# =============================================================================
+# Validates that users have appropriate permissions for their changes
+# =============================================================================
+
+name: 🔒 Permission Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-permissions:
+    name: Check User Permissions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get user permission
+        id: user-perm
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+            
+            console.log(`User ${context.actor} has permission: ${permission.permission}`);
+            
+            // permission.permission can be: admin, write, maintain, triage, read, none
+            const perm = permission.permission;
+            
+            // Check if user can modify sensitive paths
+            const canModifySensitive = ['admin', 'maintain'].includes(perm);
+            const canApprove = ['admin', 'maintain', 'write'].includes(perm);
+            
+            core.setOutput('permission', perm);
+            core.setOutput('can_modify_sensitive', canModifySensitive);
+            core.setOutput('can_approve', canApprove);
+
+      - name: Check sensitive file changes
+        id: check-sensitive
+        run: |
+          # Define sensitive patterns that require elevated permissions
+          SENSITIVE_PATTERNS=(
+            "^contracts/"
+            "^src/auth/"
+            "^src/payments/"
+            "^migrations/"
+            "^\.github/workflows/"
+            "^config/production"
+            "requirements.*\.txt$"
+            "package.*\.json$"
+            "SECURITY"
+            "LICENSE$"
+            "\.key$"
+            "\.pem$"
+          )
+          
+          # Get changed files
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD 2>/dev/null || echo "")
+          
+          SENSITIVE_CHANGED=""
+          
+          for file in $CHANGED_FILES; do
+            for pattern in "${SENSITIVE_PATTERNS[@]}"; do
+              if echo "$file" | grep -qE "$pattern"; then
+                SENSITIVE_CHANGED="$SENSITIVE_CHANGED\n- $file"
+                break
+              fi
+            done
+          done
+          
+          if [ -n "$SENSITIVE_CHANGED" ]; then
+            echo "sensitive_files<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$SENSITIVE_CHANGED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "has_sensitive=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_sensitive=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate permissions for sensitive changes
+        if: steps.check-sensitive.outputs.has_sensitive == 'true'
+        run: |
+          PERM="${{ steps.user-perm.outputs.permission }}"
+          CAN_MODIFY="${{ steps.user-perm.outputs.can_modify_sensitive }}"
+          
+          echo "User permission: $PERM"
+          echo "Can modify sensitive: $CAN_MODIFY"
+          
+          if [ "$CAN_MODIFY" != "true" ]; then
+            echo "::error::❌ Insufficient permissions"
+            echo "::error::This PR modifies sensitive files that require Admin or Maintainer permissions:"
+            echo -e "${{ steps.check-sensitive.outputs.sensitive_files }}"
+            echo ""
+            echo "Current permission level: $PERM"
+            echo "Required: admin or maintain"
+            exit 1
+          fi
+          
+          echo "✅ User has sufficient permissions for sensitive changes"
+
+      - name: Post permission summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const perm = '${{ steps.user-perm.outputs.permission }}';
+            const canModifySensitive = '${{ steps.user-perm.outputs.can_modify_sensitive }}' === 'true';
+            const hasSensitive = '${{ steps.check-sensitive.outputs.has_sensitive }}' === 'true';
+            const sensitiveFiles = '${{ steps.check-sensitive.outputs.sensitive_files }}';
+            
+            let body = `## 🔒 Permission Check\n\n`;
+            body += `**User:** @${context.actor}\n`;
+            body += `**Permission Level:** \`${perm}\`\n\n`;
+            
+            if (hasSensitive) {
+              body += `### ⚠️ Sensitive Files Modified\n`;
+              body += `This PR changes files that require elevated permissions:\n`;
+              body += sensitiveFiles.split('\\n').map(f => `- ${f}`).join('\\n');
+              body += `\n\n`;
+              
+              if (canModifySensitive) {
+                body += `✅ **Permission Check Passed** - User has required permissions\\n`;
+              } else {
+                body += `❌ **Permission Check Failed** - Requires \\"admin\\" or \\"maintain\\" permission\\n`;
+              }
+            } else {
+              body += `✅ No sensitive files modified\n`;
+            }
+            
+            // Find and update existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existingComment = comments.find(c => 
+              c.body.includes('## 🔒 Permission Check')
+            );
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
