@@ -1,7 +1,37 @@
+---
+name: opc-milestone-tracker
+description: "OPC Journal Suite Milestone Tracking Module - Achievement detection and celebration. Use when: (1) detecting important moments in user journey, (2) generating milestone reports, (3) tracking progress toward goals. NOT for: automated sharing → celebrations are local-only."
+metadata:
+  {
+    "openclaw": {
+      "emoji": "🎯",
+      "requires": {}
+    }
+  }
+---
+
 # opc-milestone-tracker
 
 **Version**: 2.3.0  
 **Status**: Production Ready
+
+## When to Use
+
+✅ **Use this skill for:**
+
+- Auto-detecting milestones from journal entries
+- Tracking product/business milestones (first sale, MVP, etc.)
+- Generating celebration reports
+- Monitoring progress toward goals
+- Creating milestone timelines
+
+## When NOT to Use
+
+❌ **Don't use when:**
+
+- Need automated social media sharing
+- Require external notifications for milestones
+- Want public leaderboards or comparisons
 
 ## Description
 

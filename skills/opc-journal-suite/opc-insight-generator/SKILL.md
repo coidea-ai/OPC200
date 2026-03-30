@@ -1,7 +1,37 @@
+---
+name: opc-insight-generator
+description: "OPC Journal Suite Insight Generation Module - Personalized recommendations and advice. Use when: (1) generating daily/weekly insights, (2) getting personalized recommendations, (3) understanding opportunities and risks. NOT for: professional advice → insights are suggestions, not professional guidance."
+metadata:
+  {
+    "openclaw": {
+      "emoji": "💡",
+      "requires": {}
+    }
+  }
+---
+
 # opc-insight-generator
 
 **Version**: 2.3.0  
 **Status**: Production Ready
+
+## When to Use
+
+✅ **Use this skill for:**
+
+- Generating daily or weekly insights
+- Getting personalized recommendations
+- Identifying opportunities and risks
+- Understanding historical context
+- Receiving actionable suggestions
+
+## When NOT to Use
+
+❌ **Don't use when:**
+
+- Need professional business or legal advice
+- Require medical or psychological guidance
+- Want automated decision-making
 
 ## Description
 

@@ -1,7 +1,38 @@
+---
+name: opc-async-task-manager
+description: "OPC Journal Suite Async Task Management Module - Local task tracking for background work. Use when: (1) tracking tasks for later, (2) organizing non-urgent work, (3) managing personal todo lists. NOT for: automated execution → tasks are tracked, not executed."
+metadata:
+  {
+    "openclaw": {
+      "emoji": "⏰",
+      "requires": {}
+    }
+  }
+---
+
 # opc-async-task-manager
 
 **Version**: 2.3.0  
 **Status**: Production Ready
+
+## When to Use
+
+✅ **Use this skill for:**
+
+- Creating and tracking async tasks locally
+- Organizing non-urgent but important work
+- Managing personal task queues
+- Setting task deadlines and reminders
+- Tracking task completion status
+
+## When NOT to Use
+
+❌ **Don't use when:**
+
+- Need automated task execution
+- Require external notifications on deadline
+- Want team task assignment
+- Need integration with external task tools
 
 ## Description
 

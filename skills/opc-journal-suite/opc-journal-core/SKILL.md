@@ -1,7 +1,37 @@
+---
+name: opc-journal-core
+description: "OPC Journal Suite Core Module - Smart journaling with automatic linking and retrieval. Use when: (1) recording journal entries, (2) searching historical entries, (3) exporting journals. NOT for: complex queries across multiple users → data is customer-scoped."
+metadata:
+  {
+    "openclaw": {
+      "emoji": "📔",
+      "requires": {}
+    }
+  }
+---
+
 # opc-journal-core
 
 **Version**: 2.3.0  
 **Status**: Production Ready
+
+## When to Use
+
+✅ **Use this skill for:**
+
+- Recording structured journal entries with context
+- Searching and retrieving historical journal data
+- Linking related entries automatically
+- Exporting journals to various formats
+- Generating daily/weekly digests
+
+## When NOT to Use
+
+❌ **Don't use when:**
+
+- Need complex multi-customer analytics
+- Require real-time collaborative editing
+- Need external sync (cloud, other devices)
 
 ## Description
 

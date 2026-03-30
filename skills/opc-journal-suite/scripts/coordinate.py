@@ -137,6 +137,8 @@ def main(context: dict) -> dict:
         context: Dictionary containing:
             - customer_id: The customer identifier
             - input: User input and parameters
+            - intent: Optional explicit intent (bypasses detection)
+            - params: Optional parameters for the intent
             - memory: Memory context
     
     Returns:
@@ -145,6 +147,8 @@ def main(context: dict) -> dict:
     try:
         customer_id = context.get("customer_id")
         input_data = context.get("input", {})
+        explicit_intent = context.get("intent")
+        explicit_params = context.get("params", {})
         
         if not customer_id:
             return {
@@ -153,15 +157,22 @@ def main(context: dict) -> dict:
                 "message": "customer_id is required"
             }
         
-        user_text = input_data.get("text", "")
-        action = input_data.get("action", "")
-        
-        # Determine intent
-        if action:
-            intent = action
+        # If explicit intent provided (e.g., from CLI), use it directly
+        if explicit_intent:
+            intent = explicit_intent
             confidence = 1.0
+            # Merge explicit params into input_data
+            input_data.update(explicit_params)
         else:
-            intent, confidence = detect_intent(user_text)
+            user_text = input_data.get("text", "") if isinstance(input_data, dict) else str(input_data)
+            action = input_data.get("action", "") if isinstance(input_data, dict) else ""
+            
+            # Determine intent from text or action
+            if action:
+                intent = action
+                confidence = 1.0
+            else:
+                intent, confidence = detect_intent(user_text)
         
         if intent == "unknown" or confidence < 0.3:
             return {

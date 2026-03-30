@@ -1,16 +1,107 @@
+---
+name: opc-journal-suite
+description: "OPC200 User Journal Experience Suite - Personal growth tracking, memory management, and insight generation for One Person Companies. Use when: (1) recording daily progress or journal entries, (2) analyzing work patterns and habits, (3) tracking milestones and achievements, (4) creating async tasks for later, (5) generating personalized insights and advice. NOT for: complex project management → use project tools, team collaboration → use team tools, external notifications → skill is local-only."
+user-invocable: true
+command-dispatch: tool
+tool: coordinate
+command-arg-mode: raw
+metadata:
+  {
+    "openclaw": {
+      "emoji": "📔",
+      "always": false,
+      "requires": { "config": ["opc_journal.enabled"] },
+      "homepage": "https://docs.opc200.coidea.ai/journal-suite"
+    }
+  }
+---
+
 # opc-journal-suite
 
 **Version**: 2.3.0  
 **Status**: Production Ready  
 **Last Updated**: 2026-03-30
 
-## Description
+## When to Use
+
+✅ **Use this skill when you want to:**
+
+- **Record daily progress** - Log what you worked on, decisions made, blockers encountered
+- **Journal your journey** - Capture thoughts, ideas, reflections in a structured format
+- **Analyze work patterns** - Understand your productive hours, decision style, habits
+- **Track milestones** - Automatically detect and celebrate achievements (first launch, first sale, etc.)
+- **Create async tasks** - Queue non-urgent work for later tracking
+- **Get personalized insights** - Receive advice based on your historical patterns
+- **Generate reports** - Weekly summaries, growth trajectories, milestone reviews
+
+## When NOT to Use
+
+❌ **Don't use this skill when:**
+
+- **Complex project management** - Use dedicated PM tools (Linear, Jira, Notion)
+- **Team collaboration** - This is for solo founders/OPCs only
+- **Real-time notifications** - Skill is local-only, no external alerts (email, Slack, Feishu)
+- **Multi-user sharing** - Data is customer-scoped and private
+- **External integrations** - No GitHub, no Google Calendar, no third-party APIs
+- **Automated execution** - Async tasks are tracked locally, not executed automatically
+
+## Overview
 
 OPC200 User Journal Experience Suite - Complete growth tracking, memory management, and insight generation for One Person Companies (OPC). Includes journaling, pattern recognition, milestone tracking, async task management, and more.
 
 **LOCAL-ONLY**: This is a local-only skill. No network calls, no external APIs, no data sharing. All data is stored in customer-scoped local directories only.
 
 This is a **coordinating skill** that routes user intents to appropriate sub-skills.
+
+## Command Usage
+
+Use `/opc-journal` for direct command-line access to the journal suite:
+
+```
+/opc-journal <action> [options]
+```
+
+### Actions
+
+| Action | Description | Example |
+|--------|-------------|---------|
+| `init` | Initialize journal for customer | `/opc-journal init --customer-id OPC-001` |
+| `record` | Record a journal entry | `/opc-journal record "Completed MVP today"` |
+| `search` | Search journal entries | `/opc-journal search --topic pricing` |
+| `export` | Export journal to file | `/opc-journal export --format markdown` |
+| `analyze` | Analyze behavior patterns | `/opc-journal analyze --dimension work_hours` |
+| `milestone` | Detect milestones | `/opc-journal milestone` |
+| `task` | Create async task | `/opc-journal task "Research competitors"` |
+| `insight` | Generate insight | `/opc-journal insight` |
+| `cron` | Check cron schedules | `/opc-journal cron --action check` |
+
+### Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--customer-id` | Customer identifier (default: from context) |
+| `--day` | Day number in journey |
+| `--format` | Output format: yaml, markdown, json |
+| `--dry-run` | Preview without executing |
+
+### Examples
+
+```bash
+# Initialize new customer journal
+/opc-journal init --customer-id OPC-001 --day 1
+
+# Record today's progress
+/opc-journal record "Launched landing page, got 50 signups!"
+
+# Generate weekly report
+/opc-journal export --period weekly --format markdown
+
+# Analyze work patterns
+/opc-journal analyze --days 30 --dimension decision_style
+
+# Create async task for tomorrow
+/opc-journal task "Draft investor pitch deck" --due tomorrow
+```
 
 ## Install
 
@@ -29,18 +120,6 @@ clawhub install coidea/opc-milestone-tracker
 clawhub install coidea/opc-async-task-manager
 clawhub install coidea/opc-insight-generator
 ```
-
-## Overview
-
-OPC Journal Suite is a collection of OpenClaw Skills designed for One Person Company (OPC), providing:
-
-- 📔 **Smart Journaling** - Automatic recording, linking, and retrieval of user journey
-- 🧠 **Behavioral Pattern Recognition** - Identify work habits, decision patterns, growth trajectory
-- 🎯 **Milestone Tracking** - Auto-detect important moments, generate achievement reports
-- ⏰ **Async Task Management** - Local task creation and tracking (no external execution)
-- 💡 **Insight Generation** - Personalized recommendations based on historical data
-
-**Privacy First**: All processing is local. No data leaves your machine.
 
 ## Architecture
 

@@ -1,7 +1,37 @@
+---
+name: opc-pattern-recognition
+description: "OPC Journal Suite Pattern Recognition Module - Behavioral analysis and habit identification. Use when: (1) analyzing work patterns and rhythms, (2) identifying decision-making styles, (3) detecting productivity trends. NOT for: predicting future outcomes with certainty → patterns are probabilistic."
+metadata:
+  {
+    "openclaw": {
+      "emoji": "🧠",
+      "requires": {}
+    }
+  }
+---
+
 # opc-pattern-recognition
 
 **Version**: 2.3.0  
 **Status**: Production Ready
+
+## When to Use
+
+✅ **Use this skill for:**
+
+- Analyzing work rhythms and productive hours
+- Identifying decision-making patterns
+- Detecting stress triggers and recovery patterns
+- Tracking learning velocity and skill acquisition
+- Understanding emotional patterns in work
+
+## When NOT to Use
+
+❌ **Don't use when:**
+
+- Need guaranteed predictions of future behavior
+- Require clinical psychological analysis
+- Want to compare with other users (privacy-respecting, no cross-user data)
 
 ## Description
 
