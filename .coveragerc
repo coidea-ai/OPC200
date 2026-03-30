@@ -16,8 +16,8 @@ exclude_lines =
     raise AssertionError
     raise NotImplementedError
     if __name__ == .__main__.:
-    class .*\\bProtocol\\):
-    @(abc\\.)?abstractmethod
+    class .*Protocol.*:
+    @abstractmethod
 
 precision = 2
 show_missing = True
