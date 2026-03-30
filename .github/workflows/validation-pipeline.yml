@@ -291,7 +291,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-,enable={{is_default_branch}}
+            type=sha,prefix=pr{{github.event.number}}-,event=pr
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push image
