@@ -1,5 +1,8 @@
 # opc-async-task-manager
 
+**Version**: 2.3.0  
+**Status**: Production Ready
+
 ## Description
 
 OPC Journal Suite Async Task Management Module - Local task tracking for background work organization.
@@ -77,17 +80,17 @@ result = check_status({
 
 ## Configuration
 
+子 skill 配置继承自主 `config.yml` 的 `async_task` 部分。完整配置参见：
+`~/.openclaw/skills/opc-journal-suite/config.yml`
+
 ```yaml
-async_task_manager:
+async_task:
   max_concurrent: 5
   default_timeout: "8h"
   retry_policy:
     max_retries: 3
     backoff: "exponential"
-  
   # NOTE: Notification channels reserved for future versions
-  # Current implementation is local tracking only
-  # notification_channels: []
 ```
 
 ## Data Privacy

@@ -1,5 +1,8 @@
 # opc-journal-core
 
+**Version**: 2.3.0  
+**Status**: Production Ready
+
 ## Description
 
 OPC Journal Suite Core Module - Provides foundational capabilities for journal recording, retrieval, linking, and summary generation.
@@ -235,35 +238,20 @@ support_hub:
 
 ## Configuration
 
-```yaml
-# config.yml
+子 skill 配置继承自主 `config.yml` 的 `journal` 部分。完整配置参见：
+`~/.openclaw/skills/opc-journal-suite/config.yml`
 
+```yaml
 journal_core:
-  # 存储配置
   storage:
-    backend: "filesystem"  # filesystem / database / hybrid
+    backend: "filesystem"
     path: "customers/{customer_id}/journal/"
     compression: true
-    encryption: false
-  
-  # 索引配置
   indexing:
     enable_fulltext: true
-    enable_semantic: true  # 需要 embedding model
     auto_tag: true
-  
-  # 摘要配置
-  digest:
-    auto_generate: true
-    daily_schedule: "22:00"
-    weekly_day: "sunday"
-    monthly_day: "last_day"
-  
-  # 隐私配置
   privacy:
     default_level: "normal"
-    vault_encryption: "aes-256"
-    audit_log: true
 ```
 
 ## Best Practices

@@ -1,5 +1,8 @@
 # opc-insight-generator
 
+**Version**: 2.3.0  
+**Status**: Production Ready
+
 ## Description
 
 OPC Journal Suite Insight Generation Module - Generates personalized insights and recommendations based on journal entries, patterns, and milestones.
@@ -108,24 +111,18 @@ weekly_report:
 
 ## Configuration
 
-```yaml
-# ~/.openclaw/skills/opc-journal-suite/config.yml
+子 skill 配置继承自主 `config.yml` 的 `insight` 部分。完整配置参见：
+`~/.openclaw/skills/opc-journal-suite/config.yml`
 
+```yaml
 insight:
-  generation_frequency: "daily"  # daily / weekly / on_demand
+  generation_frequency: "daily"
   include_recommendations: true
   personalization_enabled: true
-  
   sources:
     - journal_entries
     - patterns
     - milestones
-    - external_data  # e.g., GitHub, revenue metrics
-    
-  output_formats:
-    - yaml          # Structured data
-    - markdown      # Human-readable report
-    - json          # API consumption
 ```
 
 ## Integration

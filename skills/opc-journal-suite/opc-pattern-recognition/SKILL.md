@@ -1,5 +1,8 @@
 # opc-pattern-recognition
 
+**Version**: 2.3.0  
+**Status**: Production Ready
+
 ## Description
 
 OPC Journal Suite Pattern Recognition Module - Analyzes user behavioral patterns, work habits, decision styles, and provides personalized insights and recommendations.
@@ -259,35 +262,21 @@ Sun: 8 ██████████░░
 
 ## Configuration
 
+子 skill 配置继承自主 `config.yml` 的 `pattern_recognition` 部分。完整配置参见：
+`~/.openclaw/skills/opc-journal-suite/config.yml`
+
 ```yaml
 pattern_recognition:
   analysis_schedule:
-    daily: "22:00"      # 每日简要分析
-    weekly: "sunday_20:00"  # 周模式报告
-    monthly: "last_day"     # 月度成长报告
-    
+    daily: "22:00"
+    weekly: "sunday_20:00"
+    monthly: "last_day"
   dimensions:
-    work_rhythm:
-      enabled: true
-      granulariry: "hourly"
-      
-    decision_patterns:
-      enabled: true
-      track_types: ["technical", "business", "hiring", "marketing"]
-      
-    emotional_patterns:
-      enabled: true
-      privacy: "high"  # 敏感数据处理
-      
+    work_rhythm: { enabled: true }
+    decision_patterns: { enabled: true }
   predictions:
     enabled: true
     lookahead_days: 7
-    confidence_threshold: 0.7
-    
-  similar_customers:
-    enabled: true  # 匿名化比较
-    anonymity_level: "high"
-    min_similarity: 0.6
 ```
 
 ## Privacy Considerations

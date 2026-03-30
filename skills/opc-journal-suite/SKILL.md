@@ -181,6 +181,8 @@ Bot: "☀️ #RESEARCH-007 Ready!
 
 ## Configuration
 
+完整配置参见 `config.yml`，主要配置项如下：
+
 ```yaml
 # ~/.openclaw/skills/opc-journal-suite/config.yml
 
@@ -200,6 +202,39 @@ milestone:
 async_task:
   max_concurrent: 5
   default_timeout: "8h"
+
+# Cron 调度器配置 (v2.3 新增)
+# 支持定时自动生成日报、周分析、里程碑检查等
+cron_scheduler:
+  enabled: true
+  check_interval: "5m"
+  schedules:
+    daily_summary:
+      enabled: true
+      schedule: "0 8 * * *"      # 每天 8:00
+      target_skill: "opc-insight-generator"
+    weekly_pattern:
+      enabled: true
+      schedule: "0 9 * * 0"      # 每周日 9:00
+      target_skill: "opc-pattern-recognition"
+    milestone_check:
+      enabled: true
+      schedule: "0 21 * * *"     # 每天 21:00
+      target_skill: "opc-milestone-tracker"
+```
+
+### Cron Scheduler (v2.3 新功能)
+
+OPC Journal Suite 2.3.0 新增了内置的 Cron 调度器，支持定时自动触发以下任务：
+
+| 任务 | 默认时间 | 说明 |
+|------|---------|------|
+| `daily_summary` | 每天 8:00 | 生成每日洞察摘要 |
+| `weekly_pattern` | 每周日 9:00 | 进行周度行为模式分析 |
+| `milestone_check` | 每天 21:00 | 检测新的里程碑 |
+| `memory_compaction` | 每天 23:00 | 内存整理与归档 |
+
+**注意**: 所有调度任务均为本地执行，不涉及外部网络调用。
   # NOTE: Notification channels are reserved for future versions
   # Current implementation is local-only
 ```
@@ -365,7 +400,7 @@ All tests are local unit tests with no network dependencies.
 | v1.0 | Core journal, basic patterns | 2026.03 |
 | v1.1 | Milestone auto-detection | 2026.04 |
 | v1.2 | Advanced async tasks | 2026.04 |
-| v2.0 | Cross-customer insights (anonymized) | 2026.05 |
+| **v2.3** | **Cron scheduler, unified coordination** | **2026.03 (Current)** |
 | v2.5 | Voice journal, emotional AI | 2026.06 |
 
 ## Contributing
@@ -381,7 +416,7 @@ MIT License - OPC200 Project
 
 ## Support
 
-- GitHub Issues: https://github.com/coidea-sys/opc-journal-suite/issues
+- GitHub Issues: https://github.com/coidea-ai/opc-journal-suite/issues
 - Documentation: https://docs.opc200.co/journal-suite
 
 **Note**: This is a local-only skill. For support, please open a GitHub issue rather than using external channels.

@@ -1,5 +1,8 @@
 # opc-milestone-tracker
 
+**Version**: 2.3.0  
+**Status**: Production Ready
+
 ## Description
 
 OPC Journal Suite Milestone Tracking Module - Automatically detects important moments in the user journey, generates achievement reports, and provides continuous motivation and direction.
@@ -67,17 +70,19 @@ Response:
 
 ## Configuration
 
+子 skill 配置继承自主 `config.yml` 的 `milestone` 部分。完整配置参见：
+`~/.openclaw/skills/opc-journal-suite/config.yml`
+
 ```yaml
-milestone_tracker:
-  auto_detection:
-    enabled: true
-    check_frequency: "realtime"
-    confidence_threshold: 0.7
-    
-  celebration:
-    enabled: true
-    # NOTE: Notifications are local journal entries only
-    # No external channels (feishu, email) in current version
+milestone:
+  auto_detect: true
+  celebration_enabled: true
+  min_confidence: 0.7
+  types:
+    - product_launch
+    - first_customer
+    - revenue_milestone
+    - team_expansion
 ```
 
 ## Data Privacy

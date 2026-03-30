@@ -171,4 +171,5 @@ path = build_memory_path("OPC-001")  # ~/.openclaw/customers/OPC-001/memory/2026
 ---
 
 *规范版本: 1.0*  
+*适用范围: opc-journal-suite 2.3.0+*  
 *创建时间: 2026-03-27*
