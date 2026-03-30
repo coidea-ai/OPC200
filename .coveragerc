@@ -1,0 +1,33 @@
+[run]
+source = skills/opc-journal-suite
+omit = 
+    */tests/*
+    */__pycache__/*
+    */venv/*
+    */.venv/*
+    */.tox/*
+    */node_modules/*
+    setup.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    class .*\\bProtocol\\):
+    @(abc\\.)?abstractmethod
+
+precision = 2
+show_missing = True
+skip_covered = False
+
+# 最低覆盖率要求
+fail_under = 80
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

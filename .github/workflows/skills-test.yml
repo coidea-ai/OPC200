@@ -41,18 +41,18 @@ jobs:
           pip install -r requirements-test.txt
           pip install pytest pytest-cov
       
-      - name: Run main skills tests
+      - name: Run main skills tests with coverage
         run: |
           cd skills/opc-journal-suite
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term --cov-fail-under=80
       
-      - name: Run sub-skills tests
+      - name: Run sub-skills tests with coverage
         run: |
           cd skills/opc-journal-suite
           for dir in opc-*/; do
             echo "Testing $dir..."
             cd "$dir"
-            pytest tests/ -v
+            pytest tests/ -v --cov=. --cov-report=term --cov-fail-under=70
             cd ..
           done
       
