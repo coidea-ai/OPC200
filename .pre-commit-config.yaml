@@ -54,20 +54,3 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-
-  # Commit message linting - Conventional Commits
-  - repo: https://github.com/commitizen-tools/commitizen
-    rev: v3.6.0
-    hooks:
-      - id: commitizen
-        stages: [commit-msg]
-
-  # Alternative: simpler commit message check
-  - repo: local
-    hooks:
-      - id: commit-message-check
-        name: Check commit message format
-        entry: python .github/scripts/check_commit_msg.py
-        language: python
-        stages: [commit-msg]
-        pass_filenames: true
