@@ -1,0 +1,90 @@
+# OPC200 CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global default - Danny owns everything
+* @danny
+
+# =============================================================================
+# Core Application
+# =============================================================================
+
+# Smart Contracts
+/contracts/ @danny
+/tests/contracts/ @danny
+
+# Backend API
+/src/ @danny
+/tests/unit/ @danny
+/tests/integration/ @danny
+
+# Database & Migrations
+/migrations/ @danny
+*.sql @danny
+
+# Configuration
+/config/ @danny
+*.yaml @danny
+*.yml @danny
+
+# =============================================================================
+# Skills (Critical - AI Agent Functionality)
+# =============================================================================
+
+/skills/ @danny
+/skills/opc-journal-suite/ @danny
+/skills/README.md @danny
+
+# =============================================================================
+# CI/CD & DevOps
+# =============================================================================
+
+/.github/ @danny
+/.github/workflows/ @danny
+/.github/actions/ @danny
+/.pre-commit-config.yaml @danny
+/Dockerfile @danny
+docker-compose*.yml @danny
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+/docs/ @danny
+*.md @danny
+README.md @danny
+ARCHITECTURE.md @danny
+PROJECT_STATUS.md @danny
+
+# =============================================================================
+# Training & AI
+# =============================================================================
+
+/insclaw-training/ @danny
+/insclaw-training/**/*.md @danny
+
+# =============================================================================
+# Infrastructure
+# =============================================================================
+
+/terraform/ @danny
+/k8s/ @danny
+/helm/ @danny
+
+# =============================================================================
+# Dependencies (Security Sensitive)
+# =============================================================================
+
+/requirements*.txt @danny
+/package.json @danny
+/package-lock.json @danny
+yarn.lock @danny
+Pipfile @danny
+poetry.lock @danny
+
+# =============================================================================
+# Security & Compliance
+# =============================================================================
+
+SECURITY.md @danny
+AUDIT_REPORT.md @danny
+LICENSE @danny
