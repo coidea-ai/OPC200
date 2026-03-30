@@ -5,6 +5,14 @@ All notable changes to the OPC200 project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Aligned project status documents for a single source of truth:
+  - Updated `EXECUTIVE_SUMMARY.md` to match latest audit conclusions (A- / 94.5 / ~90%)
+  - Updated `DEVELOPMENT_PLAN.md` progress and acceptance checklist statuses
+  - Updated `PROJECT_STATUS.md` metadata and action priorities
+
 ## [2.2.0] - 2024-03-24
 
 ### Added
