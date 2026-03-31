@@ -80,8 +80,19 @@ jobs:
 
       - name: Scan for secrets
         run: |
-          detect-secrets scan --all-files --force-use-all-plugins > .secrets.baseline
-          detect-secrets audit .secrets.baseline || true
+          # Scan for secrets and compare with baseline (non-interactive)
+          detect-secrets scan \
+            --all-files \
+            --force-use-all-plugins \
+            --exclude-files ".git/*" \
+            --exclude-files "*.pyc" \
+            --exclude-files "__pycache__/*" \
+            --exclude-files ".pytest_cache/*" \
+            --exclude-files ".mypy_cache/*" \
+            --exclude-files "poetry.lock" \
+            --exclude-files "package-lock.json" \
+            --exclude-files "yarn.lock" \
+            --baseline .secrets.baseline || true
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
