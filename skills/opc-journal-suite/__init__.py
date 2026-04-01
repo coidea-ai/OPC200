@@ -8,9 +8,19 @@ Version: 2.2.2
 
 __version__ = "2.2.2"
 
-# Package-level exports (imported lazily to avoid import errors)
-__all__ = ['coordinate', 'detect_intent', 'get_skill_for_intent']
+# Package exports - use absolute imports for CI compatibility
+try:
+    # When installed as a package
+    from opc_journal_suite.scripts.coordinate import main as coordinate
+    from opc_journal_suite.scripts.coordinate import detect_intent, get_skill_for_intent
+except ImportError:
+    # When running directly from source (development mode)
+    import sys
+    from pathlib import Path
+    scripts_path = str(Path(__file__).parent / "scripts")
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
+    from coordinate import main as coordinate
+    from coordinate import detect_intent, get_skill_for_intent
 
-# Note: Use direct script execution for actual skill operation:
-#   python -m opc_journal_suite.scripts.coordinate
-#   python opc-journal-suite/scripts/coordinate.py
+__all__ = ['coordinate', 'detect_intent', 'get_skill_for_intent']
