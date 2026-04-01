@@ -1,7 +1,7 @@
 # OPC200 项目状态摘要
 
 **更新时间**: 2026-04-01 03:30 PM (Asia/Shanghai)  
-**版本**: v2.2.2  
+**版本**: v2.3.0  
 **Git Commit**: 8a80ce8  
 **审计报告**: A- 级 (94.5/100)
 
@@ -139,14 +139,14 @@ skills/opc-journal-suite/
 ### 发布命令
 ```bash
 # 发布子技能 (更新到 v2.2.2)
-clawhub publish skills/opc-journal-suite/opc-journal-core --slug opc-journal-core --version 2.2.2
-clawhub publish skills/opc-journal-suite/opc-pattern-recognition --slug opc-pattern-recognition --version 2.2.2
-clawhub publish skills/opc-journal-suite/opc-milestone-tracker --slug opc-milestone-tracker --version 2.2.2
-clawhub publish skills/opc-journal-suite/opc-async-task-manager --slug opc-async-task-manager --version 2.2.2
-clawhub publish skills/opc-journal-suite/opc-insight-generator --slug opc-insight-generator --version 2.2.2
+clawhub publish skills/opc-journal-suite/opc-journal-core --slug opc-journal-core --version 2.3.0
+clawhub publish skills/opc-journal-suite/opc-pattern-recognition --slug opc-pattern-recognition --version 2.3.0
+clawhub publish skills/opc-journal-suite/opc-milestone-tracker --slug opc-milestone-tracker --version 2.3.0
+clawhub publish skills/opc-journal-suite/opc-async-task-manager --slug opc-async-task-manager --version 2.3.0
+clawhub publish skills/opc-journal-suite/opc-insight-generator --slug opc-insight-generator --version 2.3.0
 
 # 发布协调套件
-clawhub publish skills/opc-journal-suite --slug opc-journal-suite --version 2.2.2
+clawhub publish skills/opc-journal-suite --slug opc-journal-suite --version 2.3.0
 ```
 
 **⚠️ 需要**: `clawhub login --token <YOUR_TOKEN>`

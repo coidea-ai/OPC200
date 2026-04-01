@@ -318,12 +318,23 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (non-PR)
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: 'sarif'
           output: 'trivy-results.sarif'
+
+      - name: Run Trivy filesystem scanner (PR only)
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          skip-dirs: '.git,tests,docs'
 
       - name: Upload Trivy scan results
         uses: actions/upload-artifact@v4
