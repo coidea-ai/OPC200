@@ -5,6 +5,47 @@ All notable changes to the OPC200 project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-01
+
+### Added
+- **Cron Scheduler** - Autonomous scheduled task execution for journal operations
+  - Pre-configured schedules: daily summary (8:00 AM), weekly pattern analysis (Sunday 9:00 AM), milestone check (9:00 PM), memory compaction reminder (11:00 PM)
+  - Intent-based routing with natural language triggers
+  - 9 comprehensive unit tests
+  
+- **Learning Tracker** - Three-confirmation learning mechanism
+  - 1st occurrence → daily memory
+  - 3rd occurrence → project memory
+  - 10th occurrence → permanent memory
+  - 9 comprehensive unit tests
+  
+- **Deployment Templates**
+  - Cloud deployment template (Kubernetes configuration)
+  - Edge deployment template (Docker Compose configuration)
+  
+- **Operations Scripts Test Suite**
+  - Full validation test suite for ops scripts
+  - 34 test cases covering health-check.sh, backup-manager.sh, emergency-recovery.sh
+  - Performance benchmarks (< 1s startup time)
+
+- **Enhanced API Documentation**
+  - Complete Python library API reference
+  - Module documentation: Journal, Tasks, Insights, Patterns, Security
+  - Data models and error handling guides
+  - Comprehensive usage examples
+
+### Fixed
+- ClawHub review issues: removed unimplemented notification configurations
+- Import error in milestone tracker (removed non-existent notify module)
+- Documentation consistency across all skill modules
+- Script executable permissions (backup-manager.sh, emergency-recovery.sh)
+- detect-secrets CI failures with proper baseline configuration
+
+### Changed
+- **Version unification**: All project documents and skills aligned to v2.3.0
+- Skills refactored to pure Python with standard library only (removed src.* dependencies)
+- Documentation structure improved with single source of truth
+
 ## [Unreleased]
 
 ### Changed
