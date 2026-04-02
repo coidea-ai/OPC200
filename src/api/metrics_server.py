@@ -106,7 +106,7 @@ def create_metrics_handler(collector: Optional['MetricsCollector'] = None) -> ty
 
 def run_server(
     port: int = 9090,
-    host: str = '0.0.0.0',
+    host: str = '0.0.0.0',  # nosec: B104 - Metrics server must bind to all interfaces for Prometheus scraping
     collector: Optional['MetricsCollector'] = None
 ) -> None:
     """Run the metrics HTTP server."""
@@ -136,7 +136,7 @@ def main() -> None:
     parser.add_argument(
         '--host', '-H',
         type=str,
-        default='0.0.0.0',
+        default='0.0.0.0',  # nosec: B104 - Metrics server must bind to all interfaces for Prometheus scraping
         help='Host to bind to (default: 0.0.0.0)'
     )
     parser.add_argument(
