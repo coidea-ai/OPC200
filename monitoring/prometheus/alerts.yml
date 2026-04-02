@@ -1,0 +1,265 @@
+# OPC200 Prometheus Alert Rules
+# 
+# 告警级别:
+# - critical: 需要立即处理，影响服务可用性
+# - warning: 需要关注，可能影响服务质量
+# - info: 信息性，用于统计和趋势分析
+
+groups:
+  - name: opc200-service-alerts
+    interval: 30s
+    rules:
+      # ==================== 服务可用性 ====================
+      
+      - alert: OPC200MetricsServerDown
+        expr: up{job="opc200-metrics"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: metrics-server
+        annotations:
+          summary: "OPC200 Metrics Server is down"
+          description: "Metrics server has been down for more than 1 minute. Prometheus scraping is failing."
+          runbook_url: "https://wiki.internal/opc200/runbooks/metrics-server-down"
+      
+      - alert: OPC200GatewayDown
+        expr: up{job="opc200-gateway"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: gateway
+        annotations:
+          summary: "OPC200 Gateway is down"
+          description: "Gateway health check has been failing for more than 2 minutes."
+      
+      # ==================== 资源使用 ====================
+      
+      - alert: HighDiskUsage
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 20
+          )
+        for: 5m
+        labels:
+          severity: warning
+          resource: disk
+        annotations:
+          summary: "Disk usage is above 80%"
+          description: "Disk usage is {{ $value | humanize }}% on {{ $labels.instance }}. Consider cleaning up logs or expanding storage."
+      
+      - alert: CriticalDiskUsage
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 10
+          )
+        for: 2m
+        labels:
+          severity: critical
+          resource: disk
+        annotations:
+          summary: "Disk usage is above 90%"
+          description: "Disk usage is critical at {{ $value | humanize }}% on {{ $labels.instance }}. Immediate action required."
+      
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            1 - (
+              node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+            )
+          ) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          resource: memory
+        annotations:
+          summary: "Memory usage is above 90%"
+          description: "Memory usage is {{ $value | humanize }}% on {{ $labels.instance }}. Consider restarting services or scaling up."
+      
+      - alert: CriticalMemoryUsage
+        expr: |
+          (
+            1 - (
+              node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+            )
+          ) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          resource: memory
+        annotations:
+          summary: "Memory usage is above 95%"
+          description: "Memory usage is critically high at {{ $value | humanize }}% on {{ $labels.instance }}. OOM kills may occur."
+      
+      # ==================== 应用性能 ====================
+      
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(opc200_errors_total[5m])) 
+            / 
+            sum(rate(opc200_requests_total[5m]))
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanize }}% over the last 5 minutes. Check application logs for details."
+      
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(opc200_errors_total[5m])) 
+            / 
+            sum(rate(opc200_requests_total[5m]))
+          ) * 100 > 20
+        for: 2m
+        labels:
+          severity: critical
+          service: application
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is critically high at {{ $value | humanize }}%. Service may be degraded."
+      
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(opc200_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "P95 response time is slow"
+          description: "P95 response time is {{ $value }}s over the last 5 minutes. Expected < 1s."
+      
+      - alert: CriticalSlowResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(opc200_request_duration_seconds_bucket[5m])) by (le)
+          ) > 5.0
+        for: 2m
+        labels:
+          severity: critical
+          service: application
+        annotations:
+          summary: "P95 response time is critically slow"
+          description: "P95 response time is {{ $value }}s. User experience severely impacted."
+      
+      # ==================== Journal 模块 ====================
+      
+      - alert: JournalEntryCreationSpike
+        expr: |
+          (
+            sum(rate(journal_manager_entries_total{operation="create"}[5m])) 
+            > 
+            2 * sum(rate(journal_manager_entries_total{operation="create"}[1h]))
+          )
+        for: 5m
+        labels:
+          severity: info
+          module: journal
+        annotations:
+          summary: "Journal entry creation rate spike"
+          description: "Entry creation rate is significantly higher than average. Current: {{ $value }} entries/sec."
+      
+      - alert: JournalSearchSlow
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(journal_manager_operation_duration_seconds_bucket{operation="search"}[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          module: journal
+        annotations:
+          summary: "Journal search is slow"
+          description: "P95 search time is {{ $value }}s. Consider optimizing database queries or adding indexes."
+      
+      # ==================== Task 模块 ====================
+      
+      - alert: TaskExecutionFailureRate
+        expr: |
+          (
+            sum(rate(recurring_task_executions_total{status="failure"}[5m]))
+            /
+            sum(rate(recurring_task_executions_total[5m]))
+          ) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          module: tasks
+        annotations:
+          summary: "High task failure rate"
+          description: "Task failure rate is {{ $value | humanize }}% over the last 5 minutes."
+      
+      - alert: TaskExecutionFailureRateCritical
+        expr: |
+          (
+            sum(rate(recurring_task_executions_total{status="failure"}[5m]))
+            /
+            sum(rate(recurring_task_executions_total[5m]))
+          ) * 100 > 50
+        for: 2m
+        labels:
+          severity: critical
+          module: tasks
+        annotations:
+          summary: "Critical task failure rate"
+          description: "Task failure rate is critically high at {{ $value | humanize }}%. Check task configurations and dependencies."
+      
+      # ==================== Insight 模块 ====================
+      
+      - alert: InsightGenerationSlow
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(insight_generator_generation_duration_seconds_bucket[5m])) by (le)
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          module: insights
+        annotations:
+          summary: "Insight generation is slow"
+          description: "P95 insight generation time is {{ $value }}s. Consider optimizing ML models or reducing data size."
+
+  - name: opc200-business-alerts
+    interval: 1m
+    rules:
+      # ==================== 业务指标 ====================
+      
+      - alert: LowJournalActivity
+        expr: |
+          sum(rate(journal_manager_entries_total{operation="create"}[1h])) < 0.001
+        for: 1h
+        labels:
+          severity: info
+          metric: engagement
+        annotations:
+          summary: "Low journal activity"
+          description: "No journal entries created in the last hour. User may be inactive."
+      
+      - alert: BackupNotRunning
+        expr: |
+          time() - opc200_last_backup_timestamp > 86400
+        for: 1h
+        labels:
+          severity: warning
+          service: backup
+        annotations:
+          summary: "Backup has not run in 24 hours"
+          description: "Last backup was {{ $value | humanizeDuration }} ago. Check backup service status."
+
+# 告警路由建议 (需要在 alertmanager.yml 中配置):
+# 
+# 路由规则:
+# 1. critical → 立即通知 (PagerDuty/SMS/电话)
+# 2. warning → 标准通知 (Email/Slack)
+# 3. info → 仅记录 ( Grafana 面板显示)
+#
+# 抑制规则:
+# - 当 CriticalDiskUsage 触发时，抑制 HighDiskUsage
+# - 当 CriticalMemoryUsage 触发时，抑制 HighMemoryUsage
+# - 当 CriticalErrorRate 触发时，抑制 HighErrorRate

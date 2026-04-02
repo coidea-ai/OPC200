@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
+from src.monitoring.instrumentation import MetricsMixin
 from src.utils.validation import InputValidator, ValidationError
 
 # Type aliases for better code clarity
@@ -176,7 +177,7 @@ class JournalEntry:
         return query.lower() in self.content.lower()
 
 
-class JournalManager:
+class JournalManager(MetricsMixin):
     """Manages journal entries with CRUD operations.
     
     Provides methods for creating, reading, updating, and deleting
@@ -196,6 +197,9 @@ class JournalManager:
     
     def __init__(self, connection: sqlite3.Connection) -> None:
         """Initialize with database connection."""
+        super().__init__()  # Initialize MetricsMixin
+        self._init_metrics("journal_manager")  # Setup metrics
+        
         self.connection: sqlite3.Connection = connection
         # Ensure row factory is set for dictionary-style access
         if hasattr(self.connection, 'row_factory') and self.connection.row_factory is None:
@@ -227,6 +231,8 @@ class JournalManager:
         """)
         self.connection.commit()
     
+    @MetricsMixin.counted("entries_total", operation="create")
+    @MetricsMixin.timed("operation_duration_seconds", operation="create")
     def create_entry(self, entry: JournalEntry) -> JournalEntry:
         """Create a new journal entry."""
         cursor: sqlite3.Cursor = self.connection.cursor()
@@ -244,6 +250,8 @@ class JournalManager:
         self.connection.commit()
         return entry
     
+    @MetricsMixin.counted("entries_total", operation="get")
+    @MetricsMixin.timed("operation_duration_seconds", operation="get")
     def get_entry(self, entry_id: str) -> Optional[JournalEntry]:
         """Get a journal entry by ID."""
         # Validate input
@@ -290,6 +298,8 @@ class JournalManager:
         self.connection.commit()
         return cursor.rowcount > 0
     
+    @MetricsMixin.counted("entries_total", operation="list")
+    @MetricsMixin.timed("operation_duration_seconds", operation="list")
     def list_entries(self, limit: int = 100, offset: int = 0) -> list[JournalEntry]:
         """List all journal entries with pagination."""
         # Validate pagination parameters
@@ -320,6 +330,8 @@ class JournalManager:
         entries = self.list_entries(limit=10000)
         return [e for e in entries if tag in e.tags]
     
+    @MetricsMixin.counted("entries_total", operation="search")
+    @MetricsMixin.timed("operation_duration_seconds", operation="search")
     def search_entries(self, query: str) -> list[JournalEntry]:
         """Search entries by content."""
         # Validate search query
