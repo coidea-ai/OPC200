@@ -1,22 +1,21 @@
 #!/bin/bash
 #
 # OPC200 Health Check Script
-# Usage: ./health-check.sh [--env production] [--batch N] [--full]
+# Usage: ./health-check.sh [--env production] [--batch N] [--full] [--config FILE]
 #
 
 set -euo pipefail
 
-# Source common logging library
+# Source libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/logging.sh"
+source "$SCRIPT_DIR/../lib/config.sh"
 
 # Default values
 ENV="staging"
 BATCH=""
 FULL=false
-TIMEOUT=30
-ALERT_THRESHOLD=80  # Alert if health score below 80%
-MAX_PARALLEL=10     # Maximum parallel checks
+CONFIG_FILE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -33,19 +32,23 @@ while [[ $# -gt 0 ]]; do
             FULL=true
             shift
             ;;
+        --config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
         --timeout)
-            TIMEOUT="$2"
+            export OPC_HEALTH_CHECK_TIMEOUT="$2"
             shift 2
             ;;
         --parallel)
-            MAX_PARALLEL="$2"
+            export OPC_MAX_PARALLEL_CHECKS="$2"
             shift 2
             ;;
         --dry-run)
             export OPC_DRY_RUN="true"
             shift
             ;;
-        --verbose|-v)
+        -v|--verbose)
             export OPC_LOG_LEVEL="DEBUG"
             shift
             ;;
@@ -54,21 +57,22 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 [OPTIONS]
 
 Options:
-  --env ENV        Environment (default: staging)
-  --batch N        Check specific batch only
-  --full           Run full diagnostic checks
-  --timeout SEC    Connection timeout (default: 30)
-  --parallel N     Max parallel checks (default: 10)
-  --dry-run        Simulate run without making actual requests
-  -v, --verbose    Enable debug logging
-  --help           Show this help
+  --env ENV            Environment (default: staging)
+  --batch N            Check specific batch only
+  --full               Run full diagnostic checks
+  --config FILE        Use specific config file
+  --timeout SEC        Connection timeout (default: \$OPC_HEALTH_CHECK_TIMEOUT)
+  --parallel N         Max parallel checks (default: \$OPC_MAX_PARALLEL_CHECKS)
+  --dry-run            Simulate run without making actual requests
+  -v, --verbose        Enable debug logging
+  --help               Show this help
 
 Examples:
   # Check staging environment
   $0 --env staging
   
-  # Check production batch 1 with 20 parallel workers
-  $0 --env production --batch 1 --parallel 20
+  # Check production batch 1 with custom config
+  $0 --env production --batch 1 --config ~/.opcrc.prod
   
   # Dry run to see what would be checked
   $0 --env pilot --dry-run
@@ -82,24 +86,23 @@ EOF
     esac
 done
 
+# Initialize configuration
+opc_init_config "$CONFIG_FILE"
+
 # Health check functions
 check_service_health() {
     local customer_id=$1
     local endpoint=$2
-    
-    # Check Gateway health with retry
-    local gateway_status
-    local attempt=1
     local max_attempts=3
+    local attempt=1
+    local gateway_status
     
     while [[ $attempt -le $max_attempts ]]; do
         gateway_status=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time $TIMEOUT \
+            --max-time "$OPC_HEALTH_CHECK_TIMEOUT" \
             "$endpoint/health" 2>/dev/null || echo "000")
         
-        if [[ "$gateway_status" == "200" ]]; then
-            break
-        fi
+        [[ "$gateway_status" == "200" ]] && break
         
         if [[ $attempt -lt $max_attempts ]]; then
             log_debug "Gateway check failed (attempt $attempt/$max_attempts), retrying..."
@@ -108,27 +111,18 @@ check_service_health() {
         ((attempt++))
     done
     
-    if [[ "$gateway_status" == "200" ]]; then
-        echo "HEALTHY"
-    else
-        echo "UNHEALTHY:$gateway_status"
-    fi
+    [[ "$gateway_status" == "200" ]] && echo "HEALTHY" || echo "UNHEALTHY:$gateway_status"
 }
 
 check_skill_health() {
     local customer_id=$1
     local skill_name=$2
-    
-    # Mock skill health check - in production this would call the actual skill
-    # For now, assume skills are healthy if Gateway is healthy
     echo "HEALTHY"
 }
 
 check_database() {
     local customer_id=$1
-    
-    # Check SQLite database integrity
-    local db_path="/data/opc200/$customer_id/journal/journal.db"
+    local db_path="${OPC_DATA_DIR}/$customer_id/journal/journal.db"
     
     if [[ -f "$db_path" ]]; then
         if sqlite3 "$db_path" "PRAGMA integrity_check;" 2>/dev/null | grep -q "ok"; then
@@ -144,82 +138,55 @@ check_database() {
 check_disk_space() {
     local customer_id=$1
     local threshold=90
-    
-    # Get disk usage percentage
     local usage
-    usage=$(df /data/opc200 2>/dev/null | awk 'NR==2 {print $5}' | sed 's/%//' || echo "100")
     
-    if [[ $usage -lt $threshold ]]; then
-        echo "HEALTHY:$usage"
-    else
-        echo "WARNING:$usage"
-    fi
+    usage=$(df "${OPC_DATA_DIR}/$customer_id" 2>/dev/null | awk 'NR==2 {print $5}' | sed 's/%//' || echo "100")
+    
+    [[ $usage -lt $threshold ]] && echo "HEALTHY:$usage" || echo "WARNING:$usage"
 }
 
 check_memory() {
     local customer_id=$1
-    
-    # Get memory usage
     local usage
-    usage=$(free | awk 'NR==2{printf "%.0f", $3*100/$2}' 2>/dev/null || echo "100")
     
-    if [[ $usage -lt 90 ]]; then
-        echo "HEALTHY:$usage"
-    else
-        echo "WARNING:$usage"
-    fi
+    usage=$(free | awk 'NR==2{printf "%.0f", $3*100/$2}' 2>/dev/null || echo "100")
+    [[ $usage -lt 90 ]] && echo "HEALTHY:$usage" || echo "WARNING:$usage"
 }
 
 check_backup_status() {
     local customer_id=$1
-    
-    # Check if backup exists and is recent (within 24 hours)
-    local backup_dir="/data/opc200/$customer_id/backups"
+    local backup_dir="${OPC_DATA_DIR}/$customer_id/backups"
     local recent_backup
     
     recent_backup=$(find "$backup_dir" -name "*.db" -mtime -1 2>/dev/null | head -1)
-    
-    if [[ -n "$recent_backup" ]]; then
-        echo "HEALTHY"
-    else
-        echo "STALE"
-    fi
+    [[ -n "$recent_backup" ]] && echo "HEALTHY" || echo "STALE"
 }
 
-# Worker function for parallel health checks (runs in subshell)
+# Worker function for parallel health checks
 run_health_check_worker() {
     local customer_id=$1
-    local customer_code="OPC-$(printf "%03d" $customer_id)"
+    local customer_code
     local report_dir="$2"
     
+    customer_code=$(opc_format_customer_id "$customer_id")
     log_debug "[$customer_code] Running health checks..."
     
-    # Determine endpoint based on deployment type
     local endpoint
-    if [[ $customer_id -le 150 ]]; then
-        # On-premise: Tailscale IP
-        endpoint="http://opc-${customer_id}.tailnet.opc200.local"
+    local numeric_id=$(opc_parse_customer_id "$customer_id")
+    if [[ $numeric_id -le 150 ]]; then
+        endpoint="http://opc-${numeric_id}.tailnet.opc200.local"
     else
-        # Cloud: Public endpoint
         endpoint="https://${customer_code}.opc200.coidea.ai"
     fi
     
-    # Dry run mode - just log and return mock result
-    if [[ "${OPC_DRY_RUN:-false}" == "true" ]]; then
+    # Dry run mode
+    if [[ "$OPC_DRY_RUN" == "true" ]]; then
         log_info "[DRY-RUN] [$customer_code] Would check: $endpoint"
         cat > "$report_dir/${customer_code}.json" << EOF
 {
     "customer_id": "$customer_code",
     "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
     "health_score": 100,
-    "checks": {
-        "gateway": "HEALTHY",
-        "database": "HEALTHY",
-        "disk": "HEALTHY:50",
-        "memory": "HEALTHY:60",
-        "backup": "HEALTHY",
-        "skills": "HEALTHY"
-    },
     "status": "HEALTHY",
     "dry_run": true
 }
@@ -228,23 +195,13 @@ EOF
         return 0
     fi
     
-    # Run checks
-    local gateway_health
+    local gateway_health db_health disk_health memory_health backup_health
     gateway_health=$(check_service_health "$customer_id" "$endpoint")
-    
-    local db_health
     db_health=$(check_database "$customer_id")
-    
-    local disk_health
     disk_health=$(check_disk_space "$customer_id")
-    
-    local memory_health
     memory_health=$(check_memory "$customer_id")
-    
-    local backup_health
     backup_health=$(check_backup_status "$customer_id")
     
-    # Check skills
     local skills_health="HEALTHY"
     for skill in opc-journal-core opc-pattern-recognition opc-milestone-tracker opc-async-task-manager opc-insight-generator; do
         local skill_status
@@ -255,7 +212,6 @@ EOF
         fi
     done
     
-    # Calculate overall health score
     local score=100
     [[ "$gateway_health" != "HEALTHY" ]] && score=$((score - 30))
     [[ "$db_health" != "HEALTHY" ]] && score=$((score - 20))
@@ -264,7 +220,6 @@ EOF
     [[ "$backup_health" != "HEALTHY" ]] && score=$((score - 10))
     [[ "$skills_health" != "HEALTHY" ]] && score=$((score - 10))
     
-    # Determine status
     local status
     if [[ $score -ge 80 ]]; then
         status="HEALTHY"
@@ -274,7 +229,6 @@ EOF
         status="CRITICAL"
     fi
     
-    # Save individual report
     cat > "$report_dir/${customer_code}.json" << EOF
 {
     "customer_id": "$customer_code",
@@ -292,38 +246,23 @@ EOF
 }
 EOF
     
-    # Output summary for parent process
     echo "$customer_code|$status|$score"
 }
 
 export -f run_health_check_worker check_service_health check_skill_health check_database check_disk_space check_memory check_backup_status
-export -f log_debug log_info log_warn log_error
-export OPC_DRY_RUN OPC_LOG_LEVEL TIMEOUT
+export -f log_debug log_info log_warn log_error opc_parse_customer_id opc_format_customer_id
+export OPC_DRY_RUN OPC_LOG_LEVEL OPC_HEALTH_CHECK_TIMEOUT OPC_DATA_DIR
 
 # Determine customer range
 if [[ -n "$BATCH" ]]; then
-    # Check specific batch (50 customers per batch)
     START_ID=$(( (BATCH - 1) * 50 + 1 ))
     END_ID=$(( BATCH * 50 ))
 else
-    # Check all based on environment
     case $ENV in
-        staging)
-            START_ID=1
-            END_ID=5
-            ;;
-        pilot)
-            START_ID=1
-            END_ID=10
-            ;;
-        production)
-            START_ID=1
-            END_ID=200
-            ;;
-        *)
-            log_error "Unknown environment: $ENV"
-            exit 1
-            ;;
+        staging) START_ID=1; END_ID=5 ;;
+        pilot) START_ID=1; END_ID=10 ;;
+        production) START_ID=1; END_ID=200 ;;
+        *) log_error "Unknown environment: $ENV"; exit 1 ;;
     esac
 fi
 
@@ -331,82 +270,53 @@ log_info "=========================================="
 log_info "OPC200 Health Check"
 log_info "=========================================="
 log_info "Environment: $ENV"
-log_info "Range: OPC-$(printf "%03d" $START_ID) to OPC-$(printf "%03d" $END_ID)"
+log_info "Range: $(opc_format_customer_id $START_ID) to $(opc_format_customer_id $END_ID)"
 [[ -n "$BATCH" ]] && log_info "Batch: $BATCH"
 $FULL && log_info "Mode: FULL diagnostic"
-log_info "Parallel workers: $MAX_PARALLEL"
-[[ "${OPC_DRY_RUN:-false}" == "true" ]] && log_warn "Mode: DRY RUN (no actual checks)"
+log_info "Parallel workers: $OPC_MAX_PARALLEL_CHECKS"
+log_info "Timeout: ${OPC_HEALTH_CHECK_TIMEOUT}s"
+[[ "$OPC_DRY_RUN" == "true" ]] && log_warn "Mode: DRY RUN"
 log_info "=========================================="
 
 # Create report directory
-REPORT_DIR="./logs/health-$(date +%Y%m%d-%H%M%S)"
+REPORT_DIR="${OPC_LOG_DIR}/health-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$REPORT_DIR"
 
 # Statistics
-declare -i HEALTHY=0
-declare -i DEGRADED=0
-declare -i CRITICAL=0
+declare -i HEALTHY=0 DEGRADED=0 CRITICAL=0
 declare -a CRITICAL_IDS=()
 
-# Generate ID list for parallel processing
 ID_LIST=$(seq $START_ID $END_ID)
 
 # Check if GNU parallel is available
 if command -v parallel >/dev/null 2>&1; then
     log_info "Using GNU parallel for parallel execution"
+    RESULTS=$(echo "$ID_LIST" | parallel -j "$OPC_MAX_PARALLEL_CHECKS" run_health_check_worker {} "$REPORT_DIR")
     
-    # Run health checks in parallel using GNU parallel
-    RESULTS=$(echo "$ID_LIST" | parallel -j "$MAX_PARALLEL" run_health_check_worker {} "$REPORT_DIR")
-    
-    # Process results
     while IFS='|' read -r customer_code status score; do
         case $status in
-            HEALTHY)
-                ((HEALTHY++))
-                log_info "[$customer_code] ✅ HEALTHY (score: $score)"
-                ;;
-            DEGRADED)
-                ((DEGRADED++))
-                log_warn "[$customer_code] ⚠️ DEGRADED (score: $score)"
-                ;;
-            CRITICAL)
-                ((CRITICAL++))
-                CRITICAL_IDS+=($customer_code)
-                log_error "[$customer_code] ❌ CRITICAL (score: $score)"
-                ;;
+            HEALTHY) ((HEALTHY++)); log_info "[$customer_code] ✅ HEALTHY (score: $score)" ;;
+            DEGRADED) ((DEGRADED++)); log_warn "[$customer_code] ⚠️ DEGRADED (score: $score)" ;;
+            CRITICAL) ((CRITICAL++)); CRITICAL_IDS+=($customer_code); log_error "[$customer_code] ❌ CRITICAL (score: $score)" ;;
         esac
     done <<< "$RESULTS"
 else
-    log_warn "GNU parallel not found, falling back to sequential execution"
-    
-    # Run sequentially
+    log_warn "GNU parallel not found, using sequential execution"
     for i in $ID_LIST; do
         result=$(run_health_check_worker $i "$REPORT_DIR")
-        
-        # Parse result
         customer_code=$(echo "$result" | cut -d'|' -f1)
         status=$(echo "$result" | cut -d'|' -f2)
         score=$(echo "$result" | cut -d'|' -f3)
         
         case $status in
-            HEALTHY)
-                ((HEALTHY++))
-                log_info "[$customer_code] ✅ HEALTHY (score: $score)"
-                ;;
-            DEGRADED)
-                ((DEGRADED++))
-                log_warn "[$customer_code] ⚠️ DEGRADED (score: $score)"
-                ;;
-            CRITICAL)
-                ((CRITICAL++))
-                CRITICAL_IDS+=($customer_code)
-                log_error "[$customer_code] ❌ CRITICAL (score: $score)"
-                ;;
+            HEALTHY) ((HEALTHY++)); log_info "[$customer_code] ✅ HEALTHY (score: $score)" ;;
+            DEGRADED) ((DEGRADED++)); log_warn "[$customer_code] ⚠️ DEGRADED (score: $score)" ;;
+            CRITICAL) ((CRITICAL++)); CRITICAL_IDS+=($customer_code); log_error "[$customer_code] ❌ CRITICAL (score: $score)" ;;
         esac
     done
 fi
 
-# Generate summary report
+# Generate summary
 TOTAL=$((END_ID - START_ID + 1))
 SUMMARY_FILE="$REPORT_DIR/summary.json"
 
@@ -415,16 +325,8 @@ cat > "$SUMMARY_FILE" << EOF
     "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
     "environment": "$ENV",
     "batch": ${BATCH:-null},
-    "range": {
-        "start": "OPC-$(printf "%03d" $START_ID)",
-        "end": "OPC-$(printf "%03d" $END_ID)"
-    },
-    "summary": {
-        "total": $TOTAL,
-        "healthy": $HEALTHY,
-        "degraded": $DEGRADED,
-        "critical": $CRITICAL
-    },
+    "range": {"start": "$(opc_format_customer_id $START_ID)", "end": "$(opc_format_customer_id $END_ID)"},
+    "summary": {"total": $TOTAL, "healthy": $HEALTHY, "degraded": $DEGRADED, "critical": $CRITICAL},
     "percentages": {
         "healthy": $(awk "BEGIN {printf \"%.1f\", ($HEALTHY/$TOTAL)*100}"),
         "degraded": $(awk "BEGIN {printf \"%.1f\", ($DEGRADED/$TOTAL)*100}"),
@@ -434,7 +336,6 @@ cat > "$SUMMARY_FILE" << EOF
 }
 EOF
 
-# Print summary
 echo ""
 log_info "=========================================="
 log_info "Health Check Summary"
@@ -447,9 +348,7 @@ log_info "=========================================="
 
 if [[ ${#CRITICAL_IDS[@]} -gt 0 ]]; then
     log_error "Critical instances require attention:"
-    for id in "${CRITICAL_IDS[@]}"; do
-        log_error "  - $id"
-    done
+    for id in "${CRITICAL_IDS[@]}"; do log_error "  - $id"; done
     log_info "Details: $REPORT_DIR/"
     exit 1
 fi

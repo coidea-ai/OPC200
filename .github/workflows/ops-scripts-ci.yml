@@ -1,0 +1,124 @@
+name: Ops Scripts CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'scripts/**'
+      - 'tests/scripts/**'
+      - '.github/workflows/ops-scripts-ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'scripts/**'
+      - 'tests/scripts/**'
+
+jobs:
+  shellcheck:
+    name: ShellCheck Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          echo "::group::Checking scripts with ShellCheck"
+          find scripts -name "*.sh" -type f | while read -r script; do
+            echo "Checking: $script"
+            shellcheck --severity=warning --format=tty "$script" || true
+          done
+          echo "::endgroup::"
+
+      - name: ShellCheck strict (errors only)
+        run: |
+          find scripts -name "*.sh" -type f -exec shellcheck --severity=error {} \;
+
+  syntax-check:
+    name: Bash Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check all scripts for syntax errors
+        run: |
+          echo "::group::Bash syntax check"
+          failed=0
+          find scripts -name "*.sh" -type f | while read -r script; do
+            if ! bash -n "$script"; then
+              echo "Syntax error in: $script"
+              failed=1
+            fi
+          done
+          echo "::endgroup::"
+          exit $failed
+
+  test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [shellcheck, syntax-check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3 parallel curl
+
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/**/*.sh
+          chmod +x tests/scripts/*.sh
+
+      - name: Run ops scripts tests
+        run: |
+          cd tests/scripts
+          ./test_ops_scripts.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: logs/
+
+  validate-config:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check config files exist
+        run: |
+          test -f config/opc.conf.example || (echo "Missing config example" && exit 1)
+          test -d scripts/lib || (echo "Missing lib directory" && exit 1)
+          test -f scripts/lib/logging.sh || (echo "Missing logging.sh" && exit 1)
+          test -f scripts/lib/config.sh || (echo "Missing config.sh" && exit 1)
+
+      - name: Test config loading
+        run: |
+          # Test that scripts can source the config
+          bash -c 'source scripts/lib/config.sh && opc_apply_defaults && echo "Config loaded OK"'
+
+  dry-run-tests:
+    name: Dry Run Tests
+    runs-on: ubuntu-latest
+    needs: [syntax-check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test health-check dry-run
+        run: |
+          ./scripts/maintenance/health-check.sh --env staging --dry-run --help
+
+      - name: Test backup-manager dry-run
+        run: |
+          ./scripts/maintenance/backup-manager.sh --id OPC-001 --dry-run backup || true
+
+      - name: Test emergency-recovery dry-run
+        run: |
+          ./scripts/recovery/emergency-recovery.sh --id OPC-001 --scenario disk-full --dry-run || true

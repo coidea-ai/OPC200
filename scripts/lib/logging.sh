@@ -49,6 +49,19 @@ _opc_log_level_allowed() {
     [[ $target_level_num -ge $current_level_num ]]
 }
 
+# 敏感信息脱敏
+_opc_mask_sensitive() {
+    local input="$1"
+    # 脱敏常见的敏感模式
+    echo "$input" | sed -E \
+        -e 's/(key[=:])[a-zA-Z0-9_-]{8,}/\1***MASKED***/gi' \
+        -e 's/(token[=:])[a-zA-Z0-9_-]{8,}/\1***MASKED***/gi' \
+        -e 's/(secret[=:])[a-zA-Z0-9_-]{8,}/\1***MASKED***/gi' \
+        -e 's/(password[=:])[a-zA-Z0-9_-]{8,}/\1***MASKED***/gi' \
+        -e 's/(authkey[=:])[a-zA-Z0-9_-]{8,}/\1***MASKED***/gi' \
+        2>/dev/null || echo "$input"
+}
+
 # 核心日志函数
 _opc_log() {
     local level="$1"
@@ -60,6 +73,9 @@ _opc_log() {
     if ! _opc_log_level_allowed "$level"; then
         return 0
     fi
+    
+    # 脱敏敏感信息
+    message=$(_opc_mask_sensitive "$message")
     
     # JSON 格式日志（如果启用结构化日志）
     if [[ "${OPC_JSON_LOG:-}" == "true" ]]; then
