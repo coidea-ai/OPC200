@@ -18,8 +18,8 @@ try:
     from monitoring.metrics import ApplicationMetrics, MetricsCollector
 except ImportError:
     # Fallback if monitoring module not available
-    ApplicationMetrics = None  # type: ignore[misc]
-    MetricsCollector = None  # type: ignore[misc]
+    ApplicationMetrics = None
+    MetricsCollector = None
 
 
 # Configure logging

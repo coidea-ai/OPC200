@@ -7,18 +7,21 @@ import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from src.utils.validation import InputValidator, ValidationError
 
 # Try to import monitoring, fallback to noop if not available
-try:
+if TYPE_CHECKING:
     from src.monitoring.instrumentation import MetricsMixin
-except ImportError:
-    # Fallback for tests or when monitoring is not available
-    class MetricsMixin:
-        """No-op metrics mixin when monitoring is not available."""
-        pass
+else:
+    try:
+        from src.monitoring.instrumentation import MetricsMixin
+    except ImportError:
+        # Fallback for tests or when monitoring is not available
+        class MetricsMixin:
+            """No-op metrics mixin when monitoring is not available."""
+            pass
 
 # Type aliases for better code clarity
 EntryId = str

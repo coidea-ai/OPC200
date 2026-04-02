@@ -6,16 +6,19 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
 # Try to import monitoring, fallback to noop if not available
-try:
+if TYPE_CHECKING:
     from src.monitoring.instrumentation import MetricsMixin
-except ImportError:
-    # Fallback for tests or when monitoring is not available
-    class MetricsMixin:
-        """No-op metrics mixin when monitoring is not available."""
-        pass
+else:
+    try:
+        from src.monitoring.instrumentation import MetricsMixin
+    except ImportError:
+        # Fallback for tests or when monitoring is not available
+        class MetricsMixin:
+            """No-op metrics mixin when monitoring is not available."""
+            pass
 
 # Python 3.10 compatibility: NotRequired is only available in 3.11+
 try:
