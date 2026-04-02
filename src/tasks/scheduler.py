@@ -10,7 +10,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from src.monitoring.instrumentation import MetricsMixin
+# Try to import monitoring, fallback to noop if not available
+try:
+    from src.monitoring.instrumentation import MetricsMixin
+except ImportError:
+    # Fallback for tests or when monitoring is not available
+    class MetricsMixin:
+        """No-op metrics mixin when monitoring is not available."""
+        pass
 
 
 @dataclass
