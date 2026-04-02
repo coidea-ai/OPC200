@@ -121,6 +121,32 @@ services:
       - opc200-internal
     ports:
       - "127.0.0.1:9090:9090"  # 仅本地访问
+    depends_on:
+      - metrics-server
+
+  # Metrics Server - Prometheus metrics endpoint
+  metrics-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.journal
+    container_name: opc200-metrics-server
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src:ro
+      - ./config:/app/config:ro
+    environment:
+      - OPC200_DATA_DIR=/data
+      - PYTHONPATH=/app/src
+    networks:
+      - opc200-internal
+    ports:
+      - "127.0.0.1:9091:9091"  # 仅本地访问
+    command: python /app/src/api/metrics_server.py --port 9091 --host 0.0.0.0 --with-app-metrics
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9091/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Grafana 可视化
   grafana:

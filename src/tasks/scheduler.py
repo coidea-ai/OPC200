@@ -4,18 +4,37 @@ Tasks Scheduler Module - Task scheduling and queue management.
 import asyncio
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+# Try to import monitoring, fallback to noop if not available
+if TYPE_CHECKING:
+    from src.monitoring.instrumentation import MetricsMixin
+else:
+    try:
+        from src.monitoring.instrumentation import MetricsMixin
+    except ImportError:
+        # Fallback for tests or when monitoring is not available
+        class MetricsMixin:
+            """No-op metrics mixin when monitoring is not available."""
+            pass
 
 
 @dataclass
-class TaskScheduler:
+class TaskScheduler(MetricsMixin):
     """Schedule and manage recurring tasks."""
     
     jobs: dict = field(default_factory=dict)
     
+    def __post_init__(self):
+        """Initialize metrics."""
+        super().__init__()
+        self._init_metrics("task_scheduler")
+    
+    @MetricsMixin.counted("jobs_total", operation="add")
     def add_job(self, func: Callable, trigger: str, job_id: str, **kwargs) -> str:
         """Add a scheduled job."""
         job = {
@@ -30,6 +49,7 @@ class TaskScheduler:
         self.jobs[job_id] = job
         return job_id
     
+    @MetricsMixin.counted("jobs_total", operation="remove")
     def remove_job(self, job_id: str) -> bool:
         """Remove a scheduled job."""
         if job_id in self.jobs:
@@ -353,8 +373,8 @@ class TaskQueue:
 
 
 @dataclass
-class RecurringTask:
-    """A recurring scheduled task."""
+class RecurringTask(MetricsMixin):
+    """A recurring scheduled task with metrics tracking."""
     
     func: Callable
     cron: str
@@ -369,6 +389,8 @@ class RecurringTask:
     _cache_valid: bool = field(default=False, init=False, repr=False)
     
     def __post_init__(self):
+        super().__init__()
+        self._init_metrics("recurring_task")
         if self.next_run is None:
             parser = CronParser()
             self._next_run_cache = parser.get_next_run(self.cron)
@@ -422,13 +444,19 @@ class RecurringTask:
         return datetime.now() >= self.next_run
     
     def record_execution(self, success: bool) -> None:
-        """Record task execution."""
+        """Record task execution with metrics."""
         self.execution_count += 1
         
         if success:
             self.success_count += 1
+            self._record_counter("executions_total", operation="execute", status="success")
         else:
             self.failure_count += 1
+            self._record_counter("executions_total", operation="execute", status="failure")
+        
+        # Record success rate as gauge
+        success_rate = self.success_count / self.execution_count if self.execution_count > 0 else 0.0
+        self._record_gauge("success_rate", success_rate, task_id=self.task_id)
         
         self.last_run = datetime.now()
         self.next_run = self.get_next_run()

@@ -2,10 +2,23 @@
 Insights Generator Module - Generate insights and recommendations.
 """
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Optional, TypedDict
+
+# Try to import monitoring, fallback to noop if not available
+if TYPE_CHECKING:
+    from src.monitoring.instrumentation import MetricsMixin
+else:
+    try:
+        from src.monitoring.instrumentation import MetricsMixin
+    except ImportError:
+        # Fallback for tests or when monitoring is not available
+        class MetricsMixin:
+            """No-op metrics mixin when monitoring is not available."""
+            pass
 
 # Python 3.10 compatibility: NotRequired is only available in 3.11+
 try:
@@ -55,9 +68,16 @@ class WorkPatterns(TypedDict):
 
 
 @dataclass
-class InsightGenerator:
+class InsightGenerator(MetricsMixin):
     """Generate insights from journal data."""
     
+    def __post_init__(self):
+        """Initialize metrics."""
+        super().__init__()
+        self._init_metrics("insight_generator")
+    
+    @MetricsMixin.counted("insights_total", type="daily_summary")
+    @MetricsMixin.timed("generation_duration_seconds", type="daily_summary")
     def generate_daily_summary(self, params: DailySummaryParams) -> dict[str, Any]:
         """Generate daily summary insight."""
         activities: list[dict] = params["activities"]
@@ -75,6 +95,8 @@ class InsightGenerator:
             "summary": f"Completed {tasks_completed} tasks and attended {meetings} meetings today."
         }
     
+    @MetricsMixin.counted("insights_total", type="weekly_review")
+    @MetricsMixin.timed("generation_duration_seconds", type="weekly_review")
     def generate_weekly_review(self, params: WeeklyReviewParams) -> dict[str, Any]:
         """Generate weekly review insight."""
         daily_summaries: list[dict] = params["daily_summaries"]
@@ -106,6 +128,8 @@ class InsightGenerator:
             "summary": f"This week you completed {total_tasks} tasks with a {trend} trend."
         }
     
+    @MetricsMixin.counted("insights_total", type="milestone")
+    @MetricsMixin.timed("generation_duration_seconds", type="milestone")
     def generate_milestone_insight(self, milestone: MilestoneParams) -> dict[str, Any]:
         """Generate milestone achievement insight."""
         metrics = milestone.get("metrics", {})

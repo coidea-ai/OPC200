@@ -85,6 +85,16 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a counter metric."""
+        # Check if metric already exists in registry to avoid duplicates
+        if name in self._metrics:
+            return self._metrics[name]
+        
+        # Also check Prometheus registry if available
+        if PROMETHEUS_AVAILABLE and hasattr(self.registry, '_names_to_collectors'):
+            if name in self.registry._names_to_collectors:
+                # Return existing metric from registry
+                return self.registry._names_to_collectors[name]
+        
         counter: Any
         if PROMETHEUS_AVAILABLE:
             counter = Counter(
@@ -107,6 +117,16 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a histogram metric."""
+        # Check if metric already exists in registry to avoid duplicates
+        if name in self._metrics:
+            return self._metrics[name]
+        
+        # Also check Prometheus registry if available
+        if PROMETHEUS_AVAILABLE and hasattr(self.registry, '_names_to_collectors'):
+            if name in self.registry._names_to_collectors:
+                # Return existing metric from registry
+                return self.registry._names_to_collectors[name]
+        
         histogram: Any
         if PROMETHEUS_AVAILABLE:
             if buckets:
@@ -137,6 +157,16 @@ class MetricsCollector:
         labels: Optional[List[str]] = None
     ) -> Any:
         """Create a gauge metric."""
+        # Check if metric already exists in registry to avoid duplicates
+        if name in self._metrics:
+            return self._metrics[name]
+        
+        # Also check Prometheus registry if available
+        if PROMETHEUS_AVAILABLE and hasattr(self.registry, '_names_to_collectors'):
+            if name in self.registry._names_to_collectors:
+                # Return existing metric from registry
+                return self.registry._names_to_collectors[name]
+        
         gauge: Any
         if PROMETHEUS_AVAILABLE:
             gauge = Gauge(
