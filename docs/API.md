@@ -6,7 +6,7 @@ OPC200 提供两种使用方式：
 1. **Python 类库 API** - 直接导入使用（当前主要方式）
 2. **RESTful API** - 通过 HTTP 调用（规划中）
 
-**当前版本**: v2.2.2  
+**当前版本**: v2.3.0  
 **最后更新**: 2026-04-01
 
 ---
@@ -105,21 +105,32 @@ manager.delete_tag("废弃标签")
 
 ##### VectorStore - 向量存储（语义搜索）
 
+> **依赖要求**: 需要安装 `sentence-transformers` 和 `numpy`
+> ```bash
+> pip install sentence-transformers numpy
+> ```
+
 ```python
 from src.journal.vector_store import VectorStore
 
 # 初始化（需要 sentence-transformers）
-# store = VectorStore(embedding_model="all-MiniLM-L6-v2")
+# 首次使用会自动下载嵌入模型（约 100MB）
+store = VectorStore(embedding_model="all-MiniLM-L6-v2")
 
 # 添加条目（含向量化）
-# store.add_entry(entry)
+store.add_entry(entry)
 
-# 语义搜索
-# similar = store.search_similar("如何提高工作效率", limit=5)
+# 语义搜索 - 基于语义相似度而非关键词匹配
+similar = store.search_similar("如何提高工作效率", limit=5)
+# 返回: List[{"entry": JournalEntry, "score": float}]
 
 # 查找相似条目
-# related = store.find_similar_to(entry_id, limit=5)
+related = store.find_similar_to(entry_id, limit=5)
 ```
+
+**性能注意**: 
+- 首次加载模型需要 ~2-5 秒
+- 搜索时间随条目数增长，建议定期重建索引
 
 #### 2. Tasks 模块 (`src.tasks`)
 
@@ -435,6 +446,99 @@ ciphertext = crypto.encrypt("敏感数据", key="password")
 plaintext = crypto.decrypt(ciphertext, key="password")
 ```
 
+**实际使用场景 - 加密日志内容**:
+```python
+from src.journal.core import JournalEntry, JournalManager
+from src.security.encryption import Encryption
+import sqlite3
+
+# 加密敏感日志
+conn = sqlite3.connect("opc200.db")
+manager = JournalManager(conn)
+crypto = Encryption()
+
+# 加密后存储
+sensitive_content = "客户联系方式: 138-xxxx-xxxx"
+encrypted = crypto.encrypt(sensitive_content, key="user_password")
+
+entry = JournalEntry(
+    content=encrypted,  # 存储加密内容
+    tags=["加密", "敏感"],
+    metadata={"encrypted": True}
+)
+manager.create_entry(entry)
+
+# 读取时解密
+entry = manager.get_entry(entry_id)
+if entry.get_metadata("encrypted"):
+    plaintext = crypto.decrypt(entry.content, key="user_password")
+```
+
+**实际使用场景 - API 密钥管理**:
+```python
+from src.security.vault import Vault
+
+vault = Vault()
+
+# 存储外部服务 API 密钥
+vault.store_key("openai_api_key", "sk-...", key_type="api")
+vault.store_key("qdrant_token", "...", key_type="token")
+
+# 在代码中使用
+def call_openai():
+    api_key = vault.get_key("openai_api_key")
+    # 使用 api_key 调用服务...
+```
+
+---
+
+## 性能与限制
+
+### 性能基准
+
+| 操作 | 典型耗时 | 限制说明 |
+|------|----------|----------|
+| JournalEntry 创建 | < 10ms | 无限制 |
+| 日志查询 (list_entries) | < 50ms (1000条) | 默认 limit=100, max=10000 |
+| 标签搜索 | < 100ms | 全表扫描，大数据量建议加索引 |
+| 语义搜索 (VectorStore) | 500ms-2s | 首次加载模型 ~5s |
+| 加密操作 | < 5ms | 与内容长度成正比 |
+| 任务调度 (Cron) | < 1ms | 无限制 |
+
+### 存储限制
+
+| 项目 | 限制 | 建议 |
+|------|------|------|
+| 日志内容长度 | 无硬限制 | 建议 < 10MB，大文本考虑分片 |
+| 标签数量/条目 | 无硬限制 | 建议 < 50，过多影响查询性能 |
+| 元数据大小 | 无硬限制 | 建议 < 100KB，JSON 序列化存储 |
+| 向量存储条目 | 内存限制 | 大规模请使用 Qdrant 后端 |
+| SQLite 数据库 | 无硬限制 | 建议 10GB 以下，定期归档 |
+
+### 并发安全
+
+- **JournalManager**: 线程安全（SQLite WAL 模式）
+- **Vault**: 非线程安全，建议单例模式使用
+- **TaskScheduler**: 非线程安全，单线程使用
+- **VectorStore**: 非线程安全，查询和写入分开处理
+
+### 最佳实践
+
+1. **批量操作**: 大量条目使用事务批量插入
+   ```python
+   with conn:
+       for entry in entries:
+           manager.create_entry(entry)
+   ```
+
+2. **定期归档**: 超过 1 年的日志归档到历史表
+
+3. **索引优化**: 高频查询字段添加索引
+   ```sql
+   CREATE INDEX idx_entries_created ON entries(created_at);
+   CREATE INDEX idx_entries_tags ON entries(tags);
+   ```
+
 ---
 
 ## RESTful API（规划中）
@@ -454,7 +558,238 @@ Bearer Token:
 Authorization: Bearer {token}
 ```
 
-### 端点概览
+### 状态码
+
+| 状态码 | 含义 | 说明 |
+|--------|------|------|
+| 200 | OK | 请求成功 |
+| 201 | Created | 创建成功 |
+| 400 | Bad Request | 请求参数错误 |
+| 401 | Unauthorized | 未认证或 token 无效 |
+| 404 | Not Found | 资源不存在 |
+| 500 | Internal Server Error | 服务器内部错误 |
+
+### 端点详情
+
+#### 日志条目管理
+
+##### 列出租用
+```http
+GET /journal/entries?limit=20&offset=0&tag=工作
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "total": 150,
+  "offset": 0,
+  "limit": 20,
+  "entries": [
+    {
+      "id": "je-550e8400-e29b-41d4-a716-446655440000",
+      "content": "完成了 API 文档编写",
+      "tags": ["工作", "开发"],
+      "metadata": {"project": "OPC200"},
+      "created_at": "2026-04-01T10:30:00Z",
+      "updated_at": "2026-04-01T10:30:00Z"
+    }
+  ]
+}
+```
+
+##### 创建条目
+```http
+POST /journal/entries
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+  "content": "今天完成了产品原型的设计",
+  "tags": ["产品设计", "里程碑"],
+  "metadata": {
+    "mood": "productive",
+    "energy_level": 8
+  }
+}
+```
+
+**响应 201**:
+```json
+{
+  "id": "je-550e8400-e29b-41d4-a716-446655440001",
+  "content": "今天完成了产品原型的设计",
+  "tags": ["产品设计", "里程碑"],
+  "metadata": {
+    "mood": "productive",
+    "energy_level": 8
+  },
+  "created_at": "2026-04-01T14:30:00Z",
+  "updated_at": "2026-04-01T14:30:00Z"
+}
+```
+
+**响应 400**:
+```json
+{
+  "error": "ValidationError",
+  "message": "content 字段不能为空"
+}
+```
+
+##### 获取条目
+```http
+GET /journal/entries/{id}
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "id": "je-550e8400-e29b-41d4-a716-446655440000",
+  "content": "完成了 API 文档编写",
+  "tags": ["工作", "开发"],
+  "metadata": {"project": "OPC200"},
+  "created_at": "2026-04-01T10:30:00Z",
+  "updated_at": "2026-04-01T10:30:00Z"
+}
+```
+
+**响应 404**:
+```json
+{
+  "error": "NotFoundError",
+  "message": "条目不存在"
+}
+```
+
+##### 更新条目
+```http
+PUT /journal/entries/{id}
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+  "content": "完成了 API 文档编写（已修订）",
+  "tags": ["工作", "开发", "文档"]
+}
+```
+
+**响应 200**: 返回更新后的条目
+
+##### 删除条目
+```http
+DELETE /journal/entries/{id}
+Authorization: Bearer {token}
+```
+
+**响应 204**: 无内容（删除成功）
+
+##### 搜索内容
+```http
+GET /journal/search?q=关键词&limit=10
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "query": "关键词",
+  "total": 25,
+  "results": [
+    {
+      "entry": {
+        "id": "je-550e8400-e29b-41d4-a716-446655440000",
+        "content": "包含关键词的日志内容...",
+        "tags": ["工作"],
+        "metadata": {},
+        "created_at": "2026-04-01T10:30:00Z"
+      },
+      "score": 0.95
+    }
+  ]
+}
+```
+
+#### 任务管理
+
+##### 列出租务
+```http
+GET /tasks?status=pending
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "tasks": [
+    {
+      "id": "task-001",
+      "type": "recurring",
+      "description": "每日备份",
+      "status": "pending",
+      "created_at": "2026-04-01T00:00:00Z",
+      "deadline": "2026-04-01T23:59:59Z"
+    }
+  ]
+}
+```
+
+##### 创建任务
+```http
+POST /tasks
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+  "type": "one_time",
+  "description": "整理文档",
+  "deadline": "2026-04-02T18:00:00Z"
+}
+```
+
+**响应 201**: 返回创建的任务
+
+#### 洞察生成
+
+##### 每日摘要
+```http
+GET /insights/daily?date=2026-04-01
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "type": "daily_summary",
+  "date": "2026-04-01",
+  "tasks_completed": 5,
+  "meetings": 2,
+  "total_activities": 7,
+  "summary": "今日完成了 5 个任务，参加了 2 个会议，整体效率较高"
+}
+```
+
+##### 每周回顾
+```http
+GET /insights/weekly?week_start=2026-03-24
+Authorization: Bearer {token}
+```
+
+**响应 200**:
+```json
+{
+  "type": "weekly_review",
+  "week_start": "2026-03-24",
+  "week_end": "2026-03-30",
+  "total_tasks": 25,
+  "completed_tasks": 22,
+  "productivity_trend": "increasing",
+  "highlights": ["完成了项目里程碑", "学习了新技术"]
+}
+```
+
+### 端点概览表
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
@@ -598,6 +933,7 @@ print(f"总结: {summary['summary']}")
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.3.0 | 2026-04-01 | 优化 API 文档：统一版本号、补充 VectorStore 依赖说明、添加性能与限制章节、完善 RESTful API 示例 |
 | v2.2.2 | 2026-04-01 | 完善 Python API 文档，补充完整示例 |
 | v2.2.0 | 2026-03-30 | 初始版本 |
 
