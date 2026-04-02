@@ -33,6 +33,7 @@ trap cleanup EXIT
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; TESTS_PASSED=$((TESTS_PASSED + 1)); }
 log_fail() { echo -e "${RED}[FAIL]${NC} $1"; TESTS_FAILED=$((TESTS_FAILED + 1)); }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_skip() { echo -e "${YELLOW}[SKIP]${NC} $1"; TESTS_SKIPPED=$((TESTS_SKIPPED + 1)); }
 log_section() {
     echo ""
@@ -189,13 +190,13 @@ test_backup_manager() {
     log_info "测试 3.3: 参数验证"
     local output exit_code
     output=$($script backup 2>&1) || exit_code=$?
-    if assert_string_contains "$output" "缺少客户ID" "无 ID 参数时显示错误"; then
+    if assert_string_contains "$output" "Missing customer ID" "无 ID 参数时显示错误"; then
         assert_exit_code 1 "${exit_code:-0}" "无 ID 参数时退出码为 1"
     fi
     
     # 测试 3.4: 模拟备份 (dry-run)
     log_info "测试 3.4: 模拟备份 (--dry-run)"
-    local test_id="OPC-TEST-001"
+    local test_id="OPC-001"
     local test_data_dir="$TEMP_DIR/opt/opc200/$test_id/data"
     local test_backup_dir="$TEMP_DIR/opt/opc200/$test_id/backup"
     
@@ -205,8 +206,8 @@ test_backup_manager() {
     
     # 使用 dry-run 模式测试
     output=$($script --id "$test_id" --dry-run backup 2>&1) || exit_code=$?
-    if assert_string_contains "$output" "DRY-RUN" "dry-run 模式显示标记"; then
-        assert_string_contains "$output" "将创建" "显示将要执行的命令"
+    if assert_string_contains "$output" "Dry run mode" "dry-run 模式显示标记"; then
+        assert_string_contains "$output" "[DRY-RUN]" "显示将要执行的命令"
     fi
     
     # 测试 3.5: 备份清单功能
@@ -217,7 +218,7 @@ test_backup_manager() {
     cat > "$test_backup_dir/auto-20260101-120000/manifest.yml" << 'EOF'
 backup:
   name: auto-20260101-120000
-  customer_id: OPC-TEST-001
+  customer_id: OPC-001
   created_at: 2026-01-01T12:00:00Z
 EOF
     
@@ -297,7 +298,7 @@ test_integration() {
     log_info "测试运维脚本协同工作"
     
     # 创建一个完整的测试场景
-    local test_customer="OPC-TEST-999"
+    local test_customer="OPC-999"
     local test_base="$TEMP_DIR/opt/opc200/$test_customer"
     
     mkdir -p "$test_base/data/journal"

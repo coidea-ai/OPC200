@@ -1,55 +1,47 @@
 #!/bin/bash
 #===============================================================================
 # OPC200 Emergency Recovery Script
-# 用途: 紧急恢复和故障处理
-# 执行位置: 支持中心（通过 Tailscale 连接）
 #===============================================================================
 
 set -euo pipefail
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Source libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/logging.sh"
+source "$SCRIPT_DIR/../lib/config.sh"
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
-# 默认配置
+# Configuration
 OPC_ID=""
 SCENARIO=""
-DRY_RUN=false
 NOTIFY=true
+CONFIG_FILE=""
+
+SCENARIOS=(gateway-failure data-vault-corruption tailscale-disconnect disk-full memory-exhausted)
 
 show_help() {
     cat << EOF
-OPC200 Emergency Recovery Script
+OPC200 Emergency Recovery
 
-Usage: $0 [OPTIONS]
+Usage: $0 --id OPC-XXX --scenario SCENARIO [OPTIONS]
 
 SCENARIOS:
-    gateway-failure          Gateway 完全故障
-    data-vault-corruption    数据保险箱损坏
-    tailscale-disconnect     Tailscale 连接丢失
-    disk-full                磁盘空间满
-    memory-exhausted         内存耗尽
+    gateway-failure       Gateway failure
+    data-vault-corruption Data vault corruption
+    tailscale-disconnect  Tailscale connection lost
+    disk-full             Disk full
+    memory-exhausted      Memory exhausted
 
 OPTIONS:
-    --id ID                  客户ID
-    --scenario SCENARIO      故障场景
-    --dry-run               模拟运行，不实际执行
-    --no-notify             不发送通知
-    -h, --help             显示此帮助
+    --id ID           Customer ID (required)
+    --scenario NAME   Recovery scenario (required)
+    --config FILE     Use specific config file
+    --dry-run         Simulate without actual execution
+    --no-notify       Disable notifications
+    -v, --verbose     Enable debug logging
+    -h, --help        Show this help
 
-示例:
-    # 恢复 Gateway 故障
+Examples:
     $0 --id OPC-001 --scenario gateway-failure
-
-    # 模拟恢复
     $0 --id OPC-001 --scenario disk-full --dry-run
 EOF
 }
@@ -57,320 +49,236 @@ EOF
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --id)
-                OPC_ID="$2"
-                shift 2
-                ;;
-            --scenario)
-                SCENARIO="$2"
-                shift 2
-                ;;
-            --dry-run)
-                DRY_RUN=true
-                shift
-                ;;
-            --no-notify)
-                NOTIFY=false
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                log_error "未知参数: $1"
-                exit 1
-                ;;
+            --id) OPC_ID="$2"; shift 2 ;;
+            --scenario) SCENARIO="$2"; shift 2 ;;
+            --config) CONFIG_FILE="$2"; shift 2 ;;
+            --dry-run) export OPC_DRY_RUN="true"; log_warn "Dry run mode"; shift ;;
+            --no-notify) NOTIFY=false; shift ;;
+            -v|--verbose) export OPC_LOG_LEVEL="DEBUG"; shift ;;
+            -h|--help) show_help; exit 0 ;;
+            *) log_error "Unknown parameter: $1"; exit 1 ;;
         esac
     done
 
     if [[ -z "$OPC_ID" ]] || [[ -z "$SCENARIO" ]]; then
-        log_error "缺少必需参数 (--id, --scenario)"
+        log_error "Missing required parameters (--id, --scenario)"
+        exit 1
+    fi
+    
+    if ! opc_validate_customer_id "$OPC_ID"; then
+        log_error "Invalid customer ID: $OPC_ID"
+        exit 1
+    fi
+    
+    if [[ ! " ${SCENARIOS[@]} " =~ " ${SCENARIO} " ]]; then
+        log_error "Unknown scenario: $SCENARIO"
+        log_info "Available: ${SCENARIOS[*]}"
         exit 1
     fi
 }
 
-# 执行命令（支持 dry-run）
+# Execute command with retry
 run_cmd() {
-    local cmd="$1"
-    local desc="${2:-$cmd}"
+    local cmd="$1" desc="${2:-$cmd}" max_retries="${3:-1}" retry_delay="${4:-2}"
+    log_info "Executing: $desc"
     
-    log_info "执行: $desc"
+    [[ "$OPC_DRY_RUN" == "true" ]] && { log_warn "[DRY-RUN] $cmd"; return 0; }
     
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY-RUN] $cmd"
-        return 0
-    fi
-    
-    eval "$cmd"
+    local attempt=1
+    while [[ $attempt -le $max_retries ]]; do
+        log_debug "Attempt $attempt/$max_retries"
+        eval "$cmd" && return 0
+        local exit_code=$?
+        [[ $attempt -lt $max_retries ]] && { log_warn "Failed, retrying in ${retry_delay}s..."; sleep $retry_delay; retry_delay=$((retry_delay*2)); }
+        ((attempt++))
+    done
+    log_error "Failed after $max_retries attempts"
+    return 1
 }
 
-# 通知客户
+# Notify customer
 notify_customer() {
     local message="$1"
-    
-    if [[ "$NOTIFY" == false ]]; then
-        return 0
-    fi
-    
-    log_info "发送通知: $message"
-    
-    # 这里应该调用飞书 Bot API 发送通知
-    # curl -X POST "https://open.feishu.cn/open-apis/bot/v2/hook/..." \
-    #   -H "Content-Type: application/json" \
-    #   -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$message\"}}"
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY-RUN] 通知已模拟发送"
-    else
-        log_success "通知已发送"
-    fi
+    [[ "$NOTIFY" == false ]] && return 0
+    log_info "Notifying: $message"
+    [[ "$OPC_DRY_RUN" == "true" ]] && { log_warn "[DRY-RUN] Notification simulated"; return 0; }
+    log_debug "Notification implementation pending"
 }
 
-# 场景：Gateway 故障
+# Recovery scenarios
 recover_gateway_failure() {
-    log_warn "场景: Gateway 完全故障"
+    log_warn "Scenario: Gateway failure"
+    local container_name="opc200-${OPC_ID,,}-gateway"
     
-    # 1. 诊断
-    log_info "步骤 1: 诊断故障"
-    run_cmd "docker ps -a | grep opc200-${OPC_ID,,}" "检查容器状态"
-    run_cmd "docker logs opc200-${OPC_ID,,}-gateway --tail 100" "查看日志"
+    run_cmd "docker ps -a --filter name=$container_name --format '{{.Names}}: {{.Status}}'" "Check container status"
+    run_cmd "docker logs $container_name --tail 50" "View recent logs" 1 0 || true
     
-    # 2. 尝试重启
-    log_info "步骤 2: 尝试重启 Gateway"
-    run_cmd "docker restart opc200-${OPC_ID,,}-gateway" "重启容器"
-    
-    sleep 5
-    
-    # 3. 检查状态
-    log_info "步骤 3: 检查重启结果"
-    if docker ps | grep -q "opc200-${OPC_ID,,}-gateway"; then
-        log_success "Gateway 已恢复"
-        notify_customer "您的 OPC200 Gateway 已恢复运行"
-        return 0
+    if run_cmd "docker restart $container_name" "Restart container" 3 2; then
+        sleep 5
+        if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
+            log_success "Gateway recovered"
+            notify_customer "Gateway restarted successfully"
+            return 0
+        fi
     fi
     
-    # 4. 重建容器
-    log_warn "重启失败，尝试重建容器"
-    run_cmd "cd /opt/opc200/${OPC_ID}/gateway && docker-compose down" "停止旧容器"
-    run_cmd "docker-compose up -d" "重建容器"
-    
-    sleep 10
-    
-    # 5. 验证
-    if docker ps | grep -q "opc200-${OPC_ID,,}-gateway"; then
-        log_success "Gateway 重建成功"
-        notify_customer "您的 OPC200 Gateway 已重建并恢复"
-    else
-        log_error "Gateway 重建失败，需要人工介入"
-        return 1
+    log_warn "Restart failed, attempting recreate..."
+    local compose_file="$(opc_get_customer_dir "$OPC_ID" base)/gateway/docker-compose.yml"
+    if [[ -f "$compose_file" ]]; then
+        run_cmd "cd $(dirname $compose_file) && docker-compose down && docker-compose up -d" "Recreate container" 2 3
+        sleep 10
+        if docker ps | grep -q "$container_name"; then
+            log_success "Gateway recreated"
+            notify_customer "Gateway recreated successfully"
+            return 0
+        fi
     fi
+    
+    log_error "Recovery failed, manual intervention needed"
+    notify_customer "Gateway recovery failed - manual intervention required"
+    return 1
 }
 
-# 场景：数据保险箱损坏
 recover_data_vault_corruption() {
-    log_warn "场景: 数据保险箱损坏"
+    log_warn "Scenario: Data vault corruption"
+    local vault_dir="$(opc_get_customer_dir "$OPC_ID" vault)"
+    local backup_dir="$(opc_get_customer_dir "$OPC_ID" backup)"
+    local container_name="opc200-${OPC_ID,,}-gateway"
     
-    local vault_dir="/opt/opc200/${OPC_ID}/data-vault"
-    local backup_dir="/opt/opc200/${OPC_ID}/backup"
+    run_cmd "ls -la ${vault_dir}/" "Check vault directory"
+    run_cmd "docker stop $container_name" "Stop Gateway" 2 1 || true
     
-    # 1. 检查损坏程度
-    log_info "步骤 1: 评估损坏程度"
-    run_cmd "ls -la ${vault_dir}/" "检查保险箱目录"
-    
-    # 2. 停止 Gateway
-    log_info "步骤 2: 停止 Gateway 防止进一步损坏"
-    run_cmd "docker stop opc200-${OPC_ID,,}-gateway" "停止 Gateway"
-    
-    # 3. 找到最新备份
-    log_info "步骤 3: 查找可用备份"
     local latest_backup=$(find "$backup_dir" -maxdepth 1 -type d -name "auto-*" | sort | tail -1)
+    [[ -z "$latest_backup" ]] && { log_error "No backup available"; return 1; }
     
-    if [[ -z "$latest_backup" ]]; then
-        log_error "无可用备份!"
-        return 1
+    log_info "Using backup: $(basename "$latest_backup")"
+    
+    run_cmd "mv ${vault_dir} ${vault_dir}.corrupted.$(date +%Y%m%d-%H%M%S)" "Move corrupted data"
+    run_cmd "mkdir -p ${vault_dir}" "Create new vault"
+    
+    # Decrypt if needed
+    if [[ -f "${latest_backup}/data.tar.gz.gpg" ]]; then
+        local key_file="${vault_dir}/encrypted/keys/backup-key"
+        [[ -f "$key_file" ]] && gpg --decrypt --passphrase-file "$key_file" --batch --yes -o "${latest_backup}/data.tar.gz" "${latest_backup}/data.tar.gz.gpg"
     fi
     
-    log_info "使用备份: $(basename "$latest_backup")"
+    [[ -f "${latest_backup}/data.tar.gz" ]] && tar -xzf "${latest_backup}/data.tar.gz" -C "$(dirname "$vault_dir")"
     
-    # 4. 备份当前状态（用于分析）
-    log_info "步骤 4: 备份当前损坏状态"
-    run_cmd "mv ${vault_dir} ${vault_dir}.corrupted.$(date +%Y%m%d-%H%M%S)" "移动损坏数据"
-    
-    # 5. 恢复数据
-    log_info "步骤 5: 从备份恢复"
-    run_cmd "mkdir -p ${vault_dir}" "创建新目录"
-    run_cmd "tar -xzf ${latest_backup}/data.tar.gz -C $(dirname ${vault_dir})" "恢复数据"
-    
-    # 6. 重启 Gateway
-    log_info "步骤 6: 重启 Gateway"
-    run_cmd "docker start opc200-${OPC_ID,,}-gateway" "启动 Gateway"
-    
-    log_success "数据保险箱已恢复"
-    notify_customer "您的数据保险箱已从备份恢复"
+    run_cmd "docker start $container_name" "Start Gateway" 3 2
+    log_success "Vault restored from backup"
+    notify_customer "Data vault restored successfully"
 }
 
-# 场景：Tailscale 断开
 recover_tailscale_disconnect() {
-    log_warn "场景: Tailscale 连接丢失"
+    log_warn "Scenario: Tailscale disconnect"
+    run_cmd "tailscale status" "Check status" 1 0 || true
+    run_cmd "tailscale ip -4" "Get Tailscale IP" 1 0 || true
     
-    # 1. 检查状态
-    log_info "步骤 1: 检查 Tailscale 状态"
-    run_cmd "tailscale status" "检查状态"
-    
-    # 2. 尝试重连
-    log_info "步骤 2: 尝试重新连接"
-    run_cmd "tailscale down && tailscale up --authkey=$(cat /opt/opc200/${OPC_ID}/tailscale/auth-key)" "重新连接"
+    local auth_key_file="$(opc_get_customer_dir "$OPC_ID" base)/tailscale/auth-key"
+    if [[ -f "$auth_key_file" ]]; then
+        local auth_key=$(cat "$auth_key_file")
+        run_cmd "tailscale down && tailscale up --authkey=$auth_key --accept-routes" "Reconnect" 3 5
+    else
+        run_cmd "tailscale up --accept-routes" "Attempt reconnect" 2 3
+    fi
     
     sleep 5
-    
-    # 3. 验证
-    if tailscale status &> /dev/null; then
-        log_success "Tailscale 已恢复"
-        notify_customer "VPN 连接已恢复"
+    if tailscale status >/dev/null 2>&1; then
+        log_success "Tailscale reconnected"
+        notify_customer "VPN connection restored"
     else
-        log_error "Tailscale 重连失败"
-        log_info "建议检查网络或重新授权"
+        log_error "Reconnection failed"
         return 1
     fi
 }
 
-# 场景：磁盘满
 recover_disk_full() {
-    log_warn "场景: 磁盘空间满"
+    log_warn "Scenario: Disk full"
+    run_cmd "df -h /" "Check root partition"
+    run_cmd "du -sh $(opc_get_customer_dir "$OPC_ID" base)/* 2>/dev/null | head -10" "Check directory sizes"
     
-    # 1. 分析磁盘使用
-    log_info "步骤 1: 分析磁盘使用"
-    run_cmd "df -h /" "查看磁盘空间"
-    run_cmd "du -sh /opt/opc200/${OPC_ID}/*" "查看各目录大小"
+    # Clean logs
+    find "$(opc_get_customer_dir "$OPC_ID" logs)" -name '*.log' -mtime +7 -delete 2>/dev/null || true
+    find /var/log -name '*.log' -mtime +7 -delete 2>/dev/null || true
     
-    # 2. 清理日志
-    log_info "步骤 2: 清理旧日志"
-    run_cmd "find /opt/opc200/${OPC_ID}/logs -name '*.log' -mtime +7 -delete" "删除7天前日志"
-    run_cmd "find /opt/opc200/${OPC_ID}/logs -name '*.log.*' -mtime +3 -delete" "删除旧轮转日志"
+    # Clean old backups (keep last 3)
+    local backup_dir="$(opc_get_customer_dir "$OPC_ID" backup)"
+    find "$backup_dir" -maxdepth 1 -type d -name 'auto-*' | sort | head -n -3 | xargs rm -rf 2>/dev/null || true
     
-    # 3. 清理旧备份
-    log_info "步骤 3: 清理旧备份"
-    run_cmd "find /opt/opc200/${OPC_ID}/backup -maxdepth 1 -type d -name 'auto-*' -mtime +3 -exec rm -rf {} +" "删除3天前备份"
+    # Docker cleanup
+    docker system prune -f
+    docker volume prune -f 2>/dev/null || true
     
-    # 4. Docker 清理
-    log_info "步骤 4: 清理 Docker"
-    run_cmd "docker system prune -f" "清理未使用资源"
-    
-    # 5. 验证
-    local disk_usage=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
-    if [[ $disk_usage -lt 85 ]]; then
-        log_success "磁盘空间已释放 (当前: ${disk_usage}%)"
-        notify_customer "磁盘空间已清理，当前使用 ${disk_usage}%"
+    local usage=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    if [[ $usage -lt 85 ]]; then
+        log_success "Disk space freed (current: ${usage}%)"
+        notify_customer "Disk space cleaned, now at ${usage}%"
     else
-        log_warn "磁盘仍然紧张 (${disk_usage}%)，建议扩容"
+        log_warn "Disk still critical (${usage}%), consider expansion"
         return 1
     fi
 }
 
-# 场景：内存耗尽
 recover_memory_exhausted() {
-    log_warn "场景: 内存耗尽"
+    log_warn "Scenario: Memory exhausted"
+    run_cmd "free -h" "Check memory"
+    run_cmd "ps aux --sort=-%mem | head -15" "Check memory usage"
     
-    # 1. 检查内存使用
-    log_info "步骤 1: 检查内存使用"
-    run_cmd "free -h" "查看内存"
-    run_cmd "ps aux --sort=-%mem | head -20" "查看内存使用进程"
+    local container_name="opc200-${OPC_ID,,}-gateway"
+    docker restart "$container_name" 2>/dev/null || true
     
-    # 2. 重启 Gateway（释放内存）
-    log_info "步骤 2: 重启 Gateway"
-    run_cmd "docker restart opc200-${OPC_ID,,}-gateway" "重启 Gateway"
+    sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     
-    # 3. 清理缓存
-    log_info "步骤 3: 清理系统缓存"
-    run_cmd "sync && echo 3 > /proc/sys/vm/drop_caches" "清理缓存"
-    
-    # 4. 验证
     sleep 5
-    local mem_info=$(free | grep Mem)
-    local mem_total=$(echo $mem_info | awk '{print $2}')
-    local mem_used=$(echo $mem_info | awk '{print $3}')
-    local mem_usage=$((mem_used * 100 / mem_total))
-    
+    local mem_usage=$(free | grep Mem | awk '{printf "%.0f", $3*100/$2}')
     if [[ $mem_usage -lt 90 ]]; then
-        log_success "内存使用已降低 (当前: ${mem_usage}%)"
+        log_success "Memory freed (current: ${mem_usage}%)"
     else
-        log_warn "内存仍然紧张，建议增加内存"
+        log_warn "Memory still critical (${mem_usage}%)"
+        return 1
     fi
 }
 
-# 记录审计日志
-log_audit() {
-    local action="$1"
-    local result="$2"
-    
+# Log audit
+cleanup() {
+    local result="${1:-unknown}"
     local audit_dir="customers/on-premise/${OPC_ID}/remote-sessions"
     mkdir -p "$audit_dir"
-    
-    cat >> "${audit_dir}/emergency-recovery-$(date +%Y%m%d-%H%M%S).log" << EOF
+    cat > "${audit_dir}/emergency-$(date +%Y%m%d-%H%M%S).log" << EOF
 ---
 timestamp: $(date -Iseconds)
 operator: $(whoami)
 hostname: $(hostname)
-action: ${action}
 scenario: ${SCENARIO}
-dry_run: ${DRY_RUN}
+dry_run: ${OPC_DRY_RUN}
 result: ${result}
 EOF
 }
 
-# 主函数
+# Main
 main() {
     log_info "OPC200 Emergency Recovery"
     log_info "========================="
     
     parse_args "$@"
+    opc_init_config "$CONFIG_FILE"
     
-    log_info "客户ID: $OPC_ID"
-    log_info "场景: $SCENARIO"
-    log_info "模式: $([[ "$DRY_RUN" == true ]] && echo "模拟运行" || echo "实际执行")"
+    log_info "Customer: $OPC_ID"
+    log_info "Scenario: $SCENARIO"
     
-    echo ""
-    
-    # 执行对应场景的恢复
+    local result=0
     case "$SCENARIO" in
-        gateway-failure)
-            recover_gateway_failure
-            ;;
-        data-vault-corruption)
-            recover_data_vault_corruption
-            ;;
-        tailscale-disconnect)
-            recover_tailscale_disconnect
-            ;;
-        disk-full)
-            recover_disk_full
-            ;;
-        memory-exhausted)
-            recover_memory_exhausted
-            ;;
-        *)
-            log_error "未知场景: $SCENARIO"
-            exit 1
-            ;;
+        gateway-failure) recover_gateway_failure; result=$? ;;
+        data-vault-corruption) recover_data_vault_corruption; result=$? ;;
+        tailscale-disconnect) recover_tailscale_disconnect; result=$? ;;
+        disk-full) recover_disk_full; result=$? ;;
+        memory-exhausted) recover_memory_exhausted; result=$? ;;
+        *) log_error "Unknown scenario"; exit 1 ;;
     esac
     
-    local result=$?
+    cleanup "$([[ $result -eq 0 ]] && echo "success" || echo "failed")"
     
-    # 记录审计
-    log_audit "emergency_recovery" "$([[ $result -eq 0 ]] && echo "success" || echo "failed")"
-    
-    echo ""
-    if [[ $result -eq 0 ]]; then
-        log_success "========================="
-        log_success "恢复完成!"
-        log_success "========================="
-    else
-        log_error "========================="
-        log_error "恢复失败，需要人工介入"
-        log_error "========================="
-    fi
-    
+    [[ $result -eq 0 ]] && log_success "Recovery complete!" || log_error "Recovery failed"
     exit $result
 }
 

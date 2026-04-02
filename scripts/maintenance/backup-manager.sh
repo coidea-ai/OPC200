@@ -1,77 +1,64 @@
 #!/bin/bash
 #===============================================================================
 # OPC200 Backup Manager Script
-# 用途: 备份管理和恢复
-# 执行位置: 支持中心 / 客户服务器
 #===============================================================================
 
 set -euo pipefail
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Source libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/logging.sh"
+source "$SCRIPT_DIR/../lib/config.sh"
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
-
-# 执行或模拟命令
-run_or_simulate() {
-    if [[ "$DRY_RUN" == true ]]; then
-        log_dry_run "将执行: $*"
-        return 0
-    else
-        "$@"
-    fi
+# Check required commands
+check_dependencies() {
+    local deps=("tar" "sha256sum" "date")
+    [[ "$OPC_BACKUP_ENCRYPT" == "true" ]] && deps+=("gpg")
+    [[ "$REMOTE_UPLOAD" == "true" ]] && deps+=("rclone")
+    
+    for cmd in "${deps[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            log_error "Required command not found: $cmd"
+            exit 1
+        fi
+    done
 }
 
-# 默认配置
+# Parse arguments
 OPC_ID=""
-ACTION="backup"  # backup | restore | list | cleanup
+ACTION="backup"
 BACKUP_NAME=""
-RETENTION_DAYS=7
-ENCRYPT=true
-REMOTE_UPLOAD=false
-DRY_RUN=false
+REMOTE_UPLOAD="false"
+CONFIG_FILE=""
 
 show_help() {
     cat << EOF
 OPC200 Backup Manager
 
-Usage: $0 [OPTIONS]
+Usage: $0 --id OPC-XXX [OPTIONS] ACTION
 
 ACTIONS:
-    backup              创建备份 (默认)
-    restore             恢复备份
-    list                列出备份
-    cleanup             清理旧备份
+    backup    Create backup (default)
+    restore   Restore backup
+    list      List backups
+    cleanup   Cleanup old backups
 
 OPTIONS:
-    --id ID             客户ID
-    --name NAME         备份名称 (默认: auto-YYYY-MM-DD-HHMMSS)
-    --retention DAYS    保留天数 (默认: 7)
-    --no-encrypt        不加密备份
-    --upload            上传到远程存储
-    --dry-run          模拟运行，不实际执行
-    -h, --help         显示此帮助
+    --id ID           Customer ID (required)
+    --name NAME       Backup name (default: auto-YYYY-MM-DD-HHMMSS)
+    --retention DAYS  Retention days (default: \$OPC_BACKUP_RETENTION_DAYS)
+    --no-encrypt      Disable backup encryption
+    --upload          Upload to remote storage
+    --config FILE     Use specific config file
+    --dry-run         Simulate run without actual execution
+    -v, --verbose     Enable debug logging
+    -h, --help        Show this help
 
-示例:
-    # 创建备份
+Examples:
     $0 --id OPC-001 backup
-
-    # 模拟创建备份 (不实际执行)
     $0 --id OPC-001 --dry-run backup
-
-    # 恢复备份
     $0 --id OPC-001 restore --name auto-2026-03-21-120000
-
-    # 清理旧备份
-    $0 --id OPC-001 cleanup --retention 3
+    $0 --id OPC-001 cleanup
 EOF
 }
 
@@ -79,106 +66,89 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             backup|restore|list|cleanup)
-                ACTION="$1"
-                shift
-                ;;
-            --id)
-                OPC_ID="$2"
-                shift 2
-                ;;
-            --name)
-                BACKUP_NAME="$2"
-                shift 2
-                ;;
-            --retention)
-                RETENTION_DAYS="$2"
-                shift 2
-                ;;
-            --no-encrypt)
-                ENCRYPT=false
-                shift
-                ;;
-            --upload)
-                REMOTE_UPLOAD=true
-                shift
-                ;;
-            --dry-run)
-                DRY_RUN=true
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                log_error "未知参数: $1"
-                exit 1
-                ;;
+                ACTION="$1"; shift ;;
+            --id) OPC_ID="$2"; shift 2 ;;
+            --name) BACKUP_NAME="$2"; shift 2 ;;
+            --retention) export OPC_BACKUP_RETENTION_DAYS="$2"; shift 2 ;;
+            --no-encrypt) export OPC_BACKUP_ENCRYPT="false"; shift ;;
+            --upload) REMOTE_UPLOAD="true"; shift ;;
+            --config) CONFIG_FILE="$2"; shift 2 ;;
+            --dry-run) export OPC_DRY_RUN="true"; log_warn "Dry run mode enabled"; shift ;;
+            -v|--verbose) export OPC_LOG_LEVEL="DEBUG"; shift ;;
+            -h|--help) show_help; exit 0 ;;
+            *) log_error "Unknown parameter: $1"; exit 1 ;;
         esac
     done
 
     if [[ -z "$OPC_ID" ]]; then
-        log_error "缺少客户ID (--id)"
+        log_error "Missing customer ID (--id)"
+        exit 1
+    fi
+    
+    if ! opc_validate_customer_id "$OPC_ID"; then
+        log_error "Invalid customer ID format: $OPC_ID"
         exit 1
     fi
 }
 
-# 获取备份目录
-get_backup_dir() {
-    echo "/opt/opc200/${OPC_ID}/backup"
+# Get directories using config
+dirs=()
+get_backup_dir() { echo "${dirs[0]}"; }
+get_data_dir() { echo "${dirs[1]}"; }
+get_config_dir() { echo "${dirs[2]}"; }
+
+setup_dirs() {
+    dirs=(
+        "$(opc_get_customer_dir "$OPC_ID" backup)"
+        "$(opc_get_customer_dir "$OPC_ID" data)"
+        "$(opc_get_customer_dir "$OPC_ID" config)"
+    )
 }
 
-# 获取数据目录
-get_data_dir() {
-    echo "/opt/opc200/${OPC_ID}/data"
-}
-
-# 创建备份
+# Create backup
 create_backup() {
     local backup_dir=$(get_backup_dir)
     local data_dir=$(get_data_dir)
-    
-    # 生成备份名称
     local backup_name=${BACKUP_NAME:-"auto-$(date +%Y%m%d-%H%M%S)"}
     local backup_path="${backup_dir}/${backup_name}"
     
-    log_info "创建备份: $backup_name"
+    log_info "Creating backup: $backup_name"
     
-    if [[ "$DRY_RUN" == true ]]; then
-        log_dry_run "备份目录: $backup_path"
-        log_dry_run "数据目录: $data_dir"
-        log_dry_run "将创建: data.tar.gz, config.tar.gz, skills.tar.gz"
-        log_success "模拟备份完成"
+    if [[ "$OPC_DRY_RUN" == "true" ]]; then
+        log_warn "[DRY-RUN] Backup path: $backup_path"
+        log_warn "[DRY-RUN] Data dir: $data_dir"
+        log_success "Simulation complete"
         return 0
     fi
     
-    # 确保备份目录存在
     mkdir -p "$backup_path"
+    echo "IN_PROGRESS" > "${backup_path}/.backup_status"
     
-    # 停止 Gateway（可选，视一致性要求）
-    log_info "暂停 Gateway 写入..."
-    docker pause "opc200-${OPC_ID,,}-gateway" 2>/dev/null || true
+    local container_name="opc200-${OPC_ID,,}-gateway"
+    docker pause "$container_name" 2>/dev/null || log_warn "Could not pause Gateway"
     
-    # 备份数据
-    log_info "备份数据目录..."
+    # Backup data
     if [[ -d "$data_dir" ]]; then
+        log_info "Backing up data..."
         tar -czf "${backup_path}/data.tar.gz" -C "$(dirname "$data_dir")" "$(basename "$data_dir")"
     fi
     
-    # 备份配置
-    log_info "备份配置文件..."
-    tar -czf "${backup_path}/config.tar.gz" -C "/opt/opc200/${OPC_ID}" gateway/ data-vault/ 2>/dev/null || true
-    
-    # 备份 Skills
-    log_info "备份 Skills..."
-    if [[ -d "/opt/opc200/${OPC_ID}/skills" ]]; then
-        tar -czf "${backup_path}/skills.tar.gz" -C "/opt/opc200/${OPC_ID}" skills/
+    # Backup config
+    local config_parent="$(opc_get_customer_dir "$OPC_ID" base)"
+    if [[ -d "$config_parent/gateway" ]] || [[ -d "$config_parent/data-vault" ]]; then
+        log_info "Backing up config..."
+        tar -czf "${backup_path}/config.tar.gz" -C "$config_parent" gateway/ data-vault/ 2>/dev/null || true
     fi
     
-    # 恢复 Gateway
-    docker unpause "opc200-${OPC_ID,,}-gateway" 2>/dev/null || true
+    # Backup skills
+    if [[ -d "$config_parent/skills" ]]; then
+        log_info "Backing up skills..."
+        tar -czf "${backup_path}/skills.tar.gz" -C "$config_parent" skills/
+    fi
     
-    # 创建备份清单
+    docker unpause "$container_name" 2>/dev/null || true
+    
+    # Create manifest
     cat > "${backup_path}/manifest.yml" << EOF
 backup:
   name: ${backup_name}
@@ -186,70 +156,49 @@ backup:
   created_at: $(date -Iseconds)
   created_by: $(whoami)
   hostname: $(hostname)
-  
-components:
-  data: data.tar.gz
-  config: config.tar.gz
-  skills: skills.tar.gz
-  
-options:
-  encrypted: ${ENCRYPT}
-  compressed: true
-  
-verify:
-  checksum_algorithm: sha256
+  encrypted: ${OPC_BACKUP_ENCRYPT}
   checksums:
 EOF
 
-    # 计算校验和
     for file in "${backup_path}"/*.tar.gz; do
         if [[ -f "$file" ]]; then
-            local checksum=$(sha256sum "$file" | cut -d' ' -f1)
-            local filename=$(basename "$file")
-            echo "    ${filename}: ${checksum}" >> "${backup_path}/manifest.yml"
+            echo "    $(basename "$file"): $(sha256sum "$file" | cut -d' ' -f1)" >> "${backup_path}/manifest.yml"
         fi
     done
     
-    # 加密（如果需要）
-    if [[ "$ENCRYPT" == true ]]; then
-        log_info "加密备份..."
-        local encryption_key_file="/opt/opc200/${OPC_ID}/data-vault/encrypted/keys/backup-key"
-        
-        if [[ -f "$encryption_key_file" ]]; then
+    # Encrypt if needed
+    if [[ "$OPC_BACKUP_ENCRYPT" == "true" ]]; then
+        log_info "Encrypting backup..."
+        local key_file="$(opc_get_customer_dir "$OPC_ID" vault)/encrypted/keys/backup-key"
+        if [[ -f "$key_file" ]]; then
             for file in "${backup_path}"/*.tar.gz; do
                 if [[ -f "$file" ]]; then
-                    gpg --symmetric --cipher-algo AES256 --passphrase-file "$encryption_key_file" \
+                    gpg --symmetric --cipher-algo AES256 --passphrase-file "$key_file" \
                         --batch --yes -o "${file}.gpg" "$file"
                     rm "$file"
                 fi
             done
-            log_success "备份已加密"
         else
-            log_warn "加密密钥不存在，备份未加密"
+            log_warn "Encryption key not found, backup is unencrypted"
         fi
     fi
     
-    # 上传到远程（如果需要）
-    if [[ "$REMOTE_UPLOAD" == true ]]; then
-        log_info "上传到远程存储..."
-        # rclone sync "$backup_path" "remote:opc200-backups/${OPC_ID}/"
-        log_success "上传完成"
+    # Upload if needed
+    if [[ "$REMOTE_UPLOAD" == "true" ]]; then
+        log_info "Uploading to remote storage..."
+        rclone sync "$backup_path" "remote:opc200-backups/${OPC_ID}/" --progress
     fi
     
-    # 创建最新链接
     ln -sfn "$backup_path" "${backup_dir}/latest"
+    echo "COMPLETED" > "${backup_path}/.backup_status"
     
-    log_success "备份完成: $backup_path"
-    
-    # 显示备份大小
-    local backup_size=$(du -sh "$backup_path" | cut -f1)
-    log_info "备份大小: $backup_size"
+    log_success "Backup complete: $backup_path ($(du -sh "$backup_path" | cut -f1))"
 }
 
-# 恢复备份
+# Restore backup
 restore_backup() {
     if [[ -z "$BACKUP_NAME" ]]; then
-        log_error "恢复操作需要指定备份名称 (--name)"
+        log_error "Restore requires --name"
         exit 1
     fi
     
@@ -258,155 +207,108 @@ restore_backup() {
     local data_dir=$(get_data_dir)
     
     if [[ ! -d "$backup_path" ]]; then
-        log_error "备份不存在: $backup_path"
+        log_error "Backup not found: $backup_path"
         exit 1
     fi
     
-    log_warn "即将恢复备份: $BACKUP_NAME"
-    log_warn "当前数据将被覆盖!"
-    read -p "确认恢复? (yes/no): " confirm
+    log_warn "About to restore: $BACKUP_NAME"
+    log_warn "Current data will be overwritten!"
+    read -p "Confirm restore? (yes/no): " confirm
+    [[ "$confirm" == "yes" ]] || { log_info "Cancelled"; exit 0; }
     
-    if [[ "$confirm" != "yes" ]]; then
-        log_info "恢复已取消"
-        exit 0
-    fi
+    [[ "$OPC_DRY_RUN" == "true" ]] && { log_warn "[DRY-RUN] Would restore from: $backup_path"; return 0; }
     
-    # 创建当前状态的紧急备份
-    log_info "创建当前状态紧急备份..."
-    local emergency_backup="pre-restore-$(date +%Y%m%d-%H%M%S)"
-    BACKUP_NAME="$emergency_backup"
+    # Emergency backup
+    log_info "Creating emergency backup of current state..."
+    BACKUP_NAME="pre-restore-$(date +%Y%m%d-%H%M%S)"
     create_backup
     
-    # 停止 Gateway
-    log_info "停止 Gateway..."
-    docker stop "opc200-${OPC_ID,,}-gateway" || true
+    local container_name="opc200-${OPC_ID,,}-gateway"
+    docker stop "$container_name" 2>/dev/null || true
     
-    # 解密（如果需要）
+    # Decrypt if needed
     if [[ -f "${backup_path}/data.tar.gz.gpg" ]]; then
-        log_info "解密备份..."
-        local encryption_key_file="/opt/opc200/${OPC_ID}/data-vault/encrypted/keys/backup-key"
-        
+        log_info "Decrypting backup..."
+        local key_file="$(opc_get_customer_dir "$OPC_ID" vault)/encrypted/keys/backup-key"
         for file in "${backup_path}"/*.gpg; do
-            if [[ -f "$file" ]]; then
-                local output_file="${file%.gpg}"
-                gpg --decrypt --passphrase-file "$encryption_key_file" \
-                    --batch --yes -o "$output_file" "$file"
-            fi
+            [[ -f "$file" ]] && gpg --decrypt --passphrase-file "$key_file" --batch --yes -o "${file%.gpg}" "$file"
         done
     fi
     
-    # 恢复数据
-    log_info "恢复数据..."
-    if [[ -f "${backup_path}/data.tar.gz" ]]; then
+    # Restore
+    [[ -f "${backup_path}/data.tar.gz" ]] && {
         rm -rf "${data_dir}.old"
         mv "$data_dir" "${data_dir}.old" 2>/dev/null || true
         mkdir -p "$data_dir"
         tar -xzf "${backup_path}/data.tar.gz" -C "$(dirname "$data_dir")"
-    fi
+    }
     
-    # 恢复配置
-    log_info "恢复配置..."
-    if [[ -f "${backup_path}/config.tar.gz" ]]; then
-        tar -xzf "${backup_path}/config.tar.gz" -C "/opt/opc200/${OPC_ID}"
-    fi
+    [[ -f "${backup_path}/config.tar.gz" ]] && tar -xzf "${backup_path}/config.tar.gz" -C "$(opc_get_customer_dir "$OPC_ID" base)"
+    [[ -f "${backup_path}/skills.tar.gz" ]] && tar -xzf "${backup_path}/skills.tar.gz" -C "$(opc_get_customer_dir "$OPC_ID" base)"
     
-    # 恢复 Skills
-    log_info "恢复 Skills..."
-    if [[ -f "${backup_path}/skills.tar.gz" ]]; then
-        rm -rf "/opt/opc200/${OPC_ID}/skills"
-        tar -xzf "${backup_path}/skills.tar.gz" -C "/opt/opc200/${OPC_ID}"
-    fi
-    
-    # 启动 Gateway
-    log_info "启动 Gateway..."
-    docker start "opc200-${OPC_ID,,}-gateway" || true
-    
-    log_success "恢复完成!"
-    log_info "原数据保存在: ${data_dir}.old"
+    docker start "$container_name" 2>/dev/null || log_warn "Gateway start failed"
+    log_success "Restore complete! Original data at: ${data_dir}.old"
 }
 
-# 列出备份
+# List backups
 list_backups() {
     local backup_dir=$(get_backup_dir)
+    [[ -d "$backup_dir" ]] || { log_error "Backup directory not found"; exit 1; }
     
-    if [[ ! -d "$backup_dir" ]]; then
-        log_error "备份目录不存在"
-        exit 1
-    fi
-    
-    log_info "备份列表 (${OPC_ID}):"
+    log_info "Backups for ${OPC_ID}:"
     echo "========================================"
+    printf "%-25s %-10s %-12s\n" "NAME" "SIZE" "STATUS"
+    echo "----------------------------------------"
     
     for backup in "$backup_dir"/auto-*; do
-        if [[ -d "$backup" ]]; then
-            local name=$(basename "$backup")
-            local size=$(du -sh "$backup" | cut -f1)
-            local date=$(stat -c %y "$backup" | cut -d' ' -f1)
-            
-            # 检查是否有 manifest
-            if [[ -f "${backup}/manifest.yml" ]]; then
-                echo "  ✓ $name | $size | $date"
-            else
-                echo "  ? $name | $size | $date (无清单)"
-            fi
-        fi
+        [[ -d "$backup" ]] || continue
+        local name=$(basename "$backup")
+        local size=$(du -sh "$backup" | cut -f1)
+        local status=$(cat "${backup}/.backup_status" 2>/dev/null || echo "?")
+        printf "%-25s %-10s %-12s\n" "$name" "$size" "$status"
     done
     
-    # 显示最新备份
-    if [[ -L "${backup_dir}/latest" ]]; then
-        local latest=$(readlink "${backup_dir}/latest")
-        echo ""
-        log_info "最新备份: $(basename "$latest")"
-    fi
+    [[ -L "${backup_dir}/latest" ]] && echo "" && log_info "Latest: $(basename "$(readlink "${backup_dir}/latest")")"
 }
 
-# 清理旧备份
+# Cleanup old backups
 cleanup_backups() {
     local backup_dir=$(get_backup_dir)
+    log_info "Cleaning up backups older than $OPC_BACKUP_RETENTION_DAYS days"
     
-    log_info "清理 ${RETENTION_DAYS} 天前的备份"
-    
-    local deleted_count=0
-    
+    local deleted=0
     while IFS= read -r backup; do
-        if [[ -d "$backup" ]]; then
-            local name=$(basename "$backup")
-            log_info "删除: $name"
-            rm -rf "$backup"
-            ((deleted_count++))
-        fi
-    done < <(find "$backup_dir" -maxdepth 1 -type d -name "auto-*" -mtime +${RETENTION_DAYS})
+        [[ -d "$backup" ]] || continue
+        log_info "Deleting: $(basename "$backup")"
+        [[ "$OPC_DRY_RUN" == "true" ]] && continue
+        rm -rf "$backup"
+        ((deleted++))
+    done <<< "$(find "$backup_dir" -maxdepth 1 -type d -name "auto-*" -mtime +${OPC_BACKUP_RETENTION_DAYS} 2>/dev/null)"
     
-    log_success "清理完成，删除 ${deleted_count} 个备份"
+    log_success "Cleanup complete, deleted $deleted backups"
 }
 
-# 主函数
+# Main
 main() {
     log_info "OPC200 Backup Manager"
     log_info "====================="
     
     parse_args "$@"
+    opc_init_config "$CONFIG_FILE"
+    setup_dirs
+    check_dependencies
     
-    log_info "客户ID: $OPC_ID"
-    log_info "操作: $ACTION"
+    log_info "Customer: $OPC_ID"
+    log_info "Action: $ACTION"
+    log_info "Encryption: $OPC_BACKUP_ENCRYPT"
+    [[ "$REMOTE_UPLOAD" == "true" ]] && log_info "Remote upload: enabled"
     
     case "$ACTION" in
-        backup)
-            create_backup
-            ;;
-        restore)
-            restore_backup
-            ;;
-        list)
-            list_backups
-            ;;
-        cleanup)
-            cleanup_backups
-            ;;
-        *)
-            log_error "未知操作: $ACTION"
-            exit 1
-            ;;
+        backup) create_backup ;;
+        restore) restore_backup ;;
+        list) list_backups ;;
+        cleanup) cleanup_backups ;;
+        *) log_error "Unknown action: $ACTION"; exit 1 ;;
     esac
 }
 
