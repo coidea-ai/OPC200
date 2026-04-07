@@ -71,11 +71,6 @@ services:
       - opc200-internal
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 # 网络配置
 networks:
