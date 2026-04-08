@@ -1,6 +1,7 @@
 """Minimal Journal API service for container runtime health."""
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -22,7 +23,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = HTTPServer(("0.0.0.0", 8080), _Handler)
+    host = os.environ.get("JOURNAL_API_HOST", "0.0.0.0")
+    port = int(os.environ.get("JOURNAL_API_PORT", "8080"))
+    server = HTTPServer((host, port), _Handler)
     server.serve_forever()
 
 
