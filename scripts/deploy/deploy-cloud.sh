@@ -160,7 +160,7 @@ spec:
     spec:
       containers:
       - name: gateway
-        image: openclaw/gateway:latest
+        image: ghcr.io/openclaw/openclaw:latest
         ports:
         - containerPort: 8080
           name: http

@@ -111,7 +111,7 @@ version: '3.8'
 
 services:
   gateway:
-    image: openclaw/gateway:2026.3
+    image: ghcr.io/openclaw/openclaw:latest
     ports:
       - "8080:8080"
     environment:

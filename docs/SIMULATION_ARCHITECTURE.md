@@ -54,7 +54,7 @@ version: '3.8'
 services:
   # OpenClaw Gateway (共享)
   gateway:
-    image: openclaw/gateway:2026.3
+    image: ghcr.io/openclaw/openclaw:latest
     ports:
       - "8080:8080"
     environment:
