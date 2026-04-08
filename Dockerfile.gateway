@@ -7,8 +7,12 @@ LABEL maintainer="coidea.ai"
 LABEL version="2.2.0"
 LABEL description="OPC200 Gateway with security hardening"
 
+# 确保有权限执行系统级安装与用户管理
+USER root
+
 # 安全：以非 root 用户运行
-RUN groupadd -r opc200 && useradd -r -g opc200 -s /bin/false opc200
+RUN getent group opc200 || groupadd -r opc200 && \
+    id -u opc200 >/dev/null 2>&1 || useradd -m -r -g opc200 -s /bin/bash opc200
 
 # 安装额外依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建目录结构
-RUN mkdir -p /data /var/log/opc200 /etc/opc200 && \
-    chown -R opc200:opc200 /data /var/log/opc200
+RUN mkdir -p /data /var/log/opc200 /etc/opc200 /home/opc200/.openclaw && \
+    chown -R opc200:opc200 /data /var/log/opc200 /home/opc200
 
 # 复制配置
 COPY --chown=opc200:opc200 config/gateway.yml /etc/opc200/gateway.yml
@@ -42,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 18789
 
 # 启动命令
-CMD ["openclaw", "gateway", "start", "--config", "/etc/opc200/gateway.yml"]
+CMD ["openclaw", "gateway", "--allow-unconfigured"]
