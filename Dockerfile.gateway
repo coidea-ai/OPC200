@@ -1,7 +1,7 @@
 # OPC200 Gateway Docker 镜像
 # 基于 OpenClaw Gateway
 
-FROM openclaw/gateway:2026.3.12
+FROM ghcr.io/openclaw/openclaw:latest
 
 LABEL maintainer="coidea.ai"
 LABEL version="2.2.0"

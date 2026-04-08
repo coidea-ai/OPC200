@@ -187,7 +187,7 @@ version: '3.8'
 
 services:
   gateway:
-    image: openclaw/gateway:latest
+    image: ghcr.io/openclaw/openclaw:latest
     container_name: opc200-${OPC_ID,,}-gateway
     restart: unless-stopped
     
@@ -336,7 +336,7 @@ server_info:
   tailscale_ip: $(tailscale ip -4 2>/dev/null || echo "N/A")
 components:
   gateway:
-    version: $(docker inspect openclaw/gateway:latest --format='{{.Id}}' 2>/dev/null | cut -c1-12 || echo "unknown")
+    version: $(docker inspect ghcr.io/openclaw/openclaw:latest --format='{{.Id}}' 2>/dev/null | cut -c1-12 || echo "unknown")
     status: running
   tailscale:
     version: $(tailscale version 2>/dev/null | head -1 || echo "unknown")
