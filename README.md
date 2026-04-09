@@ -13,6 +13,16 @@
 
 OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体支持基础设施，通过 OpenClaw 平台提供持续 100 天的陪伴式成长服务。
 
+### 架构演进
+
+| 维度 | 旧架构（已废弃） | 新架构（开发中） |
+|------|-----------------|-----------------|
+| 用户端 | 5 容器（~6GB） | 1 Agent（~500MB） |
+| 监控 | 各客户独立 Grafana | 平台统一监控 |
+| 升级 | 逐个 SSH 升级 | 批量推送升级 |
+| 网络 | Tailscale VPN | 纯 HTTPS 出站 |
+| 代码位置 | `src/`, `skills/`, `config/` | `agent/`, `platform/`, `shared/` |
+
 ### 核心能力
 
 | 能力 | 说明 |
@@ -22,6 +32,8 @@ OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体
 | **🔒 数据主权** | 本地数据保险箱，敏感信息绝不上云 |
 | **🌐 混合部署** | 150 本地部署 + 50 云端托管 |
 | **🛠️ 专属 Skills** | OPC Journal Suite 等 6+ 专属技能 |
+| **📊 平台监控** | 【新】统一监控 200 用户实例，故障主动发现 |
+| **🔄 自修复** | 【新】Agent 本地自动修复 80% 常见问题 |
 
 ---
 
@@ -61,49 +73,137 @@ OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体
 
 ---
 
-## 📁 项目结构
+## ⚠️ 重要：项目正在架构改造中
+
+> **当前分支**: `feat/push-architecture`  
+> **改造目标**: 从私有化全容器部署转向 Push 模式集中监控架构  
+> **任务板**: [docs/TASK_BOARD.md](./docs/TASK_BOARD.md)
+
+我们正在将项目重构为**平台侧**和**用户侧**双架构，以支持 200 用户规模化运营。
+
+---
+
+## 📁 项目结构（新架构）
 
 ```
 opc200/
 │
-├── README.md                    # 本文件
+├── README.md                    # 📍 本文件
 ├── SYSTEM.md                    # 架构方案文档（核心）
 ├── KNOWLEDGE_BASE.md            # 知识库与最佳实践
 ├── STRUCTURE.md                 # 项目文件结构
 ├── LICENSE                      # MIT 许可证
 │
-├── skills/                      # OpenClaw Skills（可发布到 ClawHub）
-│   └── opc-journal-suite/       # OPC Journal Suite（6个技能）
-│       ├── SKILL.md             # 套件总控
-│       ├── opc-journal-core/    # 核心日志
-│       ├── opc-pattern-recognition/  # 模式识别
-│       ├── opc-milestone-tracker/    # 里程碑追踪
-│       ├── opc-async-task-manager/   # 异步任务
-│       └── opc-insight-generator/    # 洞察生成
+├── 📦 agent/                    # 【新】用户侧（OPC Agent）
+│   ├── src/                     #   Agent 源代码
+│   │   ├── gateway/             #     精简版 OpenClaw Gateway
+│   │   ├── journal/             #     本地 SQLite 存储
+│   │   ├── exporter/            #     指标推送到平台
+│   │   ├── selfhealer/          #     自修复机制
+│   │   └── updater/             #     版本更新客户端
+│   ├── config/                  #   Agent 配置文件
+│   ├── skills/                  #   用户侧 Skills
+│   └── README.md                #   Agent 使用说明
+│
+├── 📦 platform/                 # 【新】平台侧（云端集中）
+│   ├── pushgateway/             #   指标接收服务
+│   ├── prometheus/              #   时序存储
+│   ├── grafana/                 #   可视化 Dashboard
+│   ├── alertmanager/            #   告警路由
+│   ├── version-control/         #   版本管理 + 灰度发布
+│   └── README.md                #   平台部署说明
+│
+├── 🔗 shared/                   # 【新】共享组件
+│   ├── proto/                   #   通信协议定义
+│   ├── pkg/                     #   共享工具包
+│   └── README.md
+│
+├── 📚 docs/                     # 文档
+│   ├── SCRIPTS.md               #   脚本使用手册
+│   ├── DEPLOYMENT.md            #   部署指南
+│   ├── ARCHITECTURE.md          #   【新】Push 架构设计
+│   ├── TASK_BOARD.md            #   【新】多 Agent 任务板
+│   └── ...
+│
+└── 🔧 scripts/                  # 运维脚本
+    ├── setup/                   #   初始化脚本
+    ├── deploy/                  #   部署脚本
+    ├── maintenance/             #   维护脚本
+    └── ...
+```
+
+### 🗂️ 旧目录说明（待迁移/删除）
+
+以下目录为**旧架构遗留**，已复制到新位置，后续将删除：
+
+| 旧目录 | 状态 | 新位置 | 说明 |
+|--------|------|--------|------|
+| `src/` | ⚠️ 旧 | `agent/src/` | 源代码已迁移 |
+| `skills/` | ⚠️ 旧 | `agent/skills/` | Skills 已迁移 |
+| `config/` | ⚠️ 旧 | `agent/config/` | 配置已迁移 |
+| `monitoring/` | ⚠️ 旧 | `platform/prometheus/` `platform/grafana/` | 监控组件已迁移 |
+| `Dockerfile` | ⚠️ 旧 | - | 将被 `agent/Dockerfile` 替代 |
+| `Dockerfile.gateway` | ⚠️ 旧 | `agent/src/gateway/` | 参考用 |
+| `docker-compose.yml` | ⚠️ 旧 | `agent/docker-compose.yml` `platform/docker-compose.yml` | 将拆分 |
+
+> 💡 **新开发请使用 `agent/` 和 `platform/` 目录**，旧目录仅保留用于对照和回退。
+
+---
+
+## 🚀 快速开始（新架构）
+
+### 构建 Agent（用户侧）
+
+```bash
+cd agent
+docker build -t opc-agent:latest .
+docker run -d \
+  --name opc-agent \
+  -v ~/.opc200:/data \
+  -e PLATFORM_URL=https://opc200.co \
+  -e CUSTOMER_ID=opc-001 \
+  opc-agent:latest
+```
+
+### 部署平台（云端）
+
+```bash
+cd platform
+docker-compose up -d
+```
+
+---
+
+## 📋 原项目结构（旧架构）
+
+> 以下内容为旧架构文档，仅供参考。新架构请参考 `agent/README.md` 和 `platform/README.md`。
+
+<details>
+<summary>点击展开旧架构说明（已废弃）</summary>
+
+```
+opc200/
+│
+├── skills/                      # OpenClaw Skills
+│   └── opc-journal-suite/       # OPC Journal Suite
+│       ├── SKILL.md
+│       ├── opc-journal-core/
+│       ├── opc-pattern-recognition/
+│       ├── opc-milestone-tracker/
+│       ├── opc-async-task-manager/
+│       └── opc-insight-generator/
 │
 ├── scripts/                     # 运维脚本
 │   ├── setup/                   # 初始化脚本
-│   │   └── customer-init.sh     # 客户初始化
 │   ├── deploy/                  # 部署脚本
-│   │   ├── deploy-onprem.sh     # 本地部署
-│   │   ├── deploy-cloud.sh      # 云端部署
-│   │   └── install-skills.sh    # Skills 安装
 │   ├── maintenance/             # 维护脚本
-│   │   ├── health-check.sh      # 健康检查
-│   │   └── backup-manager.sh    # 备份管理
 │   ├── support/                 # 支持脚本
-│   │   └── vpn-manager.sh       # VPN 管理
 │   └── recovery/                # 恢复脚本
-│       └── emergency-recovery.sh # 紧急恢复
 │
-├── docs/                        # 文档
-│   ├── SCRIPTS.md               # 脚本使用手册
-│   ├── DEPLOYMENT.md            # 部署指南
-│   ├── DEVELOPMENT.md           # 开发指南
-│   └── SECURITY.md              # 安全指南
-│
-└── docker-compose.yml           # 服务编排（待完善）
+└── docker-compose.yml           # 服务编排
 ```
+
+</details>
 
 ---
 
@@ -370,6 +470,18 @@ tier_3_shareable:   # 可安全共享
 ---
 
 ## 📚 文档导航
+
+### 新架构文档
+
+| 文档 | 内容 |
+|------|------|
+| [agent/README.md](./agent/README.md) | **【新】** Agent 用户侧使用说明 |
+| [platform/README.md](./platform/README.md) | **【新】** Platform 平台侧部署说明 |
+| [docs/TASK_BOARD.md](./docs/TASK_BOARD.md) | **【新】** 多 Agent 协同任务板 |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | **【新】** Push 架构完整设计 |
+| [docs/architecture/DIRECTORY_MIGRATION.md](./docs/architecture/DIRECTORY_MIGRATION.md) | **【新】** 目录迁移详细说明 |
+
+### 原有文档（仍适用）
 
 | 文档 | 内容 |
 |------|------|
