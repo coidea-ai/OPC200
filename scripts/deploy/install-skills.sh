@@ -188,15 +188,17 @@ install_journal_suite() {
     
     local skills=(
         "opc-journal-core"
-        "opc-pattern-recognition"
         "opc-milestone-tracker"
-        "opc-async-task-manager"
         "opc-insight-generator"
     )
     
     for skill in "${skills[@]}"; do
         install_single_skill "$skill" "$VERSION" "$skills_dir"
     done
+    
+    # 可选技能（Legacy，仍兼容但不默认安装）
+    log_warn "opc-pattern-recognition 和 opc-async-task-manager 已标记为 legacy"
+    log_warn "如需安装，请使用: $0 --id ${OPC_ID} --skill \u003cskill-name\u003e"
     
     # 安装依赖 Skills
     if [[ "$SKIP_DEPS" != true ]]; then

@@ -1,0 +1,58 @@
+# OPC200 All-in-One 本地部署镜像
+# 把 Gateway + Journal + 轻量监控合并到单个容器
+# 目标: 本地部署从 7 个服务压缩到 1 个主容器 (+ 可选 Qdrant)
+
+FROM ghcr.io/openclaw/openclaw:latest
+
+LABEL maintainer="coidea.ai"
+LABEL version="2.4.0"
+LABEL description="OPC200 All-in-One for on-premise deployment"
+
+USER root
+
+# 安装 Python 3.11, Supervisor, curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3-pip \
+    python3.11-venv \
+    supervisor \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建虚拟环境并安装 Python 依赖
+RUN python3.11 -m venv /opt/opc200-venv
+COPY requirements.txt /tmp/requirements.txt
+RUN /opt/opc200-venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# 创建非 root 用户和目录
+RUN groupadd -r opc200 && useradd -r -g opc200 -s /bin/false opc200 \
+    && mkdir -p /data /var/log/opc200 /etc/opc200 /app/src /app/config /var/log/supervisor \
+    && chown -R opc200:opc200 /data /var/log/opc200 /app /var/log/supervisor
+
+# 复制应用代码
+COPY --chown=opc200:opc200 src/ /app/src/
+COPY --chown=opc200:opc200 config/ /app/config/
+
+# 复制 Supervisor 配置
+COPY --chown=opc200:opc200 config/supervisord.onprem.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 安全加固
+RUN apt-get autoremove -y && apt-get clean && rm -rf /tmp/* /var/tmp/*
+
+# 环境变量
+ENV PATH="/opt/opc200-venv/bin:${PATH}"
+ENV PYTHONPATH="/app/src"
+ENV OPC200_DATA_DIR="/data"
+ENV OPC200_MODE="on-premise"
+
+# 健康检查 (Supervisor 会确保所有进程都在运行)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:18789/health && curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 18789 8080 9091
+
+USER opc200
+
+# Supervisor 作为 PID 1 管理所有进程
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

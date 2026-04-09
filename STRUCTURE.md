@@ -94,44 +94,48 @@ opc200/                                      # 项目根目录
 │
 ├── skills/                                  # OpenClaw Skills（可发布）
 │   │
-│   └── opc-journal-suite/                   # OPC Journal Suite
-│       ├── SKILL.md                         # 套件总控文档
-│       │
-│       ├── opc-journal-core/                # 核心日志
-│       │   ├── SKILL.md
-│       │   ├── config.yml
-│       │   └── scripts/
-│       │       ├── init.py
-│       │       ├── record.py
-│       │       ├── query.py
-│       │       └── digest.py
-│       │
-│       ├── opc-pattern-recognition/         # 模式识别
-│       │   ├── SKILL.md
-│       │   ├── config.yml
-│       │   └── scripts/
-│       │       ├── analyzer.py
-│       │       └── predictor.py
-│       │
-│       ├── opc-milestone-tracker/           # 里程碑追踪
-│       │   ├── SKILL.md
-│       │   ├── config.yml
-│       │   └── scripts/
-│       │       ├── detector.py
-│       │       └── celebration.py
-│       │
-│       ├── opc-async-task-manager/          # 异步任务
-│       │   ├── SKILL.md
-│       │   ├── config.yml
-│       │   └── scripts/
-│       │       ├── scheduler.py
-│       │       └── executor.py
-│       │
-│       └── opc-insight-generator/           # 洞察生成
-│           ├── SKILL.md
-│           ├── config.yml
-│           └── scripts/
-│               └── generator.py
+│   ├── opc-journal-suite/                   # OPC Journal Suite
+│   │   ├── SKILL.md                         # 套件总控文档
+│   │   │
+│   │   ├── opc-journal-core/                # 核心日志
+│   │   │   ├── SKILL.md
+│   │   │   ├── config.yml
+│   │   │   └── scripts/
+│   │   │       ├── init.py
+│   │   │       ├── record.py
+│   │   │       ├── query.py
+│   │   │       └── digest.py
+│   │   │
+│   │   ├── opc-pattern-recognition/         # 模式识别 (v2.4→解读层)
+│   │   │   ├── SKILL.md
+│   │   │   ├── config.yml
+│   │   │   └── scripts/
+│   │   │       ├── analyzer.py
+│   │   │       └── predictor.py
+│   │   │
+│   │   ├── opc-milestone-tracker/           # 里程碑追踪 (核心差异化)
+│   │   │   ├── SKILL.md
+│   │   │   ├── config.yml
+│   │   │   └── scripts/
+│   │   │       ├── detector.py
+│   │   │       └── celebration.py
+│   │   │
+│   │   ├── opc-async-task-manager/          # 异步任务 (Legacy)
+│   │   │   ├── SKILL.md
+│   │   │   ├── config.yml
+│   │   │   └── scripts/
+│   │   │       ├── scheduler.py
+│   │   │       └── executor.py
+│   │   │
+│   │   └── opc-insight-generator/           # 洞察生成 (核心差异化)
+│   │       ├── SKILL.md
+│   │       ├── config.yml
+│   │       └── scripts/
+│   │           └── generator.py
+│   │
+│   └── opc-remi-lite/                       # ⚠️ 已废弃 (DEPRECATED)
+│       ├── SKILL.md
+│       └── README.md
 │
 ├── scripts/                                 # 运维脚本
 │   ├── setup/                               # 初始化脚本
@@ -355,17 +359,17 @@ scripts/
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 文档 | ✅ | README, SYSTEM, KNOWLEDGE_BASE, 开发部署安全指南 |
-| 架构 | ✅ | v2.2 架构设计完成 |
-| Skills | ✅ | 6个 OPC Journal Suite Skills |
-| 脚本 | ✅ | 8个运维脚本 |
+| 文档 | 🟡 | REFACTOR_PLAN 已建立，SYSTEM 架构文档待更新 |
+| 架构 | 🟡 | v2.2 → v2.4 重构中 |
+| Skills | 🟡 | opc-remi-lite 已废弃，套件从 5 个压缩到 3 个核心 |
+| 脚本 | 🟡 | install-skills.sh 已更新，其余待适配新架构 |
 | Python 核心 | ✅ | src/ 14个模块 |
 | 测试 | ✅ | 12个测试文件，TDD 完成 |
 | CI/CD | ✅ | 4个 GitHub Actions 工作流 |
-| Docker | ✅ | 4个 Dockerfile + 3个 compose |
-| 配置 | ✅ | 5个配置模板 |
+| Docker | 🟡 | 待新增 Dockerfile.allinone 和 docker-compose.cloud.yml |
+| 配置 | 🟡 | opc-journal-suite/config.yml 已更新 |
 | 代码质量 | ✅ | Black, mypy, pylint, pre-commit |
 
 ---
 
-*最后更新: 2026-03-24*
+*最后更新: 2026-04-10 (重构中)*

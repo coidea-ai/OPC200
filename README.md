@@ -2,10 +2,12 @@
 
 > **200 个一人公司，100 天 7×24 小时超级智能体陪伴式成长**
 
-[![Version](https://img.shields.io/badge/version-2.2-blue.svg)](./VERSION)
-[![OpenClaw](https://img.shields.io/badge/OpenClaw-2026.3+-green.svg)](https://openclaw.ai)
+[![Version](https://img.shields.io/badge/version-2.4--refactoring-blue.svg)](./VERSION)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-2026.4+-green.svg)](https://openclaw.ai)
 [![Security](https://img.shields.io/badge/security-Data%20Vault%20Architecture-red.svg)](./SYSTEM.md)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+
+> **🚨 v2.4 重构中**: 基于 OpenClaw v2026.4.9 平台的记忆层升级，OPC200 正在进行战略转身。详见 [`CRITICAL_ANALYSIS_2026-04-10.md`](./CRITICAL_ANALYSIS_2026-04-10.md) 和 [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md)。
 
 ---
 
@@ -18,10 +20,10 @@ OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体
 | 能力 | 说明 |
 |------|------|
 | **🤖 7×24 智能体陪伴** | 不只是问答，是连续 100 天的成长记录与回顾 |
-| **📝 User Journal** | 三层记忆架构（会话→短期→长期），记录完整用户旅程 |
+| **📝 User Journal** | 100 天旅程的特定里程碑模型和数据契约 |
 | **🔒 数据主权** | 本地数据保险箱，敏感信息绝不上云 |
-| **🌐 混合部署** | 150 本地部署 + 50 云端托管 |
-| **🛠️ 专属 Skills** | OPC Journal Suite 等 6+ 专属技能 |
+| **🌐 混合部署** | 20 本地部署 + 180 云端托管 |
+| **🛠️ 专属 Skills** | OPC Journal Suite（3 个核心差异化技能）|
 
 ---
 
@@ -34,11 +36,11 @@ OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体
 │                     OPC200 部署分布 (200客户)                            │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│   本地部署 (150)                          云端托管 (50)                  │
+│   本地部署 (20)                           云端托管 (180)                 │
 │   ┌────────────────────────┐              ┌────────────────────────┐   │
-│   │ • Tailscale VPN 连接   │              │ • 我们的 Gateway       │   │
-│   │ • 敏感数据本地存储     │              │ • 共享基础设施         │   │
-│   │ • 离线知识包支持       │              │ • 全权托管             │   │
+│   │ • Tailscale VPN 连接   │              │ • 多租户共享基础设施   │   │
+│   │ • 敏感数据本地存储     │              │ • Gateway-per-tenant   │   │
+│   │ • All-in-One 容器      │              │ • S3/B2 自动备份       │   │
 │   │ • 紧急远程访问授权     │              │                        │   │
 │   └────────────────────────┘              └────────────────────────┘   │
 │                                                                         │
@@ -76,10 +78,12 @@ opc200/
 │   └── opc-journal-suite/       # OPC Journal Suite（6个技能）
 │       ├── SKILL.md             # 套件总控
 │       ├── opc-journal-core/    # 核心日志
-│       ├── opc-pattern-recognition/  # 模式识别
-│       ├── opc-milestone-tracker/    # 里程碑追踪
-│       ├── opc-async-task-manager/   # 异步任务
-│       └── opc-insight-generator/    # 洞察生成
+│       ├── opc-pattern-recognition/  # 模式识别 (v2.4→解读层)
+│       ├── opc-milestone-tracker/    # 里程碑追踪 (核心)
+│       ├── opc-async-task-manager/   # 异步任务 (Legacy)
+│       └── opc-insight-generator/    # 洞察生成 (核心)
+│
+├── opc-remi-lite/             # ⚠️ 已废弃 (DEPRECATED)
 │
 ├── scripts/                     # 运维脚本
 │   ├── setup/                   # 初始化脚本
@@ -102,7 +106,14 @@ opc200/
 │   ├── DEVELOPMENT.md           # 开发指南
 │   └── SECURITY.md              # 安全指南
 │
-└── docker-compose.yml           # 服务编排（待完善）
+├── docker-compose.yml           # 开发环境编排
+├── docker-compose.cloud.yml     # 云端多租户编排
+├── docker-compose.onprem.yml    # 本地简化编排
+└── Dockerfile.allinone          # 本地 All-in-One 镜像
+
+> 重构相关文档:
+> - [`CRITICAL_ANALYSIS_2026-04-10.md`](./CRITICAL_ANALYSIS_2026-04-10.md) — 现状批判分析
+> - [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) — 重构执行计划
 ```
 
 ---

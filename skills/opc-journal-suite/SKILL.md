@@ -18,9 +18,15 @@ metadata:
 
 # opc-journal-suite
 
-**Version**: 2.3.0  
-**Status**: Production Ready  
-**Last Updated**: 2026-03-30
+**Version**: 2.4.0-refactored  
+**Status**: Refactoring In Progress  
+**Last Updated**: 2026-04-10
+
+> **v2.4 重构说明**: 本套件已从 5 个子技能压缩到 3 个核心技能。
+> - `opc-remi-lite` → **废弃** (OpenClaw v2026.4.9+ 原生 dreaming 已覆盖)
+> - `opc-async-task-manager` → **Legacy** (OpenClaw Task Flow 已覆盖)
+> - `opc-pattern-recognition` → **Interpretation Layer** (从 dreaming output 做 OPC 特定解读)
+> - `opc-milestone-tracker` + `opc-insight-generator` → **保留**，作为核心差异化能力。
 
 ## When to Use
 
@@ -114,11 +120,14 @@ clawhub install coidea/opc-journal-suite
 Or install individual sub-skills:
 
 ```bash
+# 核心技能（推荐）
 clawhub install coidea/opc-journal-core
-clawhub install coidea/opc-pattern-recognition
 clawhub install coidea/opc-milestone-tracker
-clawhub install coidea/opc-async-task-manager
 clawhub install coidea/opc-insight-generator
+
+# Legacy 技能（可选，不推荐新装）
+clawhub install coidea/opc-pattern-recognition
+clawhub install coidea/opc-async-task-manager
 ```
 
 ## Architecture
@@ -139,15 +148,18 @@ clawhub install coidea/opc-insight-generator
 │         ▼                ▼                ▼               │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐      │
 │  │   Journal    │ │   Pattern    │ │  Milestone   │      │
-│  │    Core      │ │ Recognition  │ │   Tracker    │      │
+│  │    Core      │ │Recognition*  │ │   Tracker    │      │
 │  └──────┬───────┘ └──────────────┘ └──────────────┘      │
 │         │                                                  │
-│         │  ┌──────────────┐ ┌──────────────┐             │
-│         └──┤    Async     │ │   Insight    │             │
-│            │  Task Mgr    │ │  Generator   │             │
-│            └──────────────┘ └──────────────┘             │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+│         │         ┌──────────────┐                       │
+│         └─────────┤   Insight    │                       │
+│                   │  Generator   │                       │
+│                   └──────────────┘                       │
+│                                                            │
+│  *Pattern Recognition = Interpretation layer over OpenClaw │
+│   dreaming output.                                         │
+│  **Async Task Mgr = Legacy (OpenClaw /tasks panel covers)  │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ## Unified Entry Point
@@ -158,13 +170,13 @@ Instead of calling individual sub-skills, use the suite as a unified entry point
 
 The suite automatically detects user intent and routes to the appropriate sub-skill:
 
-| User Says | Detected Intent | Routed To |
-|-----------|-----------------|-----------|
-| "Record my progress today" | `journal_record` | opc-journal-core |
-| "分析我的工作习惯" | `pattern_analyze` | opc-pattern-recognition |
-| "Detect milestones in my journey" | `milestone_detect` | opc-milestone-tracker |
-| "Run this in background" | `task_create` | opc-async-task-manager |
-| "Give me advice on what to do" | `insight_generate` | opc-insight-generator |
+| User Says | Detected Intent | Routed To | Status |
+|-----------|-----------------|-----------|--------|
+| "Record my progress today" | `journal_record` | opc-journal-core | Core |
+| "分析我的工作习惯" | `pattern_analyze` | opc-pattern-recognition | Interpretation layer |
+| "Detect milestones in my journey" | `milestone_detect` | opc-milestone-tracker | Core |
+| "Run this in background" | `task_create` | opc-async-task-manager | **Legacy** |
+| "Give me advice on what to do" | `insight_generate` | opc-insight-generator | Core |
 
 ### Usage
 
@@ -418,7 +430,7 @@ opc-journal-suite/
 │   ├── __init__.py
 │   └── test_coordinate.py        # Coordination tests (25 cases)
 │
-├── opc-journal-core/             # Sub-skill (11 tests)
+├── opc-journal-core/             # 核心日志 (11 tests) ✅
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   ├── init.py
@@ -428,21 +440,21 @@ opc-journal-suite/
 │   └── tests/
 │       └── test_core.py
 │
-├── opc-pattern-recognition/      # Sub-skill (4 tests)
+├── opc-pattern-recognition/      # 解读层 (4 tests) 🟡
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   └── analyze.py
 │   └── tests/
 │       └── test_patterns.py
 │
-├── opc-milestone-tracker/        # Sub-skill (6 tests)
+├── opc-milestone-tracker/        # 里程碑追踪 (6 tests) ✅
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   └── detect.py
 │   └── tests/
 │       └── test_milestones.py
 │
-├── opc-async-task-manager/       # Sub-skill (6 tests)
+├── opc-async-task-manager/       # 异步任务 (6 tests) ⚠️ Legacy
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   ├── create.py
@@ -450,7 +462,7 @@ opc-journal-suite/
 │   └── tests/
 │       └── test_tasks.py
 │
-└── opc-insight-generator/        # Sub-skill (3 tests)
+└── opc-insight-generator/        # 洞察生成 (3 tests) ✅
     ├── SKILL.md
     ├── scripts/
     │   └── daily_summary.py
@@ -460,15 +472,15 @@ opc-journal-suite/
 
 ## Test Coverage
 
-| Component | Tests | Status |
-|-----------|-------|--------|
-| opc-journal-suite (coordination) | 25 | ✅ Pass |
-| opc-journal-core | 11 | ✅ Pass |
-| opc-pattern-recognition | 4 | ✅ Pass |
-| opc-milestone-tracker | 6 | ✅ Pass |
-| opc-async-task-manager | 6 | ✅ Pass |
-| opc-insight-generator | 3 | ✅ Pass |
-| **Total** | **55** | ✅ **All Pass** |
+| Component | Tests | Status | Notes |
+|-----------|-------|--------|-------|
+| opc-journal-suite (coordination) | 25 | ✅ Pass | |
+| opc-journal-core | 11 | ✅ Pass | Core |
+| opc-pattern-recognition | 4 | 🟡 Pass | Re-positioned as interpretation layer |
+| opc-milestone-tracker | 6 | ✅ Pass | Core differentiate |
+| opc-async-task-manager | 6 | ⚠️ Pass | Legacy, not installed by default |
+| opc-insight-generator | 3 | ✅ Pass | Core differentiate |
+| **Total** | **55** | ✅ **All Pass** | |
 
 All tests are local unit tests with no network dependencies.
 
@@ -478,9 +490,8 @@ All tests are local unit tests with no network dependencies.
 |---------|----------|-----|
 | v1.0 | Core journal, basic patterns | 2026.03 |
 | v1.1 | Milestone auto-detection | 2026.04 |
-| v1.2 | Advanced async tasks | 2026.04 |
-| **v2.3** | **Cron scheduler, unified coordination** | **2026.03 (Current)** |
-| v2.5 | Voice journal, emotional AI | 2026.06 |
+| **v2.4** | **Refactored: compressed to 3 core skills** | **2026.04 (Current)** |
+| v3.0 | Multi-tenant cloud architecture, support dashboard | 2026.05 |
 
 ## Contributing
 
