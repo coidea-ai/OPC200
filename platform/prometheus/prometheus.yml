@@ -2,29 +2,14 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: []
-
-# Load rules once and periodically evaluate them
-rule_files:
-  - "alerts.yml"
-
 scrape_configs:
-  - job_name: 'opc200-metrics'
+  # 抓取 Pushgateway 本身
+  - job_name: 'pushgateway'
     static_configs:
-      - targets: ['localhost:9091']
-    metrics_path: /metrics
-    scrape_interval: 15s
+      - targets: ['pushgateway:9091']
+    honor_labels: true  # 保留用户推送的 labels（如 tenant_id）
 
+  # Prometheus 自身监控
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-
-  - job_name: 'opc200-gateway'
-    static_configs:
-      - targets: ['localhost:18789']
-    metrics_path: /health
-    scrape_interval: 30s
