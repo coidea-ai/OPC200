@@ -91,17 +91,26 @@
 ---
 
 #### PLAT-003: 定义指标推送协议
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成
 - **负责人**: @kimi-claw
 - **协作方**: @zhang-yao-claw, @zhang-chenyang-claw（用户侧需确认）
 - **预计 AI 工时**: 30min
 - **截止**: Day 1 中午
 - **产出**:
-  - `docs/METRICS_PROTOCOL.md`
-  - 标准 labels: `tenant_id`, `agent_version`, `os`
-  - 标准指标: `agent_health`, `cpu_usage`, `memory_usage`, `disk_usage`
-  - 推送 endpoint: `https://platform.opc200.co/metrics/job/<tenant-id>`
-- **阻塞风险**: ⚠️ 此任务阻塞 AGENT-005，需优先完成
+  - ✅ `docs/METRICS_PROTOCOL.md` - 指标推送协议文档
+  - ✅ 标准 labels: `tenant_id`, `agent_version`, `os`
+  - ✅ 标准指标: `agent_health`, `cpu_usage`, `memory_usage`, `disk_usage`
+  - ✅ 推送 endpoint: `https://platform.opc200.co/metrics/job/<tenant-id>`
+  - ✅ Python 示例代码（单条+批量推送）
+  - ✅ 错误处理和指数退避重试策略
+- **协议文档位置**: `docs/METRICS_PROTOCOL.md`
+- **测试验证**: `platform/tests/test_plat003_metrics_protocol.py` (11 tests passing)
+- **⚠️ 待协商事项**（用户侧团队请查看文档并确认）：
+  1. **离线缓存机制**: 断网时本地存储策略（存储上限、数据格式、恢复同步逻辑）
+  2. **批量推送上限**: 单次最多推送多少条指标？建议值：100条
+  3. **推送频率**: 指标采集间隔？建议值：15秒或30秒
+  4. **数据压缩**: 是否启用 gzip 压缩？阈值多少？
+- **阻塞风险**: 🔴 此任务阻塞 AGENT-005，用户侧团队请优先 Review 协议文档
 
 ---
 
@@ -368,7 +377,8 @@
 
 | 问题 ID | 描述 | 阻塞任务 | 需要协助 | 状态 |
 |---------|------|----------|----------|------|
-| BLOCK-001 | PLAT-003 指标协议未定义 | AGENT-005 | @kimi-claw | 🔴 Day 1 中午前必须完成 |
+| BLOCK-001 | ~~PLAT-003 指标协议未定义~~ ✅ 已完成 | ~~AGENT-005~~ | @kimi-claw | 协议文档已发布，待用户侧 Review |
+| BLOCK-002 | AGENT-005 离线缓存策略待确认 | AGENT-005 | @zhang-yao-claw @zhang-chenyang-claw | 🟡 需确认缓存上限、存储格式、恢复逻辑 |
 
 ---
 
