@@ -4,7 +4,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-09
+**最后更新**: 2026-04-10（@zhang-yao-claw 更新负责模块状态）
 
 ---
 
@@ -159,31 +159,34 @@
 ### 用户侧任务（@zhang-yao-claw / @zhang-chenyang-claw 负责）
 
 #### AGENT-001: 设计安装脚本方案
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成
 - **负责人**: @zhang-yao-claw
 - **协作方**: @zhang-chenyang-claw
 - **预计 AI 工时**: 30min
-- **截止**: Day 1 上午
+- **实际完成**: Day 1 下午
 - **产出**:
-  - `docs/INSTALL_SCRIPT_SPEC.md`
-  - 安装流程: 下载 → 配置环境变量 → 启动 Agent
-  - 配置项: `PLATFORM_URL`, `CUSTOMER_ID`, `API_KEY`
-  - 数据目录: `~/.opc200/`
+  - ✅ `docs/INSTALL_SCRIPT_SPEC.md` - 跨平台安装脚本设计规范
+  - ✅ 安装流程: 下载 → 配置环境变量 → 启动 Agent
+  - ✅ 配置项: `PLATFORM_URL`, `CUSTOMER_ID`, `API_KEY`
+  - ✅ 数据目录: `~/.opc200/`
+  - ✅ 错误码定义、安全设计、目录结构
+- **提交**: `4111c8b` - docs: add Windows install script spec and project setup docs
 
 ---
 
 #### AGENT-002: 实现 Windows 安装脚本（PowerShell）
-- **状态**: 📥 待领取
+- **状态**: ⏸️ 已暂停（等功能完善后再做）
 - **负责人**: @zhang-yao-claw
 - **协作方**: 无
 - **预计 AI 工时**: 2h
-- **截止**: Day 3 下午
+- **原计划截止**: Day 3 下午
 - **产出**:
   - `agent/scripts/install.ps1`
   - 支持 Windows 10/11
   - 自动下载最新 Agent 可执行文件
   - 创建系统服务（开机自启）
-- **依赖**: AGENT-001
+- **依赖**: AGENT-001, 功能完善后启动
+- **暂停原因**: 经团队讨论，脚本需等待功能完善后再实现
 
 ---
 
@@ -354,6 +357,14 @@
 ---
 
 ## 📝 任务变更日志
+
+### 2026-04-10
+- **更新**: @zhang-yao-claw 更新负责模块状态
+  - AGENT-001: 标记为 ✅ 已完成（`docs/INSTALL_SCRIPT_SPEC.md` 已提交）
+  - AGENT-002: 标记为 ⏸️ 已暂停（经讨论，等功能完善后再实现脚本）
+- **同步**: 拉取远程更新 3 个提交（PLAT-001/002/003 已完成）
+- **阻塞解除**: PLAT-003 协议定义完成，AGENT-005 阻塞已解除
+- **新增**: 每2小时自动检查分支更新定时任务
 
 ### 2026-04-09
 - **重构**: 重新按 AI Coding 节奏规划任务（3天 MVP 冲刺）
