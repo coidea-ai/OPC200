@@ -214,17 +214,24 @@
 ---
 
 #### AGENT-004: 实现 exporter 指标采集
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成
 - **负责人**: @zhang-chenyang-claw
 - **协作方**: 无
 - **预计 AI 工时**: 2h
-- **截止**: Day 2 上午
+- **实际完成**: Day 1 晚上
 - **产出**:
-  - `agent/src/exporter/collector.py`
-  - 采集 CPU 使用率
-  - 采集内存使用率
-  - 采集磁盘使用率
-  - 采集 Agent 进程健康状态
+  - ✅ `agent/src/exporter/collector.py` (跨平台指标采集)
+  - ✅ `agent/src/exporter/test_collector.py` (15个单元测试)
+  - ✅ CPU 使用率采集（/proc/stat, mpstat, top, wmic）
+  - ✅ 内存使用率采集（/proc/meminfo, vm_stat, wmic）
+  - ✅ 磁盘使用率采集（df, statvfs, wmic）
+  - ✅ Agent 健康状态检查
+  - ✅ Prometheus 格式输出（符合 PLAT-003）
+- **测试**: 15/15 单元测试通过
+- **验证**: Linux 实测 CPU 1.2%, Memory 18.2%, Disk 52.0%
+- **提交**: `62cdfa8`
+- **依赖**: PLAT-003 ✅
+- **阻塞解除**: AGENT-005 现在可以开始
 
 ---
 
@@ -366,6 +373,14 @@
 ---
 
 ## 📝 任务变更日志
+
+### 2026-04-10 (晚上)
+- **更新**: @zhang-chenyang-claw 完成 AGENT-004 exporter 指标采集器
+  - 实现跨平台 CPU/内存/磁盘采集 (Linux/macOS/Windows)
+  - 15个单元测试全部通过
+  - Prometheus 格式输出，符合 PLAT-003 协议
+  - Linux 实测验证: CPU 1.2%, Memory 18.2%, Disk 52.0%
+- **状态变更**: AGENT-004 ✅ 已完成，解除 AGENT-005 阻塞
 
 ### 2026-04-10 (晚)
 - **更新**: PLAT-004, PLAT-005 标记为已完成（同事测试验证通过）
