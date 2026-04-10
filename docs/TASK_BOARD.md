@@ -175,18 +175,25 @@
 ---
 
 #### AGENT-002: 实现 Windows 安装脚本（PowerShell）
-- **状态**: ⏸️ 已暂停（等功能完善后再做）
+- **状态**: ✅ MVP 已完成（待功能完善后增强）
 - **负责人**: @zhang-yao-claw
 - **协作方**: 无
 - **预计 AI 工时**: 2h
-- **原计划截止**: Day 3 下午
+- **实际完成**: Day 1 下午（MVP 版本）
 - **产出**:
-  - `agent/scripts/install.ps1`
-  - 支持 Windows 10/11
-  - 自动下载最新 Agent 可执行文件
-  - 创建系统服务（开机自启）
-- **依赖**: AGENT-001, 功能完善后启动
-- **暂停原因**: 经团队讨论，脚本需等待功能完善后再实现
+  - ✅ `agent/scripts/install.ps1` - 安装脚本（交互式 + 静默模式）
+  - ✅ `agent/scripts/uninstall.ps1` - 卸载脚本
+  - ✅ `agent/scripts/TEST_PLAN.md` - 测试方案
+  - ✅ 支持 Windows 10/11
+  - ✅ 自动下载 Agent 可执行文件（GitHub Releases）
+  - ✅ 创建系统服务（开机自启）
+  - ✅ 健康检查验证
+- **提交**: `7515747` - feat(agent): add Windows deployment scripts (MVP)
+- **后续增强**:
+  - 切换到自有 CDN 下载
+  - 图形界面安装向导
+  - 数字签名验证
+- **依赖**: AGENT-001 ✅
 
 ---
 
