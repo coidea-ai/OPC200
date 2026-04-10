@@ -12,8 +12,13 @@ metadata:
 
 # opc-insight-generator
 
-**Version**: 2.3.0  
-**Status**: Production Ready
+**Version**: 2.4.0  
+**Status**: Refactored — Dreaming-Based Insight Generation  
+**Last Updated**: 2026-04-10
+
+> **v2.4 重构说明**: 此 skill 不再基于自建的数据统计模型生成通用摘要。OpenClaw v2026.4.9+ 原生 dreaming / memory compaction 已提供结构化的用户记忆输出。
+>
+> 当前定位: 从 dreaming output 中提取 OPC 特定主题（势能上升、战略反思期、注意节奏、快速成长、连接需求），并生成 100 天成长协议的每日洞察与可执行建议。
 
 ## When to Use
 

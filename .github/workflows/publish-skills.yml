@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 2.2.0)'
+        description: 'Version to publish (e.g., 2.4.0)'
         required: true
-        default: '2.2.0'
+        default: '2.4.0'
       publish_suite:
         description: 'Publish Suite (meta package)'
         required: true
@@ -69,7 +69,7 @@ jobs:
             --slug opc-journal-suite \
             --name "OPC Journal Suite" \
             --version ${{ github.event.inputs.version }} \
-            --changelog "OPC200 Journal Suite - User growth tracking and insights"
+            --changelog "v2.4 Refactored: 3 core skills + 2 legacy. Cloud multi-tenant + all-in-one on-prem support."
           echo "✅ Suite published successfully"
 
   publish-individual:

@@ -12,8 +12,13 @@ metadata:
 
 # opc-pattern-recognition
 
-**Version**: 2.3.0  
-**Status**: Production Ready
+**Version**: 2.4.0  
+**Status**: Refactored — Interpretation Layer  
+**Last Updated**: 2026-04-10
+
+> **v2.4 重构说明**: 此 skill 不再自行执行原始的行为分析。OpenClaw v2026.4.9+ 原生 dreaming / REM / memory search 已覆盖基础分析能力。
+> 
+> 当前定位: **解读层 (Interpretation Layer)** — 从 OpenClaw 生成的 `dreams.md` / `memory/*.md` 中读取内容，进行 OPC 特定的业务解读（工作节奏、决策模式、协作习惯、里程碑速度等）。
 
 ## When to Use
 

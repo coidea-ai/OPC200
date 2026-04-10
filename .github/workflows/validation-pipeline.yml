@@ -414,10 +414,13 @@ jobs:
 
       - name: Deploy batch ${{ matrix.batch }}
         run: |
-          BATCH_SIZE=50
-          echo "Deploying batch ${{ matrix.batch }} ($BATCH_SIZE instances)..."
+          sizes=(60 60 60 20)
+          starts=(1 61 121 181)
+          BATCH_SIZE=${sizes[$(( ${{ matrix.batch }} - 1 ))]}
+          START=${starts[$(( ${{ matrix.batch }} - 1 ))]}
+          echo "Deploying batch ${{ matrix.batch }} ($BATCH_SIZE instances, starting $START)..."
           # ./scripts/deploy/batch-deploy.sh \
-          #   --start $(( (${{ matrix.batch }} - 1) * BATCH_SIZE + 1 )) \
+          #   --start $START \
           #   --count $BATCH_SIZE \
           #   --env production \
           #   --image ${{ needs.build-image.outputs.image_tag }}
