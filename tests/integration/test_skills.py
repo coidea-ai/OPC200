@@ -28,6 +28,7 @@ from create import main as task_create
 from status import main as task_status
 from daily_summary import main as insight_daily_summary
 from coordinate import main as suite_coordinate
+from utils.storage import write_memory_file, build_memory_path
 
 
 def test_journal_core_init():
@@ -95,21 +96,27 @@ def test_journal_core_export():
 
 
 def test_pattern_recognition_analyze():
-    """Test pattern analysis."""
+    """Test pattern analysis from memory files."""
+    # Seed memory files for OPC-TEST-001
+    write_memory_file(
+        build_memory_path("OPC-TEST-001", "2026-04-01"),
+        "今天完成了原型设计，感到兴奋和满足。决定先验证方向再写代码。"
+    )
+    write_memory_file(
+        build_memory_path("OPC-TEST-001", "2026-04-02"),
+        "遇到了API瓶颈，有点焦虑。完成了数据库查询优化。"
+    )
+
     result = pattern_analyze({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "entries": [
-                {"metadata": {"emotional_state": "happy", "blockers": []}},
-                {"metadata": {"emotional_state": "frustrated", "blockers": ["DB-001"]}},
-                {"metadata": {"emotional_state": "happy", "blockers": []}},
-            ],
+            "days": 7,
             "type": "weekly"
         }
     })
-    
+
     assert result["status"] == "success"
-    assert "patterns" in result["result"]
+    assert "interpretation" in result["result"]
     print("✓ pattern_recognition.analyze: PASSED")
     return True
 
