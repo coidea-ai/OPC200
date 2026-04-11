@@ -1,4 +1,4 @@
-"""Tests for journal CLI entry point."""
+"""Tests for opc-journal CLI entry point."""
 import sys
 from pathlib import Path
 

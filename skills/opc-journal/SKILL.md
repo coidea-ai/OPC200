@@ -1,5 +1,5 @@
 ---
-name: journal
+name: opc-journal
 description: "OPC200 Journal - A CLI-style single skill for One Person Company growth tracking. Record entries, analyze patterns from dreams/memory, detect milestones, and generate insights. LOCAL-ONLY: no network calls."
 user-invocable: true
 command-dispatch: tool
@@ -15,33 +15,33 @@ metadata:
   }
 ---
 
-# journal
+# opc-journal
 
 **Version**: 2.4.0  
 **Type**: Single CLI-style Skill  
 **Status**: Active
 
-> 这是 `opc-journal-suite` 的 CLI 化重组版本。不再拆分为 5 个子 skill，而是统一为一个 `journal` 入口，通过子命令调用功能。
+> 这是 `opc-journal-suite` 的 CLI 化重组版本。不再拆分为 5 个子 skill，而是统一为一个 `opc-journal` 入口，通过子命令调用功能。
 
 ## Commands
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `init` | Initialize journal for customer | `/journal init --day 1` |
-| `record` | Record a journal entry | `/journal record "Shipped MVP"` |
-| `search` | Search entries | `/journal search --query pricing` |
-| `export` | Export journal | `/journal export --format markdown` |
-| `analyze` | Analyze patterns from memory | `/journal analyze --days 7` |
-| `milestones` | Detect milestones | `/journal milestones --content "First sale!"` |
-| `insights` | Generate daily/weekly insights | `/journal insights --day 7` |
-| `task` | Create async task (legacy) | `/journal task --description "Research"` |
-| `status` | Show journal status | `/journal status` |
-| `help` | Show help | `/journal help` |
+| `init` | Initialize journal for customer | `/opc-journal init --day 1` |
+| `record` | Record a journal entry | `/opc-journal record "Shipped MVP"` |
+| `search` | Search entries | `/opc-journal search --query pricing` |
+| `export` | Export journal | `/opc-journal export --format markdown` |
+| `analyze` | Analyze patterns from memory | `/opc-journal analyze --days 7` |
+| `milestones` | Detect milestones | `/opc-journal milestones --content "First sale!"` |
+| `insights` | Generate daily/weekly insights | `/opc-journal insights --day 7` |
+| `task` | Create async task (legacy) | `/opc-journal task --description "Research"` |
+| `status` | Show journal status | `/opc-journal status` |
+| `help` | Show help | `/opc-journal help` |
 
 ## Architecture
 
 ```
-journal/
+opc-journal/
 ├── scripts/
 │   ├── main.py           # CLI entry point
 │   └── commands/
