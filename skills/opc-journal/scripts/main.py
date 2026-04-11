@@ -57,6 +57,8 @@ def _build_parser() -> _NoExitParser:
     p.add_argument("--customer-id", default="OPC-001")
     p.add_argument("--day", type=int, default=1)
     p.add_argument("--goals", nargs="*", default=[])
+    p.add_argument("--preferences", type=json.loads, default={})
+    p.add_argument("--language", default="", help="Force language (zh/en). Auto-detected if omitted.")
 
     # record
     p = subparsers.add_parser("record", help="Record a journal entry")

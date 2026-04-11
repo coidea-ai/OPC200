@@ -23,7 +23,7 @@ def _analyze_emotion(text: str, lang: str = "zh") -> str:
     tension = any(k in t for k in ["焦虑", "紧张", "压力", "慌", "担心", "纠结", "anxious", "stressed", "nervous", "tense", "worried"])
     positive = any(k in t for k in ["开心", "满足", "顺利", "搞定", "赞", "棒", "happy", "glad", "satisfied", "smooth", "great", "good"])
     negative = any(k in t for k in ["沮丧", "失落", "难过", "失败", "郁闷", "frustrated", "sad", "depressed", "down", "disappointed"])
-    fatigue = any(k in t for k in ["累", "疲惫", "困", " burnout", "通宵", "熬夜", "tired", "exhausted", "sleepy", "burned out"])
+    fatigue = any(k in t for k in ["累", "疲惫", "困", "burnout", "通宵", "熬夜", "tired", "exhausted", "sleepy", "burned out"])
 
     if lang == "en":
         if energy and tension and positive:
