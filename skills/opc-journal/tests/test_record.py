@@ -14,7 +14,7 @@ def test_record_success(tmp_path, monkeypatch):
     assert result["status"] == "success"
     assert result["result"]["day"] == 5
     assert result["result"]["entry_id"].startswith("JE-")
-    assert result["result"]["emotion"] == "neutral"
+    assert result["result"]["emotion"] == "平静"
 
 
 def test_record_auto_emotion(tmp_path, monkeypatch):
@@ -27,7 +27,7 @@ def test_record_auto_emotion(tmp_path, monkeypatch):
 def test_record_missing_content():
     result = record.run("OPC-001", {})
     assert result["status"] == "error"
-    assert "content is required" in result["message"]
+    assert "请提供记录内容" in result["message"]
 
 
 def test_record_writes_file(tmp_path, monkeypatch):
@@ -37,7 +37,7 @@ def test_record_writes_file(tmp_path, monkeypatch):
     record.run("OPC-001", {"content": "Fixed bug", "day": 2})
     assert path.exists()
     assert "Fixed bug" in path.read_text()
-    assert "Emotion" in path.read_text()
+    assert "情绪" in path.read_text()
 
 
 def test_record_creates_bak(tmp_path, monkeypatch):

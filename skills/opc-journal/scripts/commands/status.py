@@ -54,15 +54,15 @@ def run(customer_id: str, args: dict) -> dict:
 
     if entry_count == 0:
         message = (
-            f"🌱 {customer_id} 的 Journal 已激活（Day {started_day}），"
+            f"🌱 {customer_id} 的 Journal 已激活（第 {started_day} 天），"
             f"但还没有正式记录。下一步：/opc-journal record \"今天完成的第一件事\""
         )
         journal_active = False
-        latest_display = "还没有正式 entry"
+        latest_display = "还没有正式记录"
     else:
         message = (
-            f"📔 {customer_id} 从 Day {started_day} 开始，"
-            f"已经记录了 {entry_count} 条 entry。最新：{latest}。"
+            f"📔 {customer_id} 从第 {started_day} 天开始，"
+            f"已经记录了 {entry_count} 条。最新：{latest}。"
         )
         journal_active = True
         latest_display = latest

@@ -9,5 +9,5 @@ def run(customer_id: str, args: dict) -> dict:
             "query": query,
             "tool_hint": "Use 'memory_search' tool to find relevant entries"
         },
-        "message": f"Search prepared for {customer_id}: {query or '(all entries)' }"
+        "message": f"已为 {customer_id} 准备搜索：{query or '全部记录'}"
     }

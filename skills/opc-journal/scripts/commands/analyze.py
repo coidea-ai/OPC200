@@ -65,7 +65,7 @@ def _interpret(signals: dict, days_span: int = 7) -> dict:
     blocker_counter = Counter(signals["blockers"])
     activity_count = len(signals["daily_activity_lines"])
     avg_daily = round(activity_count / max(days_span, 1), 1)
-    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else "neutral"
+    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else "平静"
     volatility = len(emotion_counter)
 
     hesitation_keywords = ["纠结", "犹豫", "没想好", "待定"]
@@ -73,11 +73,11 @@ def _interpret(signals: dict, days_span: int = 7) -> dict:
     hesitation_count = sum(1 for d in signals["decisions"] for kw in hesitation_keywords if kw in d)
     risk_count = sum(1 for d in signals["decisions"] for kw in risk_keywords if kw in d)
     if hesitation_count > len(signals["decisions"]) * 0.3:
-        decision_style = "谨慎型 (Conservative)"
+        decision_style = "谨慎型"
     elif risk_count > len(signals["decisions"]) * 0.2:
-        decision_style = "进取型 (Aggressive)"
+        decision_style = "进取型"
     else:
-        decision_style = "平衡型 (Balanced)"
+        decision_style = "平衡型"
 
     if signals["help_seeking_count"] == 0:
         help_pattern = "高度独立，较少主动求助"
@@ -135,9 +135,9 @@ def run(customer_id: str, args: dict) -> dict:
                 "customer_id": customer_id,
                 "analysis_type": args.get("dimension", "general"),
                 "interpretation": None,
-                "note": "No dreams.md or memory files found yet."
+                "note": "尚未找到 dreams.md 或 memory 文件。"
             },
-            "message": "No memory sources available"
+            "message": "没有可用的记忆源"
         }
 
     texts = []
@@ -158,5 +158,5 @@ def run(customer_id: str, args: dict) -> dict:
             "files_read": len(sources),
             "interpretation": interpretation
         },
-        "message": f"Pattern analysis complete for {customer_id}"
+        "message": f"已为 {customer_id} 完成模式分析"
     }

@@ -24,7 +24,7 @@ def test_status_with_entries(tmp_path, monkeypatch):
     (memory / "11-04-26.md").write_text("---\ntype: charter\ndate: 11-04-26\n---\n\n# Day 1 Charter")
     # Write an actual entry
     (memory / "12-04-26.md").write_text(
-        "---\ntype: entry\ndate: 12-04-26\nday: 2\nentry_id: JE-20260412-AB12\n---\n\n## Journal Entry - JE-20260412-AB12"
+        "---\ntype: entry\ndate: 12-04-26\nday: 2\nentry_id: JE-20260412-AB12\n---\n\n## 日记条目 - JE-20260412-AB12"
     )
 
     result = status.run("OPC-001", {})

@@ -59,8 +59,6 @@ def _read_recent(sources: list, days: int = 7):
             # Fallback to mtime for dreams.md etc.
             mtime_str = datetime.fromtimestamp(os.path.getmtime(s)).strftime("%d-%m-%y")
             dated.append((mtime_str, s))
-    # sort by dd-mm-yy string works because same century (yy) and lexicographic mm-dd is not right,
-    # but we can convert to datetime for safety.
     dated.sort(key=lambda x: datetime.strptime(x[0], "%d-%m-%y"))
     recent = dated[-min(days, len(dated)):]
     contents = []
@@ -87,7 +85,7 @@ def _generate_insight(interpretation: dict, day: int) -> dict:
         summary = "本周记录了高强度工作信号，建议关注可持续性。"
         recommendations = [
             {"priority": "high", "action": "今晚给自己 1 小时完全离线的时间", "rationale": "持续高压会降低决策质量"},
-            {"priority": "medium", "action": "把明天的任务清单减半", "rationale": "完成最重要的一件事 > 做十件平庸的事"},
+            {"priority": "medium", "action": "把明天的任务清单减半", "rationale": "完成最重要的一件事，胜过做十件平庸的事"},
         ]
     elif theme_scores.get("pivot_risk", 0) >= 2:
         day_theme = "战略反思期"
@@ -98,9 +96,9 @@ def _generate_insight(interpretation: dict, day: int) -> dict:
         ]
     elif theme_scores.get("momentum", 0) >= 2:
         day_theme = "势能上升"
-        summary = "本周有明确的推进信号， momentum 正在积累。"
+        summary = "本周有明确的推进信号，势能正在积累。"
         recommendations = [
-            {"priority": "high", "action": "把当前的胜利用一句话记录下来", "rationale": "里程碑需要被标记才能成为 narrative"},
+            {"priority": "high", "action": "把当前的胜利用一句话记录下来", "rationale": "里程碑需要被标记才能成为叙事的一部分"},
             {"priority": "medium", "action": "规划下一步如何把这种势头转化为可复用的流程", "rationale": "从偶发到系统，是 OPC 成长的关键"},
         ]
     elif theme_scores.get("isolation", 0) >= 2:
@@ -149,13 +147,13 @@ def run(customer_id: str, args: dict) -> dict:
                 "day": day,
                 "customer_id": customer_id,
                 "theme": "旅程开始",
-                "summary": "所有的 long story 都始于一个短句。你今天的记录，会成为未来回望时的第一块路标。",
+                "summary": "所有的宏大故事都始于一个短句。你今天的记录，会成为未来回望时的第一块路标。",
                 "recommendations": [
-                    {"priority": "high", "action": "记录一件今天完成的、再小也算数的事", "rationale": "Day 1 的 ritual 不是宏大叙事，而是证明自己来了"},
+                    {"priority": "high", "action": "记录一件今天完成的、再小也算数的事", "rationale": "第一天的仪式不是宏大叙事，而是证明自己来了"},
                     {"priority": "medium", "action": "写下一个你最想在 30 天后看到的变化", "rationale": "让未来的自己有东西可对比"}
                 ]
             },
-            "message": f"Daily insight for Day {day} — every journey starts with a blank page."
+            "message": f"第 {day} 天洞察——每一段旅程都从一张白纸开始。"
         }
 
     raw_text, dates_read = _read_recent(sources, days_back)
@@ -174,5 +172,5 @@ def run(customer_id: str, args: dict) -> dict:
     return {
         "status": "success",
         "result": insight,
-        "message": f"Insight generated for Day {day} from {len(dates_read)} day(s)"
+        "message": f"已为第 {day} 天生成洞察，基于最近 {len(dates_read)} 天的记录。"
     }

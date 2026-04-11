@@ -11,5 +11,5 @@ def run(customer_id: str, args: dict) -> dict:
             "time_range": time_range,
             "tool_hint": "Use 'memory_search' and 'read' to retrieve entries, then format"
         },
-        "message": f"Export prepared for {customer_id} ({export_format})"
+        "message": f"已为 {customer_id} 准备导出（格式：{export_format}）"
     }

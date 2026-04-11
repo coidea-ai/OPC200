@@ -8,13 +8,14 @@ from scripts.commands import task
 
 
 def test_create_task():
-    result = task.run("OPC-001", {"type": "research", "description": "Competitor analysis", "timeout_hours": 4})
+    result = task.run("OPC-001", {"description": "Research competitors", "timeout_hours": 4})
     assert result["status"] == "success"
     assert result["result"]["task_id"].startswith("TASK-")
     assert result["result"]["task"]["status"] == "created"
+    assert "已创建" in result["message"]
 
 
 def test_missing_description():
     result = task.run("OPC-001", {})
     assert result["status"] == "error"
-    assert "description is required" in result["message"]
+    assert "请提供任务描述" in result["message"]

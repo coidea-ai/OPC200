@@ -19,7 +19,7 @@ def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: di
     quote, author = random.choice(DAY1_QUOTES)
     today_str = datetime.now().strftime("%d-%m-%y")
     goals_md = "\n".join(f"- {g}" for g in goals) if goals else "- *(待填写——不用急，Day 1 本身就算一个目标)*"
-    prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else "- *( defaults: friendly_professional, Asia/Shanghai )*"
+    prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else "- *(默认: communication_style=friendly_professional, timezone=Asia/Shanghai)*"
     
     return f"""---
 type: charter
@@ -29,33 +29,33 @@ customer_id: {customer_id}
 version: 2.4.0
 ---
 
-# 🚀 OPC Journal | Day {day} Charter
+# 🚀 OPC Journal | 第 {day} 天章程
 
 > {quote}  
 > {author}
 
 ---
 
-**Customer**: `{customer_id}`  
-**Init Date**: {today_str}  
-**Journal Version**: 2.4.0
+**用户**: `{customer_id}`  
+**初始化日期**: {today_str}  
+**版本**: 2.4.0
 
-## 🎯 Goals
+## 🎯 目标
 {goals_md}
 
-## ⚙️ Preferences
+## ⚙️ 偏好设置
 {prefs_md}
 
-## 📝 Day 1 Ritual
+## 📝 首日仪式
 
 1. 完成一件小事（哪怕只是把想法写出来）
 2. 用 `/opc-journal record "..."` 告诉我
-3. 明天回来看看 status
+3. 明天回来看看状态
 
 *这不是日记本，这是你创业的飞行器黑匣子。*
 
 ---
-*"放心吧，哪怕世界忘了，我也替你记着。" — Kimi Claw*
+*"放心吧，哪怕世界忘了，我也替你记着。" —— Kimi Claw*
 """
 
 
@@ -107,10 +107,10 @@ def run(customer_id: str, args: dict) -> dict:
                 "memory_path": memory_path,
                 "quote": random.choice(DAY1_QUOTES)[0]
             },
-            "message": f"🎉 Journal initialized for {customer_id}. Day {day} begins now. Try: /opc-journal record \"Your first step\""
+            "message": f"🎉 {customer_id} 的 Journal 已初始化。第 {day} 天正式开始。试试：/opc-journal record \"你的第一步\""
         }
     return {
         "status": "error",
         "result": None,
-        "message": f"Failed to write memory: {write_result.get('error')}"
+        "message": f"写入记忆文件失败：{write_result.get('error')}"
     }

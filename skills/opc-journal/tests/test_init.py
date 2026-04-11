@@ -14,7 +14,7 @@ def test_init_success(tmp_path, monkeypatch):
     assert result["status"] == "success"
     assert result["result"]["initialized"]
     assert result["result"]["day"] == 1
-    assert "Day 1 begins now" in result["message"]
+    assert "第 1 天正式开始" in result["message"]
     assert "quote" in result["result"]
 
 
@@ -26,5 +26,5 @@ def test_init_writes_file(tmp_path, monkeypatch):
     assert path.exists()
     content = path.read_text()
     assert "Ship MVP" in content
-    assert "Day 1 Charter" in content
+    assert "第 1 天章程" in content
     assert "Kimi Claw" in content

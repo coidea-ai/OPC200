@@ -12,7 +12,7 @@ EMOTION_KEYWORDS = {
     "焦虑": ["焦虑", "不安", "紧张", "压力", "着急", "慌", "担心"],
     "沮丧": ["沮丧", "失落", "难过", "失败", "糟", "郁闷", "灰心", "挫败"],
     "兴奋": ["兴奋", "激动", "期待", "冲", "热血", "燃", "憧憬"],
-    "疲惫": ["累", "疲惫", "倦", "困", " burnout", "通宵", "熬夜", "睡不够"],
+    "疲惫": ["累", "疲惫", "倦", "困", "burnout", "职业倦怠", "通宵", "熬夜", "睡不够"],
     "困惑": ["困惑", "迷茫", "不清", "不确定", "纠结", "没思路", "卡"],
     "放松": ["放松", "平静", "舒服", "安逸", "清闲", "自在"],
 }
@@ -29,7 +29,7 @@ def _detect_emotion(text: str) -> str:
     for emotion, keywords in EMOTION_KEYWORDS.items():
         scores[emotion] = sum(1 for kw in keywords if kw in text)
     if not scores or max(scores.values()) == 0:
-        return "neutral"
+        return "平静"
     return max(scores, key=scores.get)
 
 
@@ -43,7 +43,7 @@ def _is_first_entry(customer_id: str) -> bool:
     entries = []
     for f in files:
         content = Path(f).read_text(encoding="utf-8")
-        if "type: entry" in content or "Journal Entry - JE-" in content:
+        if "type: entry" in content or "日记条目 - JE-" in content:
             entries.append(f)
     return len(entries) == 0
 
@@ -52,7 +52,7 @@ def run(customer_id: str, args: dict) -> dict:
     """Record a journal entry with auto-emotion tagging and structured markdown."""
     content = args.get("content", "")
     if not content:
-        return {"status": "error", "result": None, "message": "content is required"}
+        return {"status": "error", "result": None, "message": "请提供记录内容（content 字段不能为空）"}
 
     entry_id = generate_entry_id()
     day = args.get("day", 1)
@@ -72,19 +72,19 @@ type: entry
 date: {today_str}
 day: {day}
 entry_id: {entry_id}
-emotion: {metadata.get("emotional_state", "neutral")}
+emotion: {metadata.get("emotional_state", "平静")}
 ---
 
-## Journal Entry - {entry_id}
+## 日记条目 - {entry_id}
 
-**Day**: {day}  
-**Time**: {iso_time}  
-**Emotion**: {metadata.get("emotional_state", "neutral")}
+**第 {day} 天**  
+**时间**: {iso_time}  
+**情绪**: {metadata.get("emotional_state", "平静")}
 
-### Content
+### 内容
 {content}
 
-### Metadata
+### 元数据
 ```json
 {json.dumps(metadata, indent=2, ensure_ascii=False)}
 ```
@@ -108,9 +108,9 @@ emotion: {metadata.get("emotional_state", "neutral")}
         pass
 
     if write_result["success"]:
-        msg = f"{celebration}Entry {entry_id} recorded"
+        msg = f"{celebration}已记录条目 {entry_id}"
         if is_first:
-            msg += " — that's your first real entry. Day 1 is officially in motion."
+            msg += "——这是你的第一条真实记录。第 1 天正式启程。"
         return {
             "status": "success",
             "result": {
@@ -126,5 +126,5 @@ emotion: {metadata.get("emotional_state", "neutral")}
     return {
         "status": "error",
         "result": None,
-        "message": f"Failed to write entry: {write_result.get('error')}"
+        "message": f"写入条目失败：{write_result.get('error')}"
     }
