@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from utils.storage import build_customer_dir, build_memory_path, write_memory_file
+from scripts.commands.i18n import t
 
 
 EMOTION_KEYWORDS = {
@@ -43,7 +44,7 @@ def _is_first_entry(customer_id: str) -> bool:
     entries = []
     for f in files:
         content = Path(f).read_text(encoding="utf-8")
-        if "type: entry" in content or "日记条目 - JE-" in content:
+        if "type: entry" in content or f"## {t('record.entry_title', {'lang': 'zh'})} - JE-" in content:
             entries.append(f)
     return len(entries) == 0
 
@@ -52,7 +53,7 @@ def run(customer_id: str, args: dict) -> dict:
     """Record a journal entry with auto-emotion tagging and structured markdown."""
     content = args.get("content", "")
     if not content:
-        return {"status": "error", "result": None, "message": "请提供记录内容（content 字段不能为空）"}
+        return {"status": "error", "result": None, "message": t("record.missing_content", args)}
 
     entry_id = generate_entry_id()
     day = args.get("day", 1)
@@ -66,25 +67,26 @@ def run(customer_id: str, args: dict) -> dict:
 
     is_first = _is_first_entry(customer_id)
     celebration = "🎉 " if is_first else ""
+    emotion_label = t("emotions." + metadata.get("emotional_state", "平静"), args)
 
     entry_text = f"""---
 type: entry
 date: {today_str}
 day: {day}
 entry_id: {entry_id}
-emotion: {metadata.get("emotional_state", "平静")}
+emotion: {emotion_label}
 ---
 
-## 日记条目 - {entry_id}
+## {t('record.entry_title', args)} - {entry_id}
 
-**第 {day} 天**  
-**时间**: {iso_time}  
-**情绪**: {metadata.get("emotional_state", "平静")}
+**{t('record.day_label', args, day=day)}**  
+**{t('record.time_label', args)}**: {iso_time}  
+**{t('record.emotion_label', args)}**: {emotion_label}
 
-### 内容
+### {t('record.content_label', args)}
 {content}
 
-### 元数据
+### {t('record.metadata_label', args)}
 ```json
 {json.dumps(metadata, indent=2, ensure_ascii=False)}
 ```
@@ -108,16 +110,17 @@ emotion: {metadata.get("emotional_state", "平静")}
         pass
 
     if write_result["success"]:
-        msg = f"{celebration}已记录条目 {entry_id}"
         if is_first:
-            msg += "——这是你的第一条真实记录。第 1 天正式启程。"
+            msg = t("record.success_first", args, entry_id=entry_id, day=day)
+        else:
+            msg = t("record.success_normal", args, entry_id=entry_id)
         return {
             "status": "success",
             "result": {
                 "entry_id": entry_id,
                 "customer_id": customer_id,
                 "day": day,
-                "emotion": metadata.get("emotional_state"),
+                "emotion": emotion_label,
                 "is_first_entry": is_first,
                 "memory_path": memory_path
             },
@@ -126,5 +129,5 @@ emotion: {metadata.get("emotional_state", "平静")}
     return {
         "status": "error",
         "result": None,
-        "message": f"写入条目失败：{write_result.get('error')}"
+        "message": t("record.error_message", args, error=write_result.get("error"))
     }

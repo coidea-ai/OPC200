@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.commands import record
 
 
-def test_record_success(tmp_path, monkeypatch):
+def test_record_success_zh(tmp_path, monkeypatch):
     monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
     monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
     result = record.run("OPC-001", {"content": "Shipped MVP today", "day": 5})
@@ -15,6 +15,14 @@ def test_record_success(tmp_path, monkeypatch):
     assert result["result"]["day"] == 5
     assert result["result"]["entry_id"].startswith("JE-")
     assert result["result"]["emotion"] == "平静"
+
+
+def test_record_success_en(tmp_path, monkeypatch):
+    monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
+    monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    result = record.run("OPC-001", {"content": "Shipped MVP today", "day": 5, "lang": "en"})
+    assert result["status"] == "success"
+    assert result["result"]["emotion"] == "calm"
 
 
 def test_record_auto_emotion(tmp_path, monkeypatch):

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from utils.storage import build_customer_dir, build_memory_path
+from scripts.commands.i18n import t
 
 
 def _read_meta(customer_id: str) -> dict:
@@ -53,17 +54,11 @@ def run(customer_id: str, args: dict) -> dict:
     started_day = meta.get("started_day", 1)
 
     if entry_count == 0:
-        message = (
-            f"🌱 {customer_id} 的 Journal 已激活（第 {started_day} 天），"
-            f"但还没有正式记录。下一步：/opc-journal record \"今天完成的第一件事\""
-        )
+        message = t("status.empty_message", args, customer_id=customer_id, started_day=started_day)
         journal_active = False
-        latest_display = "还没有正式记录"
+        latest_display = t("status.no_entries", args)
     else:
-        message = (
-            f"📔 {customer_id} 从第 {started_day} 天开始，"
-            f"已经记录了 {entry_count} 条。最新：{latest}。"
-        )
+        message = t("status.active_message", args, customer_id=customer_id, started_day=started_day, entry_count=entry_count, latest=latest)
         journal_active = True
         latest_display = latest
 

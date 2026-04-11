@@ -2,6 +2,8 @@
 import uuid
 from datetime import datetime, timedelta
 
+from scripts.commands.i18n import t
+
 
 def generate_task_id() -> str:
     today = datetime.now().strftime("%Y%m%d")
@@ -16,7 +18,7 @@ def run(customer_id: str, args: dict) -> dict:
     timeout_hours = args.get("timeout_hours", 8)
 
     if not description:
-        return {"status": "error", "result": None, "message": "请提供任务描述（description 不能为空）"}
+        return {"status": "error", "result": None, "message": t("task.missing_description", args)}
 
     task_id = generate_task_id()
     now = datetime.now()
@@ -36,5 +38,5 @@ def run(customer_id: str, args: dict) -> dict:
     return {
         "status": "success",
         "result": {"task_id": task_id, "task": task},
-        "message": f"任务 {task_id} 已创建，预计完成时间：{eta.strftime('%Y-%m-%d %H:%M')}"
+        "message": t("task.success_message", args, task_id=task_id, eta=eta.strftime('%Y-%m-%d %H:%M'))
     }

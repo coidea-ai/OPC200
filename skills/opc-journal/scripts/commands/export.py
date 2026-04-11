@@ -1,4 +1,7 @@
 """Journal command: export."""
+from scripts.commands.i18n import t
+
+
 def run(customer_id: str, args: dict) -> dict:
     """Export journal entries."""
     export_format = args.get("format", "markdown")
@@ -11,5 +14,5 @@ def run(customer_id: str, args: dict) -> dict:
             "time_range": time_range,
             "tool_hint": "Use 'memory_search' and 'read' to retrieve entries, then format"
         },
-        "message": f"已为 {customer_id} 准备导出（格式：{export_format}）"
+        "message": t("export.success_message", args, customer_id=customer_id, fmt=export_format)
     }

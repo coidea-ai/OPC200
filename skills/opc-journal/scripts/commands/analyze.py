@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import datetime
 
 from utils.storage import build_customer_dir, read_memory_file
+from scripts.commands.i18n import t
 
 
 OPC_SIGNALS = {
@@ -59,13 +60,13 @@ def _extract_signals(text: str) -> dict:
     }
 
 
-def _interpret(signals: dict, days_span: int = 7) -> dict:
+def _interpret(signals: dict, days_span: int, args: dict) -> dict:
     emotion_counter = Counter(signals["emotions"])
     decision_counter = Counter(signals["decisions"])
     blocker_counter = Counter(signals["blockers"])
     activity_count = len(signals["daily_activity_lines"])
     avg_daily = round(activity_count / max(days_span, 1), 1)
-    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else "平静"
+    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else t("emotions.平静", args)
     volatility = len(emotion_counter)
 
     hesitation_keywords = ["纠结", "犹豫", "没想好", "待定"]
@@ -73,34 +74,53 @@ def _interpret(signals: dict, days_span: int = 7) -> dict:
     hesitation_count = sum(1 for d in signals["decisions"] for kw in hesitation_keywords if kw in d)
     risk_count = sum(1 for d in signals["decisions"] for kw in risk_keywords if kw in d)
     if hesitation_count > len(signals["decisions"]) * 0.3:
-        decision_style = "谨慎型"
+        decision_style = t("analyze.style_conservative", args)
     elif risk_count > len(signals["decisions"]) * 0.2:
-        decision_style = "进取型"
+        decision_style = t("analyze.style_aggressive", args)
     else:
-        decision_style = "平衡型"
+        decision_style = t("analyze.style_balanced", args)
 
     if signals["help_seeking_count"] == 0:
-        help_pattern = "高度独立，较少主动求助"
+        help_pattern = t("analyze.help_independent", args)
     elif signals["help_seeking_count"] <= 3:
-        help_pattern = "适度协作，遇到瓶颈时求助"
+        help_pattern = t("analyze.help_moderate", args)
     else:
-        help_pattern = "频繁协作，善于利用外部支持"
+        help_pattern = t("analyze.help_frequent", args)
 
     milestone_count = len(signals["milestones"])
-    velocity = "高" if milestone_count >= days_span * 0.5 else "中" if milestone_count > 0 else "低"
+    if milestone_count >= days_span * 0.5:
+        velocity = t("analyze.velocity_high", args)
+    elif milestone_count > 0:
+        velocity = t("analyze.velocity_medium", args)
+    else:
+        velocity = t("analyze.velocity_low", args)
+
+    if avg_daily >= 3:
+        rhythm_label = t("analyze.rhythm_high", args)
+    elif avg_daily >= 1:
+        rhythm_label = t("analyze.rhythm_medium", args)
+    else:
+        rhythm_label = t("analyze.rhythm_low", args)
+
+    if volatility >= 4:
+        emotion_interp = t("analyze.emotion_volatile", args)
+    elif volatility <= 2:
+        emotion_interp = t("analyze.emotion_stable", args)
+    else:
+        emotion_interp = t("analyze.emotion_mixed", args)
 
     return {
         "work_rhythm": {
             "days_analyzed": days_span,
             "total_activity_mentions": activity_count,
             "avg_daily_mentions": avg_daily,
-            "interpretation": "活跃" if avg_daily >= 3 else "中等" if avg_daily >= 1 else "较低"
+            "interpretation": rhythm_label
         },
         "emotional_pattern": {
             "dominant_emotion": dominant,
             "emotional_volatility": volatility,
             "emotion_distribution": dict(emotion_counter.most_common(5)),
-            "interpretation": "情绪起伏较大" if volatility >= 4 else "情绪相对稳定" if volatility <= 2 else "情绪有波动但可控"
+            "interpretation": emotion_interp
         },
         "decision_style": {
             "style_label": decision_style,
@@ -135,9 +155,9 @@ def run(customer_id: str, args: dict) -> dict:
                 "customer_id": customer_id,
                 "analysis_type": args.get("dimension", "general"),
                 "interpretation": None,
-                "note": "尚未找到 dreams.md 或 memory 文件。"
+                "note": t("analyze.no_sources", args)
             },
-            "message": "没有可用的记忆源"
+            "message": t("analyze.no_message", args)
         }
 
     texts = []
@@ -147,7 +167,7 @@ def run(customer_id: str, args: dict) -> dict:
             texts.append(res["content"])
 
     signals = _extract_signals("\n".join(texts))
-    interpretation = _interpret(signals, days)
+    interpretation = _interpret(signals, days, args)
 
     return {
         "status": "success",
@@ -158,5 +178,5 @@ def run(customer_id: str, args: dict) -> dict:
             "files_read": len(sources),
             "interpretation": interpretation
         },
-        "message": f"已为 {customer_id} 完成模式分析"
+        "message": t("analyze.success_message", args, customer_id=customer_id)
     }

@@ -4,6 +4,7 @@ import random
 from datetime import datetime
 
 from utils.storage import build_customer_dir, build_memory_path, write_memory_file
+from scripts.commands.i18n import t
 
 
 DAY1_QUOTES = [
@@ -15,44 +16,41 @@ DAY1_QUOTES = [
 ]
 
 
-def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: dict) -> str:
+def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: dict, args: dict) -> str:
     quote, author = random.choice(DAY1_QUOTES)
     today_str = datetime.now().strftime("%d-%m-%y")
-    goals_md = "\n".join(f"- {g}" for g in goals) if goals else "- *(待填写——不用急，Day 1 本身就算一个目标)*"
-    prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else "- *(默认: communication_style=friendly_professional, timezone=Asia/Shanghai)*"
+    goals_md = "\n".join(f"- {g}" for g in goals) if goals else f"- *(待填写——不用急，Day {day} 本身就算一个目标)*"
+    prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else f"- *(默认: communication_style=friendly_professional, timezone=Asia/Shanghai)*"
     
     return f"""---
 type: charter
 date: {today_str}
 day: {day}
 customer_id: {customer_id}
-version: 2.4.0
+version: 2.4.2
 ---
 
-# 🚀 OPC Journal | 第 {day} 天章程
+# 🚀 OPC Journal | {t('init.charter_title', args, day=day)}
 
 > {quote}  
 > {author}
 
 ---
 
-**用户**: `{customer_id}`  
-**初始化日期**: {today_str}  
-**版本**: 2.4.0
+**{t('init.manifesto_subtitle', args)}**: `{customer_id}`  
+**{t('init.version_label', args)}**: 2.4.2
 
-## 🎯 目标
+## 🎯 {t('init.goals_title', args)}
 {goals_md}
 
-## ⚙️ 偏好设置
+## ⚙️ {t('init.preferences_title', args)}
 {prefs_md}
 
-## 📝 首日仪式
+## 📝 {t('init.ritual_title', args)}
 
-1. 完成一件小事（哪怕只是把想法写出来）
-2. 用 `/opc-journal record "..."` 告诉我
-3. 明天回来看看状态
+{t('init.ritual_steps', args)}
 
-*这不是日记本，这是你创业的飞行器黑匣子。*
+*{t('init.footer_note', args)}*
 
 ---
 *"放心吧，哪怕世界忘了，我也替你记着。" —— Kimi Claw*
@@ -72,7 +70,7 @@ def run(customer_id: str, args: dict) -> dict:
             "timezone": "Asia/Shanghai"
         }
 
-    content = _generate_manifesto(customer_id, day, goals, preferences)
+    content = _generate_manifesto(customer_id, day, goals, preferences, args)
     memory_path = build_memory_path(customer_id)
     write_result = write_memory_file(memory_path, content)
 
@@ -88,7 +86,7 @@ def run(customer_id: str, args: dict) -> dict:
                 "customer_id": customer_id,
                 "started_day": day,
                 "started_at": datetime.now().isoformat(),
-                "version": "2.4.0",
+                "version": "2.4.2",
                 "goals": goals,
                 "preferences": preferences,
                 "total_entries": 0
@@ -107,10 +105,10 @@ def run(customer_id: str, args: dict) -> dict:
                 "memory_path": memory_path,
                 "quote": random.choice(DAY1_QUOTES)[0]
             },
-            "message": f"🎉 {customer_id} 的 Journal 已初始化。第 {day} 天正式开始。试试：/opc-journal record \"你的第一步\""
+            "message": t("init.success_message", args, customer_id=customer_id, day=day)
         }
     return {
         "status": "error",
         "result": None,
-        "message": f"写入记忆文件失败：{write_result.get('error')}"
+        "message": t("init.error_message", args, error=write_result.get("error"))
     }
