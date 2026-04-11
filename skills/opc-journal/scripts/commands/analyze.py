@@ -6,16 +6,16 @@ from collections import Counter
 from datetime import datetime
 
 from utils.storage import build_customer_dir, read_memory_file
-from scripts.commands.i18n import t
+from scripts.commands._meta import get_language
 
 
 OPC_SIGNALS = {
-    "work_hours": re.compile(r"(\d{1,2}):(\d{2})|上午|下午|晚上|凌晨|早晨", re.IGNORECASE),
-    "emotions": re.compile(r"(开心|焦虑|困惑|沮丧|兴奋|疲惫|满足|担心|紧张|放松|失落|激动)", re.IGNORECASE),
-    "decisions": re.compile(r"(决定|选择|放弃|切换|采用|改用|定下来|拍板|纠结|犹豫)(.*?)(?:。|；|;|\n)", re.IGNORECASE),
-    "milestones": re.compile(r"(完成|发布|上线|销售|签约|收款|MVP|原型|第一笔|第一个|突破|里程碑)", re.IGNORECASE),
-    "help_seeking": re.compile(r"(问|请教|讨论|委托|让.*帮忙|找.*解决|求助)", re.IGNORECASE),
-    "blockers": re.compile(r"(卡|卡住|阻塞|瓶颈|搞不定|没思路|失败|报错|bug|问题)(.*?)(?:。|；|;|\n)", re.IGNORECASE),
+    "work_hours": re.compile(r"(\d{1,2}):(\d{2})|上午|下午|晚上|凌晨|早晨|morning|afternoon|evening|night", re.IGNORECASE),
+    "emotions": re.compile(r"(开心|焦虑|困惑|沮丧|兴奋|疲惫|满足|担心|紧张|放松|失落|激动|happy|anxious|confused|frustrated|excited|tired|relaxed|sad|nervous)", re.IGNORECASE),
+    "decisions": re.compile(r"(决定|选择|放弃|切换|采用|改用|定下来|拍板|纠结|犹豫|decided|choose|switch|adopt|finalize|hesitate)(.*?)(?:。|；|;|\n|\.)", re.IGNORECASE),
+    "milestones": re.compile(r"(完成|发布|上线|销售|签约|收款|MVP|原型|第一笔|第一个|突破|里程碑|completed|launched|shipped|sale|signed|revenue|MVP|prototype|milestone|breakthrough)", re.IGNORECASE),
+    "help_seeking": re.compile(r"(问|请教|讨论|委托|让.*帮忙|找.*解决|求助|ask|discuss|delegate|help)", re.IGNORECASE),
+    "blockers": re.compile(r"(卡|卡住|阻塞|瓶颈|搞不定|没思路|失败|报错|bug|问题|stuck|blocked|bottleneck|failed|error|bug|issue)(.*?)(?:。|；|;|\n|\.)", re.IGNORECASE),
 }
 
 
@@ -36,7 +36,6 @@ def _find_sources(customer_id: str):
     memory_dir = f"{base}/memory"
     if os.path.exists(os.path.expanduser(memory_dir)):
         files = glob.glob(f"{memory_dir}/*.md")
-        # Sort by dd-mm-yy ascending
         files.sort(key=lambda f: datetime.strptime(_parse_file_date(f), "%d-%m-%y"))
         sources.extend(files)
     if not sources:
@@ -60,54 +59,63 @@ def _extract_signals(text: str) -> dict:
     }
 
 
-def _interpret(signals: dict, days_span: int, args: dict) -> dict:
+def _interpret(signals: dict, days_span: int, lang: str) -> dict:
     emotion_counter = Counter(signals["emotions"])
     decision_counter = Counter(signals["decisions"])
     blocker_counter = Counter(signals["blockers"])
     activity_count = len(signals["daily_activity_lines"])
     avg_daily = round(activity_count / max(days_span, 1), 1)
-    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else t("emotions.平静", args)
+    dominant = emotion_counter.most_common(1)[0][0] if emotion_counter else ("平静" if lang != "en" else "calm")
     volatility = len(emotion_counter)
 
-    hesitation_keywords = ["纠结", "犹豫", "没想好", "待定"]
-    risk_keywords = ["放弃", "切换", "all in", "赌", "冒险"]
+    hesitation_keywords = ["纠结", "犹豫", "没想好", "待定", "hesitate", "undecided", "uncertain"]
+    risk_keywords = ["放弃", "切换", "all in", "赌", "冒险", "give up", "all in", "bet"]
     hesitation_count = sum(1 for d in signals["decisions"] for kw in hesitation_keywords if kw in d)
     risk_count = sum(1 for d in signals["decisions"] for kw in risk_keywords if kw in d)
-    if hesitation_count > len(signals["decisions"]) * 0.3:
-        decision_style = t("analyze.style_conservative", args)
-    elif risk_count > len(signals["decisions"]) * 0.2:
-        decision_style = t("analyze.style_aggressive", args)
+
+    if lang == "en":
+        if hesitation_count > len(signals["decisions"]) * 0.3:
+            decision_style = "Conservative"
+        elif risk_count > len(signals["decisions"]) * 0.2:
+            decision_style = "Aggressive"
+        else:
+            decision_style = "Balanced"
     else:
-        decision_style = t("analyze.style_balanced", args)
+        if hesitation_count > len(signals["decisions"]) * 0.3:
+            decision_style = "谨慎型"
+        elif risk_count > len(signals["decisions"]) * 0.2:
+            decision_style = "进取型"
+        else:
+            decision_style = "平衡型"
 
     if signals["help_seeking_count"] == 0:
-        help_pattern = t("analyze.help_independent", args)
+        help_pattern = "Highly independent, rarely seeks help" if lang == "en" else "高度独立，较少主动求助"
     elif signals["help_seeking_count"] <= 3:
-        help_pattern = t("analyze.help_moderate", args)
+        help_pattern = "Moderately collaborative, asks for help at blockers" if lang == "en" else "适度协作，遇到瓶颈时求助"
     else:
-        help_pattern = t("analyze.help_frequent", args)
+        help_pattern = "Frequently collaborative, leverages external support" if lang == "en" else "频繁协作，善于利用外部支持"
 
     milestone_count = len(signals["milestones"])
     if milestone_count >= days_span * 0.5:
-        velocity = t("analyze.velocity_high", args)
+        velocity = "High" if lang == "en" else "高"
     elif milestone_count > 0:
-        velocity = t("analyze.velocity_medium", args)
+        velocity = "Medium" if lang == "en" else "中"
     else:
-        velocity = t("analyze.velocity_low", args)
+        velocity = "Low" if lang == "en" else "低"
 
     if avg_daily >= 3:
-        rhythm_label = t("analyze.rhythm_high", args)
+        rhythm_label = "Active" if lang == "en" else "活跃"
     elif avg_daily >= 1:
-        rhythm_label = t("analyze.rhythm_medium", args)
+        rhythm_label = "Moderate" if lang == "en" else "中等"
     else:
-        rhythm_label = t("analyze.rhythm_low", args)
+        rhythm_label = "Low" if lang == "en" else "较低"
 
     if volatility >= 4:
-        emotion_interp = t("analyze.emotion_volatile", args)
+        emotion_interp = "High emotional volatility" if lang == "en" else "情绪起伏较大"
     elif volatility <= 2:
-        emotion_interp = t("analyze.emotion_stable", args)
+        emotion_interp = "Emotionally stable" if lang == "en" else "情绪相对稳定"
     else:
-        emotion_interp = t("analyze.emotion_mixed", args)
+        emotion_interp = "Emotional fluctuations, but manageable" if lang == "en" else "情绪有波动但可控"
 
     return {
         "work_rhythm": {
@@ -147,6 +155,7 @@ def _interpret(signals: dict, days_span: int, args: dict) -> dict:
 
 def run(customer_id: str, args: dict) -> dict:
     days = args.get("days", 7)
+    lang = get_language(customer_id)
     sources = _find_sources(customer_id)
     if not sources:
         return {
@@ -155,9 +164,9 @@ def run(customer_id: str, args: dict) -> dict:
                 "customer_id": customer_id,
                 "analysis_type": args.get("dimension", "general"),
                 "interpretation": None,
-                "note": t("analyze.no_sources", args)
+                "note": "No dreams.md or memory files found yet." if lang == "en" else "尚未找到 dreams.md 或 memory 文件。"
             },
-            "message": t("analyze.no_message", args)
+            "message": "No memory sources available" if lang == "en" else "没有可用的记忆源"
         }
 
     texts = []
@@ -167,8 +176,9 @@ def run(customer_id: str, args: dict) -> dict:
             texts.append(res["content"])
 
     signals = _extract_signals("\n".join(texts))
-    interpretation = _interpret(signals, days, args)
+    interpretation = _interpret(signals, days, lang)
 
+    msg = f"Pattern analysis complete for {customer_id}" if lang == "en" else f"已为 {customer_id} 完成模式分析"
     return {
         "status": "success",
         "result": {
@@ -178,5 +188,5 @@ def run(customer_id: str, args: dict) -> dict:
             "files_read": len(sources),
             "interpretation": interpretation
         },
-        "message": t("analyze.success_message", args, customer_id=customer_id)
+        "message": msg
     }

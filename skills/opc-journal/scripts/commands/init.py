@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 
 from utils.storage import build_customer_dir, build_memory_path, write_memory_file
-from scripts.commands.i18n import t
+from scripts.commands._meta import detect_language, write_meta
 
 
 DAY1_QUOTES = [
@@ -16,41 +16,82 @@ DAY1_QUOTES = [
 ]
 
 
-def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: dict, args: dict) -> str:
+def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: dict, language: str) -> str:
     quote, author = random.choice(DAY1_QUOTES)
     today_str = datetime.now().strftime("%d-%m-%y")
     goals_md = "\n".join(f"- {g}" for g in goals) if goals else f"- *(待填写——不用急，Day {day} 本身就算一个目标)*"
     prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else f"- *(默认: communication_style=friendly_professional, timezone=Asia/Shanghai)*"
-    
+
+    if language == "en":
+        return f"""---
+type: charter
+date: {today_str}
+day: {day}
+customer_id: {customer_id}
+version: 2.4.2
+language: en
+---
+
+# 🚀 OPC Journal | Day {day} Charter
+
+> {quote}
+> {author}
+
+---
+
+**Customer**: `{customer_id}`  
+**Version**: 2.4.2
+
+## 🎯 Goals
+{goals_md}
+
+## ⚙️ Preferences
+{prefs_md}
+
+## 📝 Day 1 Ritual
+
+1. Do one small thing (even just write down an idea)  
+2. Run `/opc-journal record "..."`  
+3. Check back tomorrow with status
+
+*This is not a diary — it's the black box of your startup journey.*
+
+---
+*"Don't worry, even if the world forgets, I'll remember it for you." — Kimi Claw*
+"""
+
     return f"""---
 type: charter
 date: {today_str}
 day: {day}
 customer_id: {customer_id}
 version: 2.4.2
+language: zh
 ---
 
-# 🚀 OPC Journal | {t('init.charter_title', args, day=day)}
+# 🚀 OPC Journal | 第 {day} 天章程
 
-> {quote}  
+> {quote}
 > {author}
 
 ---
 
-**{t('init.manifesto_subtitle', args)}**: `{customer_id}`  
-**{t('init.version_label', args)}**: 2.4.2
+**用户**: `{customer_id}`  
+**版本**: 2.4.2
 
-## 🎯 {t('init.goals_title', args)}
+## 🎯 目标
 {goals_md}
 
-## ⚙️ {t('init.preferences_title', args)}
+## ⚙️ 偏好设置
 {prefs_md}
 
-## 📝 {t('init.ritual_title', args)}
+## 📝 首日仪式
 
-{t('init.ritual_steps', args)}
+1. 完成一件小事（哪怕只是把想法写出来）
+2. 用 `/opc-journal record "..."` 告诉我
+3. 明天回来看看状态
 
-*{t('init.footer_note', args)}*
+*这不是日记本，这是你创业的飞行器黑匣子。*
 
 ---
 *"放心吧，哪怕世界忘了，我也替你记着。" —— Kimi Claw*
@@ -63,38 +104,34 @@ def run(customer_id: str, args: dict) -> dict:
     goals = args.get("goals", [])
     preferences = args.get("preferences", {})
 
-    # Ensure defaults for preferences
     if not preferences:
         preferences = {
             "communication_style": "friendly_professional",
             "timezone": "Asia/Shanghai"
         }
 
-    content = _generate_manifesto(customer_id, day, goals, preferences, args)
+    language = args.get("language") or detect_language(goals + list(preferences.values()))
+    content = _generate_manifesto(customer_id, day, goals, preferences, language)
     memory_path = build_memory_path(customer_id)
     write_result = write_memory_file(memory_path, content)
 
-    # Also write a lightweight meta file for preferences/state
-    from pathlib import Path
-    meta_path = Path(build_customer_dir(customer_id)) / "journal_meta.json"
-    try:
-        import os
-        meta_full = os.path.expanduser(str(meta_path))
-        os.makedirs(os.path.dirname(meta_full), exist_ok=True)
-        with open(meta_full, "w") as f:
-            json.dump({
-                "customer_id": customer_id,
-                "started_day": day,
-                "started_at": datetime.now().isoformat(),
-                "version": "2.4.2",
-                "goals": goals,
-                "preferences": preferences,
-                "total_entries": 0
-            }, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
+    meta = {
+        "customer_id": customer_id,
+        "started_day": day,
+        "started_at": datetime.now().isoformat(),
+        "version": "2.4.2",
+        "goals": goals,
+        "preferences": preferences,
+        "language": language,
+        "total_entries": 0
+    }
+    write_meta(customer_id, meta)
 
     if write_result["success"]:
+        if language == "en":
+            msg = f"🎉 Journal initialized for {customer_id}. Day {day} begins now. Try: /opc-journal record \"Your first step\""
+        else:
+            msg = f"🎉 {customer_id} 的 Journal 已初始化。第 {day} 天正式开始。试试：/opc-journal record \"你的第一步\""
         return {
             "status": "success",
             "result": {
@@ -103,12 +140,15 @@ def run(customer_id: str, args: dict) -> dict:
                 "day": day,
                 "goals_count": len(goals),
                 "memory_path": memory_path,
+                "language": language,
                 "quote": random.choice(DAY1_QUOTES)[0]
             },
-            "message": t("init.success_message", args, customer_id=customer_id, day=day)
+            "message": msg
         }
+
+    err_msg = f"Failed to write memory: {write_result.get('error')}" if language == "en" else f"写入记忆文件失败：{write_result.get('error')}"
     return {
         "status": "error",
         "result": None,
-        "message": t("init.error_message", args, error=write_result.get("error"))
+        "message": err_msg
     }

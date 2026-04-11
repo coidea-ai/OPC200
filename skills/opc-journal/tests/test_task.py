@@ -16,9 +16,15 @@ def test_create_task_zh():
 
 
 def test_create_task_en():
-    result = task.run("OPC-001", {"description": "Research competitors", "timeout_hours": 4, "lang": "en"})
-    assert result["status"] == "success"
-    assert "created" in result["message"]
+    import scripts.commands.task as task_mod
+    orig_lang = task_mod.get_language
+    task_mod.get_language = lambda cid: "en"
+    try:
+        result = task.run("OPC-001", {"description": "Research competitors", "timeout_hours": 4})
+        assert result["status"] == "success"
+        assert "created" in result["message"]
+    finally:
+        task_mod.get_language = orig_lang
 
 
 def test_missing_description():

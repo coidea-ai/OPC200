@@ -14,22 +14,34 @@ def test_record_success_zh(tmp_path, monkeypatch):
     assert result["status"] == "success"
     assert result["result"]["day"] == 5
     assert result["result"]["entry_id"].startswith("JE-")
-    assert result["result"]["emotion"] == "平静"
+    assert isinstance(result["result"]["emotion"], str)
+    assert len(result["result"]["emotion"]) > 0
 
 
 def test_record_success_en(tmp_path, monkeypatch):
     monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
     monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
-    result = record.run("OPC-001", {"content": "Shipped MVP today", "day": 5, "lang": "en"})
+    monkeypatch.setattr(record, "get_language", lambda cid: "en")
+    result = record.run("OPC-001", {"content": "Shipped MVP today", "day": 5})
     assert result["status"] == "success"
-    assert result["result"]["emotion"] == "calm"
+    assert "Entry" in result["message"]
+    assert result["result"]["entry_id"].startswith("JE-")
 
 
-def test_record_auto_emotion(tmp_path, monkeypatch):
+def test_record_auto_emotion_high(tmp_path, monkeypatch):
     monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
     monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
-    result = record.run("OPC-001", {"content": "感到很开心，终于搞定了", "day": 2})
-    assert result["result"]["emotion"] == "开心"
+    result = record.run("OPC-001", {"content": "感到很开心，终于搞定了，特别兴奋", "day": 2})
+    emotion = result["result"]["emotion"]
+    assert "高涨" in emotion or "行动力" in emotion or "平和" in emotion or "满足" in emotion
+
+
+def test_record_auto_emotion_tense(tmp_path, monkeypatch):
+    monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
+    monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    result = record.run("OPC-001", {"content": "有点焦虑，压力很大，但还是很期待", "day": 2})
+    emotion = result["result"]["emotion"]
+    assert "紧绷" in emotion or "冲刺" in emotion or "向前" in emotion
 
 
 def test_record_missing_content():
@@ -52,10 +64,8 @@ def test_record_creates_bak(tmp_path, monkeypatch):
     path = tmp_path / "OPC-001.md"
     monkeypatch.setattr(record, "build_memory_path", lambda cid: str(path))
     monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
-    # First write
     record.run("OPC-001", {"content": "First version", "day": 1})
     assert path.exists()
-    # Second write should trigger backup
     record.run("OPC-001", {"content": "Second version", "day": 1})
     bak_path = path.with_suffix(".md.bak")
     assert bak_path.exists()

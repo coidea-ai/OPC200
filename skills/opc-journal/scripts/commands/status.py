@@ -1,24 +1,12 @@
 """Journal command: status."""
 import glob
-import json
 import os
 import re
 from datetime import datetime
 from pathlib import Path
 
 from utils.storage import build_customer_dir, build_memory_path
-from scripts.commands.i18n import t
-
-
-def _read_meta(customer_id: str) -> dict:
-    try:
-        meta_path = os.path.expanduser(Path(build_customer_dir(customer_id)) / "journal_meta.json")
-        if os.path.exists(meta_path):
-            with open(meta_path, "r") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
+from scripts.commands._meta import get_language, read_meta
 
 
 def _parse_md_date(basename: str) -> str:
@@ -38,7 +26,6 @@ def run(customer_id: str, args: dict) -> dict:
 
     if os.path.exists(memory_dir):
         files = glob.glob(os.path.join(memory_dir, "*.md"))
-        # Sort by dd-mm-yy date descending for reliable latest order
         files.sort(key=lambda f: _parse_md_date(os.path.basename(f)), reverse=True)
         for f in files:
             content = Path(f).read_text(encoding="utf-8")
@@ -50,17 +37,24 @@ def run(customer_id: str, args: dict) -> dict:
                 if first_entry_date is None:
                     first_entry_date = date_str
 
-    meta = _read_meta(customer_id)
+    meta = read_meta(customer_id)
     started_day = meta.get("started_day", 1)
+    lang = get_language(customer_id)
 
     if entry_count == 0:
-        message = t("status.empty_message", args, customer_id=customer_id, started_day=started_day)
         journal_active = False
-        latest_display = t("status.no_entries", args)
+        latest_display = "No entries yet" if lang == "en" else "还没有正式记录"
+        if lang == "en":
+            message = f"🌱 {customer_id}'s Journal is active (Day {started_day}), but no entries yet. Next step: /opc-journal record \"One thing you did today\""
+        else:
+            message = f"🌱 {customer_id} 的 Journal 已激活（第 {started_day} 天），但还没有正式记录。下一步：/opc-journal record \"今天完成的第一件事\""
     else:
-        message = t("status.active_message", args, customer_id=customer_id, started_day=started_day, entry_count=entry_count, latest=latest)
         journal_active = True
         latest_display = latest
+        if lang == "en":
+            message = f"📔 {customer_id} started on Day {started_day} and has recorded {entry_count} entries. Latest: {latest}."
+        else:
+            message = f"📔 {customer_id} 从第 {started_day} 天开始，已经记录了 {entry_count} 条。最新：{latest}。"
 
     return {
         "status": "success",

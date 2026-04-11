@@ -30,8 +30,9 @@ def test_insights_with_memory_en(tmp_path, monkeypatch):
     (tmp_path / "OPC-001" / "memory" / "11-04-26.md").write_text(
         "---\ntype: entry\ndate: 11-04-26\nday: 1\n---\n\nToday I finished a feature and felt very happy."
     )
+    monkeypatch.setattr(ins_mod, "get_language", lambda cid: "en")
 
-    result = insights.run("OPC-001", {"day": 7, "days_back": 7, "lang": "en"})
+    result = insights.run("OPC-001", {"day": 7, "days_back": 7})
     assert result["status"] == "success"
     assert "Insight generated for Day 7" in result["message"]
 
@@ -51,8 +52,9 @@ def test_insights_empty_memory_en(tmp_path, monkeypatch):
     import scripts.commands.insights as ins_mod
     monkeypatch.setattr(ins_mod, "build_customer_dir", lambda cid: str(tmp_path / cid))
     (tmp_path / "OPC-001").mkdir(parents=True)
+    monkeypatch.setattr(ins_mod, "get_language", lambda cid: "en")
 
-    result = insights.run("OPC-001", {"day": 1, "lang": "en"})
+    result = insights.run("OPC-001", {"day": 1})
     assert result["status"] == "success"
     assert "Journey Begins" in result["result"]["theme"]
     assert "Every great story begins" in result["result"]["summary"]

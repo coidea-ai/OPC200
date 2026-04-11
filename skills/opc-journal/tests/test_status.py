@@ -18,9 +18,10 @@ def test_status_empty_zh(tmp_path, monkeypatch):
 
 def test_status_empty_en(tmp_path, monkeypatch):
     monkeypatch.setattr(status, "build_customer_dir", lambda cid: str(tmp_path / cid))
-    result = status.run("OPC-001", {"lang": "en"})
+    monkeypatch.setattr(status, "get_language", lambda cid: "en")
+    result = status.run("OPC-001", {})
     assert result["status"] == "success"
-    assert "No entries yet" in result["result"]["latest_entry_date"]
+    assert result["result"]["latest_entry_date"] == "No entries yet"
     assert "Next step" in result["message"]
 
 
@@ -28,9 +29,7 @@ def test_status_with_entries_zh(tmp_path, monkeypatch):
     monkeypatch.setattr(status, "build_customer_dir", lambda cid: str(tmp_path / cid))
     memory = tmp_path / "OPC-001" / "memory"
     memory.mkdir(parents=True)
-    # Write a charter (not counted as entry)
     (memory / "11-04-26.md").write_text("---\ntype: charter\ndate: 11-04-26\n---\n\n# Day 1 Charter")
-    # Write an actual entry
     (memory / "12-04-26.md").write_text(
         "---\ntype: entry\ndate: 12-04-26\nday: 2\nentry_id: JE-20260412-AB12\n---\n\n## 日记条目 - JE-20260412-AB12"
     )
@@ -51,8 +50,9 @@ def test_status_with_entries_en(tmp_path, monkeypatch):
     (memory / "12-04-26.md").write_text(
         "---\ntype: entry\ndate: 12-04-26\nday: 2\nentry_id: JE-20260412-AB12\n---\n\n## Journal Entry - JE-20260412-AB12"
     )
+    monkeypatch.setattr(status, "get_language", lambda cid: "en")
 
-    result = status.run("OPC-001", {"lang": "en"})
+    result = status.run("OPC-001", {})
     assert result["status"] == "success"
     assert result["result"]["total_entries"] == 1
     assert "recorded 1 entries" in result["message"]
