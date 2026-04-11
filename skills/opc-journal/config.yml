@@ -1,0 +1,22 @@
+# OPC Journal - Single CLI Skill Configuration
+# Version: 2.4.0
+
+journal:
+  storage_path: "customers/{customer_id}/journal/"
+  retention_days: 365
+  privacy_level: "standard"
+
+pattern_recognition:
+  mode: "interpretation_layer"
+  source: "openclaw_dreams"
+  analysis_frequency: "weekly"
+
+milestone:
+  auto_detect: true
+  celebration_enabled: true
+
+insight:
+  generation_frequency: "daily"
+  include_recommendations: true
+
+# NOTE: This skill is LOCAL-ONLY. No network calls.
