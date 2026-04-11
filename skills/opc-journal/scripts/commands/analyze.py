@@ -1,5 +1,6 @@
 """Journal command: analyze (pattern interpretation layer v2.4)."""
 import glob
+import os
 import re
 from collections import Counter
 from datetime import datetime
@@ -17,20 +18,32 @@ OPC_SIGNALS = {
 }
 
 
+def _parse_file_date(path: str) -> str:
+    basename = os.path.basename(path)
+    m = re.search(r"(\d{2}-\d{2}-\d{2})\.md$", basename)
+    if m:
+        return m.group(1)
+    return "00-00-00"
+
+
 def _find_sources(customer_id: str):
     sources = []
     base = build_customer_dir(customer_id)
     dreams = f"{base}/dreams.md"
-    import os
     if os.path.exists(os.path.expanduser(dreams)):
         sources.append(dreams)
     memory_dir = f"{base}/memory"
     if os.path.exists(os.path.expanduser(memory_dir)):
-        sources.extend(sorted(glob.glob(f"{memory_dir}/*.md")))
+        files = glob.glob(f"{memory_dir}/*.md")
+        # Sort by dd-mm-yy ascending
+        files.sort(key=lambda f: datetime.strptime(_parse_file_date(f), "%d-%m-%y"))
+        sources.extend(files)
     if not sources:
         ws = "~/.openclaw/workspace/memory"
         if os.path.exists(os.path.expanduser(ws)):
-            sources.extend(sorted(glob.glob(f"{ws}/*.md")))
+            files = glob.glob(f"{ws}/*.md")
+            files.sort(key=lambda f: datetime.strptime(_parse_file_date(f), "%d-%m-%y"))
+            sources.extend(files)
     return sources
 
 
@@ -114,7 +127,6 @@ def _interpret(signals: dict, days_span: int = 7) -> dict:
 
 def run(customer_id: str, args: dict) -> dict:
     days = args.get("days", 7)
-    import os
     sources = _find_sources(customer_id)
     if not sources:
         return {

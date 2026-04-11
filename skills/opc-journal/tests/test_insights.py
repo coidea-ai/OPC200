@@ -11,8 +11,8 @@ def test_insights_with_memory(tmp_path, monkeypatch):
     import scripts.commands.insights as ins_mod
     monkeypatch.setattr(ins_mod, "build_customer_dir", lambda cid: str(tmp_path / cid))
     (tmp_path / "OPC-001" / "memory").mkdir(parents=True)
-    (tmp_path / "OPC-001" / "memory" / "2026-04-01.md").write_text(
-        "今天完成了一个功能，非常开心。势能上升。"
+    (tmp_path / "OPC-001" / "memory" / "11-04-26.md").write_text(
+        "---\ntype: entry\ndate: 11-04-26\nday: 1\n---\n\n今天完成了一个功能，非常开心。势能上升。"
     )
 
     result = insights.run("OPC-001", {"day": 7, "days_back": 7})

@@ -17,10 +17,19 @@ DAY1_QUOTES = [
 
 def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: dict) -> str:
     quote, author = random.choice(DAY1_QUOTES)
+    today_str = datetime.now().strftime("%d-%m-%y")
     goals_md = "\n".join(f"- {g}" for g in goals) if goals else "- *(待填写——不用急，Day 1 本身就算一个目标)*"
     prefs_md = "\n".join(f"- **{k}**: {v}" for k, v in preferences.items()) if preferences else "- *( defaults: friendly_professional, Asia/Shanghai )*"
     
-    return f"""# 🚀 OPC Journal | Day {day} Charter
+    return f"""---
+type: charter
+date: {today_str}
+day: {day}
+customer_id: {customer_id}
+version: 2.4.0
+---
+
+# 🚀 OPC Journal | Day {day} Charter
 
 > {quote}  
 > {author}
@@ -28,7 +37,7 @@ def _generate_manifesto(customer_id: str, day: int, goals: list, preferences: di
 ---
 
 **Customer**: `{customer_id}`  
-**Init Date**: {datetime.now().strftime("%Y-%m-%d %H:%M")}  
+**Init Date**: {today_str}  
 **Journal Version**: 2.4.0
 
 ## 🎯 Goals

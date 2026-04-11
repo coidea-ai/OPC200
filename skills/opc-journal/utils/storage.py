@@ -1,14 +1,15 @@
 """Unified storage utilities for OPC Journal."""
 
 import os
+import shutil
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 
 def build_memory_path(customer_id: str, date: str = None) -> str:
-    """Build standard memory file path."""
+    """Build standard memory file path using dd-mm-yy format."""
     if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = datetime.now().strftime("%d-%m-%y")
     return f"~/.openclaw/customers/{customer_id}/memory/{date}.md"
 
 
@@ -17,11 +18,28 @@ def build_customer_dir(customer_id: str) -> str:
     return f"~/.openclaw/customers/{customer_id}"
 
 
+def _backup_if_exists(full_path: str) -> bool:
+    """Create a .bak copy of the file if it exists."""
+    if os.path.exists(full_path) and os.path.getsize(full_path) > 0:
+        bak_path = full_path + ".bak"
+        try:
+            shutil.copy2(full_path, bak_path)
+            return True
+        except Exception:
+            return False
+    return False
+
+
 def write_memory_file(path: str, content: str, mode: str = "a") -> Dict[str, Any]:
-    """Write content to memory file."""
+    """Write content to memory file. Creates daily .bak backup if file exists."""
     try:
         full_path = os.path.expanduser(path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        
+        # Backup original file before mutation
+        if mode in ("a", "w"):
+            _backup_if_exists(full_path)
+        
         with open(full_path, mode) as f:
             if mode == "a" and f.tell() > 0:
                 f.write("\n\n")

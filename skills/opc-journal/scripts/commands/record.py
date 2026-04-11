@@ -39,17 +39,17 @@ def _is_first_entry(customer_id: str) -> bool:
     if not os.path.exists(memory_dir):
         return True
     files = [f for f in glob.glob(os.path.join(memory_dir, "*.md")) if os.path.basename(f) != "dreams.md"]
-    # Check if only init charter exists
+    # Check if only init charter exists (look for frontmatter type: entry)
     entries = []
     for f in files:
         content = Path(f).read_text(encoding="utf-8")
-        if "Journal Entry - JE-" in content:
+        if "type: entry" in content or "Journal Entry - JE-" in content:
             entries.append(f)
     return len(entries) == 0
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Record a journal entry with auto-emotion tagging."""
+    """Record a journal entry with auto-emotion tagging and structured markdown."""
     content = args.get("content", "")
     if not content:
         return {"status": "error", "result": None, "message": "content is required"}
@@ -57,6 +57,8 @@ def run(customer_id: str, args: dict) -> dict:
     entry_id = generate_entry_id()
     day = args.get("day", 1)
     metadata = args.get("metadata", {})
+    today_str = datetime.now().strftime("%d-%m-%y")
+    iso_time = datetime.now().isoformat()
     
     # Auto-detect emotion if not provided
     if "emotional_state" not in metadata:
@@ -65,15 +67,27 @@ def run(customer_id: str, args: dict) -> dict:
     is_first = _is_first_entry(customer_id)
     celebration = "🎉 " if is_first else ""
 
-    entry_text = f"""## Journal Entry - {entry_id}
+    entry_text = f"""---
+type: entry
+date: {today_str}
+day: {day}
+entry_id: {entry_id}
+emotion: {metadata.get("emotional_state", "neutral")}
+---
+
+## Journal Entry - {entry_id}
 
 **Day**: {day}  
-**Time**: {datetime.now().isoformat()}  
+**Time**: {iso_time}  
 **Emotion**: {metadata.get("emotional_state", "neutral")}
 
+### Content
 {content}
 
-**Metadata**: {json.dumps(metadata, ensure_ascii=False)}
+### Metadata
+```json
+{json.dumps(metadata, indent=2, ensure_ascii=False)}
+```
 """
 
     memory_path = build_memory_path(customer_id)
@@ -87,7 +101,7 @@ def run(customer_id: str, args: dict) -> dict:
             with open(meta_path, "r") as f:
                 meta = json.load(f)
             meta["total_entries"] = meta.get("total_entries", 0) + 1
-            meta["last_recorded_at"] = datetime.now().isoformat()
+            meta["last_recorded_at"] = iso_time
             with open(meta_path, "w") as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
     except Exception:

@@ -38,3 +38,18 @@ def test_record_writes_file(tmp_path, monkeypatch):
     assert path.exists()
     assert "Fixed bug" in path.read_text()
     assert "Emotion" in path.read_text()
+
+
+def test_record_creates_bak(tmp_path, monkeypatch):
+    path = tmp_path / "OPC-001.md"
+    monkeypatch.setattr(record, "build_memory_path", lambda cid: str(path))
+    monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    # First write
+    record.run("OPC-001", {"content": "First version", "day": 1})
+    assert path.exists()
+    # Second write should trigger backup
+    record.run("OPC-001", {"content": "Second version", "day": 1})
+    bak_path = path.with_suffix(".md.bak")
+    assert bak_path.exists()
+    assert "First version" in bak_path.read_text()
+    assert "Second version" in path.read_text()

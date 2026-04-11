@@ -1,5 +1,6 @@
 """Journal command: insights (daily/weekly)."""
 import glob
+import os
 import re
 from datetime import datetime
 
@@ -26,23 +27,41 @@ def _find_sources(customer_id: str):
         sources.append(dreams)
     memory_dir = f"{base}/memory"
     if os.path.exists(os.path.expanduser(memory_dir)):
-        sources.extend(sorted(glob.glob(f"{memory_dir}/*.md")))
+        files = glob.glob(f"{memory_dir}/*.md")
+        # Sort by dd-mm-yy date ascending
+        files.sort(key=lambda f: _parse_file_date(f))
+        sources.extend(files)
     if not sources:
         ws = "~/.openclaw/workspace/memory"
         if os.path.exists(os.path.expanduser(ws)):
-            sources.extend(sorted(glob.glob(f"{ws}/*.md")))
+            files = glob.glob(f"{ws}/*.md")
+            files.sort(key=lambda f: _parse_file_date(f))
+            sources.extend(files)
     return sources
+
+
+def _parse_file_date(path: str) -> str:
+    basename = os.path.basename(path)
+    m = re.search(r"(\d{2}-\d{2}-\d{2})\.md$", basename)
+    if m:
+        return m.group(1)
+    return "00-00-00"
 
 
 def _read_recent(sources: list, days: int = 7):
     import os
     dated = []
     for s in sources:
-        basename = os.path.basename(s)
-        m = re.search(r"(\d{4}-\d{2}-\d{2})", basename)
-        file_date = m.group(1) if m else datetime.fromtimestamp(os.path.getmtime(s)).strftime("%Y-%m-%d")
-        dated.append((file_date, s))
-    dated.sort(key=lambda x: x[0])
+        file_date = _parse_file_date(s)
+        if file_date != "00-00-00":
+            dated.append((file_date, s))
+        else:
+            # Fallback to mtime for dreams.md etc.
+            mtime_str = datetime.fromtimestamp(os.path.getmtime(s)).strftime("%d-%m-%y")
+            dated.append((mtime_str, s))
+    # sort by dd-mm-yy string works because same century (yy) and lexicographic mm-dd is not right,
+    # but we can convert to datetime for safety.
+    dated.sort(key=lambda x: datetime.strptime(x[0], "%d-%m-%y"))
     recent = dated[-min(days, len(dated)):]
     contents = []
     dates_read = []
