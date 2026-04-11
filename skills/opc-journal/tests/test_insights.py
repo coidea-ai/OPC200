@@ -30,3 +30,4 @@ def test_insights_empty_memory(tmp_path, monkeypatch):
     result = insights.run("OPC-001", {"day": 1})
     assert result["status"] == "success"
     assert "旅程开始" in result["result"]["theme"]
+    assert "路标" in result["result"]["summary"]

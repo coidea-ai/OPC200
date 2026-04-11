@@ -16,6 +16,10 @@ MILESTONE_DEFINITIONS = {
     "mvp_complete": {
         "keywords": ["mvp done", "mvp complete", "prototype done", "mvp is", "prototype is", "done and ready", "MVP完成"],
         "description": "MVP completed"
+    },
+    "first_journal_entry": {
+        "keywords": ["第一条", "第一个记录", "first entry", "开始了", "动笔", "第一步"],
+        "description": "Recorded first journal entry"
     }
 }
 

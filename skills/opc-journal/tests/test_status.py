@@ -13,17 +13,21 @@ def test_status_empty(tmp_path, monkeypatch):
     assert result["status"] == "success"
     assert result["result"]["total_entries"] == 0
     assert result["result"]["journal_active"] is False
+    assert "还没有正式记录" in result["message"]
 
 
 def test_status_with_entries(tmp_path, monkeypatch):
     monkeypatch.setattr(status, "build_customer_dir", lambda cid: str(tmp_path / cid))
     memory = tmp_path / "OPC-001" / "memory"
     memory.mkdir(parents=True)
-    (memory / "2026-04-01.md").write_text("Entry 1")
-    (memory / "2026-04-02.md").write_text("Entry 2")
+    # Write a charter (not counted as entry)
+    (memory / "2026-04-01.md").write_text("# Day 1 Charter")
+    # Write an actual entry
+    (memory / "2026-04-02.md").write_text("## Journal Entry - JE-20260402-AB12")
 
     result = status.run("OPC-001", {})
     assert result["status"] == "success"
-    assert result["result"]["total_entries"] == 2
+    assert result["result"]["total_entries"] == 1
     assert result["result"]["latest_entry_date"] == "2026-04-02"
     assert result["result"]["journal_active"] is True
+    assert "已经记录了 1 条" in result["message"]

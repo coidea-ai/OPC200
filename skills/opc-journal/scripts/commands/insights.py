@@ -130,12 +130,13 @@ def run(customer_id: str, args: dict) -> dict:
                 "day": day,
                 "customer_id": customer_id,
                 "theme": "旅程开始",
-                "summary": "还没有足够的记忆来生成洞察。继续记录，我会越来越懂你。",
+                "summary": "所有的 long story 都始于一个短句。你今天的记录，会成为未来回望时的第一块路标。",
                 "recommendations": [
-                    {"priority": "high", "action": "今天完成一件小事并告诉我", "rationale": "Journal 的价值来自连续性"}
+                    {"priority": "high", "action": "记录一件今天完成的、再小也算数的事", "rationale": "Day 1 的 ritual 不是宏大叙事，而是证明自己来了"},
+                    {"priority": "medium", "action": "写下一个你最想在 30 天后看到的变化", "rationale": "让未来的自己有东西可对比"}
                 ]
             },
-            "message": f"Daily insight for Day {day} (insufficient memory yet)"
+            "message": f"Daily insight for Day {day} — every journey starts with a blank page."
         }
 
     raw_text, dates_read = _read_recent(sources, days_back)
