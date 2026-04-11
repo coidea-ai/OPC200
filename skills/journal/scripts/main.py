@@ -1,7 +1,7 @@
-"""OPC Journal - CLI-style single skill entry point.
+"""Journal - CLI-style single skill entry point.
 
 Usage:
-    /opc-journal <command> [options]
+    /journal <command> [options]
 
 Commands:
     init        Initialize journal
@@ -47,8 +47,8 @@ class _NoExitParser(argparse.ArgumentParser):
 
 def _build_parser() -> _NoExitParser:
     parser = _NoExitParser(
-        prog="opc-journal",
-        description="OPC Journal - One Person Company growth journal"
+        prog="journal",
+        description="Journal - One Person Company growth journal"
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
