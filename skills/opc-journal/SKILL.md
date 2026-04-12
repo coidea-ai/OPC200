@@ -6,13 +6,10 @@ command-dispatch: tool
 tool: main
 command-arg-mode: raw
 metadata:
-  {
-    "openclaw": {
-      "emoji": "📔",
-      "always": false,
-      "requires": {}
-    }
-  }
+  openclaw:
+    emoji: "📔"
+    always: false
+    requires: {}
 ---
 
 # opc-journal
