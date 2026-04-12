@@ -24,7 +24,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.commands import init, record, search, export, analyze, milestones, insights, task, status
+from scripts.commands import init, record, search, export, analyze, milestones, insights, task, status, update_meta
 
 
 COMMANDS = {
@@ -37,6 +37,7 @@ COMMANDS = {
     "insights": insights,
     "task": task,
     "status": status,
+    "update-meta": update_meta,
 }
 
 
@@ -106,6 +107,13 @@ def _build_parser() -> _NoExitParser:
     # status
     p = subparsers.add_parser("status", help="Show journal status")
     p.add_argument("--customer-id", default="OPC-001")
+
+    # update-meta
+    p = subparsers.add_parser("update-meta", help="Update journal metadata")
+    p.add_argument("--customer-id", default="OPC-001")
+    p.add_argument("--language", default="", help="Switch language (zh/en)")
+    p.add_argument("--goals", nargs="*", default=None)
+    p.add_argument("--preferences", type=json.loads, default=None)
 
     # help
     subparsers.add_parser("help", help="Show help")

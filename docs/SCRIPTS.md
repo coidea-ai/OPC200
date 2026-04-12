@@ -42,7 +42,7 @@
 ./scripts/deploy/deploy-cloud.sh -i OPC-151 -f feishu-token
 
 # 安装 Skills
-./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal-suite
+./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal
 
 # 更新所有 Skills
 ./scripts/deploy/install-skills.sh --id OPC-001 --update
@@ -205,7 +205,7 @@ customers/on-premise/OPC-XXX/remote-sessions/
 ssh opc@customer-server ./deploy-onprem.sh -i OPC-001
 
 # 3. 安装 Skills
-./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal-suite
+./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal
 
 # 4. 健康检查
 ./scripts/maintenance/health-check.sh -i OPC-001
@@ -277,7 +277,7 @@ done
 - name: Deploy to Customer
   run: |
     ./scripts/deploy/deploy-onprem.sh -i ${{ matrix.customer-id }}
-    ./scripts/deploy/install-skills.sh --id ${{ matrix.customer-id }} --skill opc-journal-suite
+    ./scripts/deploy/install-skills.sh --id ${{ matrix.customer-id }} --skill opc-journal
     ./scripts/maintenance/health-check.sh -i ${{ matrix.customer-id }}
 ```
 

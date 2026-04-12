@@ -41,25 +41,15 @@ jobs:
           pip install -r requirements-test.txt
           pip install pytest pytest-cov
 
-      - name: Run sub-skills tests with coverage
+      - name: Run opc-journal skill tests with coverage
         run: |
-          cd skills/opc-journal-suite
-          for dir in opc-*/; do
-            echo "Testing $dir..."
-            cd "$dir"
-            pytest tests/ -v --cov=. --cov-report=term --cov-fail-under=50 || true
-            cd ..
-          done
-
-      - name: Run main skills tests with coverage
-        run: |
-          cd skills/opc-journal-suite
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term --cov-fail-under=35
+          cd skills/opc-journal
+          pytest tests/ -v --cov=scripts --cov-report=xml --cov-report=term --cov-fail-under=80
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v3
         with:
-          file: ./skills/opc-journal-suite/coverage.xml
+          file: ./skills/opc-journal/coverage.xml
           flags: skills
           name: skills-coverage
           fail_ci_if_error: false

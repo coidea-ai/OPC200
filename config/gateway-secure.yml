@@ -86,7 +86,7 @@ skills:
     
   # 必需 Skills
   required:
-    - "coidea/opc-journal-suite"
+    - "coidea/opc-journal"
     - "TheSethRose/clawdbot-security-check"
     - "xiaowenzhou/active-maintenance"
     - "dennis-da-menace/agent-memory"
