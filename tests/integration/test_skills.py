@@ -70,7 +70,7 @@ def test_opc_journal_analyze():
         }
     })
     assert result["status"] == "success"
-    assert "interpretation" in result["result"]
+    assert "signal_summary" in result["result"]
     print("✓ opc-journal.analyze: PASSED")
 
 
@@ -82,7 +82,7 @@ def test_opc_journal_milestones():
         }
     })
     assert result["status"] == "success"
-    assert "milestones_detected" in result["result"]
+    assert "candidate" in result["result"]
     print("✓ opc-journal.milestones: PASSED")
 
 
@@ -106,7 +106,7 @@ def test_opc_journal_insights():
         }
     })
     assert result["status"] == "success"
-    assert "theme" in result["result"]
+    assert "signal_counts" in result["result"]
     print("✓ opc-journal.insights: PASSED")
 
 
