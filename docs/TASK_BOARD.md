@@ -4,7 +4,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-12（AGENT-002/004/005 v2 重写完成）
+**最后更新**: 2026-04-12（AGENT-002/003/004/005 v2 重写完成）
 
 ---
 
@@ -201,16 +201,23 @@
 ---
 
 #### AGENT-003: 实现 Mac/Linux 安装脚本（Bash）
-- **状态**: 📥 待领取
-- **负责人**: @zhang-chenyang-claw
+- **状态**: ✅ 已完成（v2 重写）
+- **负责人**: @zhang-yao-claw
 - **协作方**: 无
 - **预计 AI 工时**: 1.5h
-- **截止**: Day 3 下午
+- **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - `agent/scripts/install.sh`
-  - 支持 macOS 和主流 Linux 发行版
-  - 使用 systemd 管理服务（Linux）或 launchd（macOS）
-- **依赖**: AGENT-001
+  - ✅ `agent/scripts/install.sh` — 7 步安装流程，严格按 AGENT-001 SPEC
+  - ✅ `agent/scripts/uninstall.sh` — 支持 --keep-data 保留数据
+  - ✅ `agent/src/tests/test_agent003_install.py` — 61 个规范一致性测试
+  - ✅ 支持 macOS（launchd）和 Linux（systemd）双服务管理
+  - ✅ 自动检测 OS/架构（amd64/arm64）、包管理器（brew/apt/yum/dnf/pacman）
+  - ✅ SHA256 校验（sha256sum / shasum 兼容）
+  - ✅ 错误码 E001-E005、失败自动回滚
+  - ✅ .env chmod 600 安全存储 API Key
+  - ✅ config.yml YAML 模板（platform/customer/agent/gateway/journal/logging）
+- **测试**: 61/61 规范一致性测试通过
+- **依赖**: AGENT-001 ✅
 
 ---
 
@@ -384,6 +391,14 @@
 
 ## 📝 任务变更日志
 
+### 2026-04-12 (深夜)
+- **重写**: AGENT-003 Mac/Linux 安装/卸载脚本（v2）
+  - `agent/scripts/install.sh` — 7 步安装，支持 macOS(launchd) + Linux(systemd)
+  - `agent/scripts/uninstall.sh` — 卸载，支持 --keep-data
+  - 61 个规范一致性测试通过
+  - 包管理器检测并提示（brew/apt/yum/dnf/pacman）
+  - 补全 `agent/README.md` Mac/Linux 安装说明
+
 ### 2026-04-12 (晚)
 - **重写**: AGENT-002 Windows 安装/卸载脚本（v2）
   - 清理 `agent/scripts/` 旧文件（5 个），全部重写
@@ -454,6 +469,7 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-003**: v2 重写 Mac/Linux 安装脚本（2026-04-12）
 - **AGENT-002**: v2 重写 Windows 安装脚本（2026-04-12）
 - **AGENT-005**: v2 重写 exporter 指标推送（2026-04-12）
 - **AGENT-004**: v2 重写 exporter 指标采集（2026-04-12）
@@ -466,10 +482,10 @@
 
 | 状态 | Phase 1 | Phase 2 | Phase 3 | Backlog |
 |------|---------|---------|---------|---------|
-| 📥 待领取 | 1 | 4 | 3 | 2 |
+| 📥 待领取 | 0 | 4 | 3 | 2 |
 | 🏃 进行中 | 0 | 0 | 0 | 0 |
 | 👀 审核中 | 0 | 0 | 0 | 0 |
-| ✅ 已完成 | 11 | 0 | 0 | 0 |
+| ✅ 已完成 | 12 | 0 | 0 | 0 |
 | ⏸️ 阻塞中 | 0 | 0 | 0 | 0 |
 
 ---

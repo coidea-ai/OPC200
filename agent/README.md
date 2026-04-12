@@ -40,8 +40,37 @@ cd agent\scripts
 
 ### Mac / Linux
 
-1. 安装 [Docker Engine](https://docs.docker.com/engine/install/)（Mac 可用 [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)），确认 `docker version` 可用。
-2. 在终端进入本仓库的 `agent` 目录，按下文「构建」生成镜像，再按「运行」启动容器；`-v ~/.opc200:/data` 将数据持久化到当前用户主目录下的 `.opc200`。
+1. 以 `root` 或 `sudo` 打开终端。
+2. 进入本仓库 `agent/scripts` 目录，执行安装脚本：
+
+```bash
+cd agent/scripts
+sudo bash install.sh \
+  --platform-url "https://platform.opc200.co" \
+  --customer-id "opc-001" \
+  --api-key "sk-xxx"
+```
+
+脚本会检测 OS / 架构、下载发布包并校验 SHA256，创建 `~/.opc200` 目录结构，注册系统服务（Linux: systemd, macOS: launchd）并启动。
+
+静默模式（跳过交互提示）：
+
+```bash
+sudo bash install.sh \
+  --platform-url "https://platform.opc200.co" \
+  --customer-id "opc-001" \
+  --api-key "sk-xxx" \
+  --silent
+```
+
+卸载：
+
+```bash
+sudo bash uninstall.sh                     # 完全卸载
+sudo bash uninstall.sh --keep-data         # 保留 data/ 目录
+```
+
+若需自行用容器运行，可先安装 [Docker Engine](https://docs.docker.com/engine/install/)（Mac 可用 [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)），确认 `docker version` 可用，再按下文「构建」「运行」操作。
 
 ## 构建
 
