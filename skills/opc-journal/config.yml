@@ -1,5 +1,5 @@
 # OPC Journal - Single CLI Skill Configuration
-# Version: 2.4.2
+# Version: 2.4.3
 
 journal:
   storage_path: "customers/{customer_id}/journal/"

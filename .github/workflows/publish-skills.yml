@@ -6,7 +6,7 @@ on:
       version:
         description: 'Version to publish (e.g., 2.4.2)'
         required: true
-        default: '2.4.2'
+        default: '2.4.3'
       dry_run:
         description: 'Dry run (no actual publish)'
         required: true

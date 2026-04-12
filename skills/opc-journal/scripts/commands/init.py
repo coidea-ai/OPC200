@@ -28,7 +28,7 @@ type: charter
 date: {today_str}
 day: {day}
 customer_id: {customer_id}
-version: 2.4.2
+version: 2.4.3
 language: en
 ---
 
@@ -40,7 +40,7 @@ language: en
 ---
 
 **Customer**: `{customer_id}`  
-**Version**: 2.4.2
+**Version**: 2.4.3
 
 ## 🎯 Goals
 {goals_md}
@@ -65,7 +65,7 @@ type: charter
 date: {today_str}
 day: {day}
 customer_id: {customer_id}
-version: 2.4.2
+version: 2.4.3
 language: zh
 ---
 
@@ -77,7 +77,7 @@ language: zh
 ---
 
 **用户**: `{customer_id}`  
-**版本**: 2.4.2
+**版本**: 2.4.3
 
 ## 🎯 目标
 {goals_md}
@@ -119,7 +119,7 @@ def run(customer_id: str, args: dict) -> dict:
         "customer_id": customer_id,
         "started_day": day,
         "started_at": datetime.now().isoformat(),
-        "version": "2.4.2",
+        "version": "2.4.3",
         "goals": goals,
         "preferences": preferences,
         "language": language,
