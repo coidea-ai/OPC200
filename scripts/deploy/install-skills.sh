@@ -53,7 +53,7 @@ OPTIONS:
     $0 --id OPC-001 --update
 
     # 安装完整套件
-    $0 --id OPC-001 --skill opc-journal-suite
+    $0 --id OPC-001 --skill opc-journal
 
     # 列出已安装 Skills
     $0 --id OPC-001 --list
@@ -180,34 +180,22 @@ install_single_skill() {
     log_success "Skill ${skill} 安装完成"
 }
 
-# 安装 OPC Journal Suite
-install_journal_suite() {
+# 安装 OPC Journal
+install_journal() {
     local skills_dir=$1
-    
-    log_info "安装 OPC Journal Suite"
-    
-    local skills=(
-        "opc-journal-core"
-        "opc-milestone-tracker"
-        "opc-insight-generator"
-    )
-    
-    for skill in "${skills[@]}"; do
-        install_single_skill "$skill" "$VERSION" "$skills_dir"
-    done
-    
-    # 可选技能（Legacy，仍兼容但不默认安装）
-    log_warn "opc-pattern-recognition 和 opc-async-task-manager 已标记为 legacy"
-    log_warn "如需安装，请使用: $0 --id ${OPC_ID} --skill \u003cskill-name\u003e"
-    
+
+    log_info "安装 OPC Journal"
+
+    install_single_skill "opc-journal" "$VERSION" "$skills_dir"
+
     # 安装依赖 Skills
     if [[ "$SKIP_DEPS" != true ]]; then
         log_info "安装依赖 Skills"
         install_single_skill "agent-team-orchestration" "latest" "$skills_dir"
         install_single_skill "active-maintenance" "latest" "$skills_dir"
     fi
-    
-    log_success "OPC Journal Suite 安装完成"
+
+    log_success "OPC Journal 安装完成"
 }
 
 # 列出已安装 Skills
@@ -342,8 +330,8 @@ main() {
             
             check_clawhub
             
-            if [[ "$SKILL" == "opc-journal-suite" ]]; then
-                install_journal_suite "$skills_dir"
+            if [[ "$SKILL" == "opc-journal" ]]; then
+                install_journal "$skills_dir"
             else
                 install_single_skill "$SKILL" "$VERSION" "$skills_dir"
             fi

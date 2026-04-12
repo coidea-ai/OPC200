@@ -4,7 +4,7 @@
 
 set -e
 
-SKILLS_DIR="skills/opc-journal-suite"
+SKILLS_DIR="skills/opc-journal"
 COVERAGE_THRESHOLD=80
 
 case "${1:-help}" in
@@ -55,14 +55,6 @@ case "${1:-help}" in
         echo "🧪 Running all skills tests..."
         cd "$SKILLS_DIR"
         pytest tests/ -v --cov=. --cov-report=term
-        echo ""
-        echo "🧪 Running sub-skills tests..."
-        for dir in opc-*/; do
-            echo "   Testing $dir..."
-            cd "$dir"
-            pytest tests/ -v || exit 1
-            cd ..
-        done
         echo "   ✓ All tests passed"
         ;;
     help|*)
@@ -77,7 +69,7 @@ case "${1:-help}" in
         echo "  coverage  📊 Check coverage meets threshold"
         echo "  watch     👁️  Run tests on file changes"
         echo "  quick     ⚡ Quick test run (fail fast)"
-        echo "  all       🧪 Run all skills and sub-skills tests"
+        echo "  all       🧪 Run all skill tests"
         echo "  help      📖 Show this help"
         echo ""
         echo "TDD Workflow:"

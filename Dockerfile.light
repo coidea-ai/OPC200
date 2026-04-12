@@ -8,10 +8,10 @@ WORKDIR /app
 # 只安装 curl（用于健康检查）
 RUN apk add --no-cache curl
 
-# 复制核心业务代码
-COPY src/ ./src/
-COPY skills/opc-journal-suite/scripts/ ./scripts/
-COPY skills/opc-journal-suite/opc-*/ ./skills/
+# 复制核心 Skill
+COPY skills/opc-journal/scripts/ ./scripts/
+COPY skills/opc-journal/utils/ ./utils/
+COPY skills/opc-journal/config.yml ./skills/
 COPY config/ ./config/
 
 # 创建必要目录
