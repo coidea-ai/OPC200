@@ -4,7 +4,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-10（@zhang-yao-claw 更新负责模块状态）
+**最后更新**: 2026-04-12（AGENT-004/005 v2 重写完成）
 
 ---
 
@@ -213,40 +213,50 @@
 ---
 
 #### AGENT-004: 实现 exporter 指标采集
-- **状态**: ✅ 已完成
-- **负责人**: @zhang-chenyang-claw
+- **状态**: ✅ 已完成（v2 重写）
+- **负责人**: @zhang-yao-claw
 - **协作方**: 无
 - **预计 AI 工时**: 2h
-- **实际完成**: Day 1 晚上
+- **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - ✅ `agent/src/exporter/collector.py` (跨平台指标采集)
-  - ✅ `agent/src/exporter/test_collector.py` (15个单元测试)
-  - ✅ CPU 使用率采集（/proc/stat, mpstat, top, wmic）
-  - ✅ 内存使用率采集（/proc/meminfo, vm_stat, wmic）
-  - ✅ 磁盘使用率采集（df, statvfs, wmic）
-  - ✅ Agent 健康状态检查
-  - ✅ Prometheus 格式输出（符合 PLAT-003）
-- **测试**: 15/15 单元测试通过
-- **验证**: Linux 实测 CPU 1.2%, Memory 18.2%, Disk 52.0%
-- **提交**: `62cdfa8`
+  - ✅ `agent/src/exporter/collector.py` — 基于 psutil 跨平台采集
+  - ✅ `agent/src/tests/test_agent004_exporter.py` — 16 个单元测试
+  - ✅ CPU / 内存 / 磁盘使用率采集（psutil 统一跨平台）
+  - ✅ Agent 健康状态检查（进程状态 + zombie 检测）
+  - ✅ `SystemMetrics.to_prometheus(tenant_id)` 输出符合 PLAT-003 协议
+  - ✅ psutil 未安装时抛出明确 RuntimeError
+- **测试**: 16/16 单元测试通过
+- **提交**: `cb0c61d`（v2），~~`62cdfa8`~~（v1 已废弃）
+- **v2 改进**:
+  - 使用 psutil 替代手写 subprocess，消除 `/proc/stat` 单次读取不准、`wmic` 废弃等问题
+  - `_check_health()` 不再重复采集，接收已采集的值做判断
+  - 字段名与 PLAT-003 完全对齐（`cpu_usage` / `memory_usage` / `disk_usage` / `agent_health`）
 - **依赖**: PLAT-003 ✅
 - **阻塞解除**: AGENT-005 现在可以开始
 
 ---
 
 #### AGENT-005: 实现 exporter 指标推送
-- **状态**: ✅ 已完成
+- **状态**: ✅ 已完成（v2 重写）
 - **负责人**: @zhang-yao-claw
-- **协作方**: @fairy-kimi（需确认协议）
+- **协作方**: @fairy-kimi（协议确认）
 - **预计 AI 工时**: 2h
-- **截止**: Day 2 下午
+- **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - `agent/src/exporter/pusher.py`
-  - 按 PLAT-003 协议格式推送
-  - 支持 HTTPS 代理配置
-  - 失败重试机制（指数退避）
-  - 本地缓存队列（断网时暂存，恢复后批量推送）
-- **依赖**: AGENT-004, PLAT-003
+  - ✅ `agent/src/exporter/pusher.py` — 调用 `collector.collect_all()` 推送指标
+  - ✅ `agent/src/tests/test_agent005_pusher.py` — 14 个单元测试
+  - ✅ Bearer Token 认证，Prometheus text format 推送
+  - ✅ 指数退避重试（5 次，最大 60s，含 jitter）
+  - ✅ 离线缓存 JSON Lines（`spool/queue.jsonl`，上限 500 条，超 24h 丢弃）
+  - ✅ 恢复后分批推送（每批 50 条），批量上限 100 条/次
+  - ✅ 推送间隔 60 秒，支持 HTTPS 代理
+  - ✅ 支持环境变量 fallback（PLATFORM_URL / TENANT_ID / API_KEY）
+- **测试**: 14/14 单元测试通过
+- **提交**: `d73af7a`（v2）
+- **v2 改进**:
+  - 接口与 AGENT-004 v2 完全对齐（`collect_all()` / `SystemMetrics` 字段名一致）
+  - `_build_payload()` 直接调用 `SystemMetrics.to_prometheus(tenant_id)`，消除字段名硬编码
+- **依赖**: AGENT-004 ✅, PLAT-003 ✅
 
 ---
 
@@ -372,12 +382,19 @@
 
 ## 📝 任务变更日志
 
+### 2026-04-12
+- **重写**: AGENT-004 + AGENT-005 全部重写（v2）
+  - 清理 `agent/src/exporter/` 旧代码（collector.py / pusher.py / test_collector.py / README.md）
+  - 清理 `tests/agent/` 遗留失效测试
+  - AGENT-004: 基于 psutil 重写采集器，修复接口不匹配、`_check_health` 重复采集、`/proc/stat` 不准等问题
+  - AGENT-005: 重写推送器，与 AGENT-004 v2 接口完全对齐
+  - 测试迁移到 `agent/src/tests/`（30 tests passing）
+  - 提交: `cb0c61d`（AGENT-004）、`d73af7a`（AGENT-005）
+
 ### 2026-04-10 (晚上)
-- **更新**: @zhang-chenyang-claw 完成 AGENT-004 exporter 指标采集器
-  - 实现跨平台 CPU/内存/磁盘采集 (Linux/macOS/Windows)
-  - 15个单元测试全部通过
-  - Prometheus 格式输出，符合 PLAT-003 协议
-  - Linux 实测验证: CPU 1.2%, Memory 18.2%, Disk 52.0%
+- **更新**: @zhang-chenyang-claw 完成 AGENT-004 exporter 指标采集器（v1，已被 v2 替代）
+  - ~~实现跨平台 CPU/内存/磁盘采集 (Linux/macOS/Windows)~~
+  - ~~15个单元测试全部通过~~
 - **状态变更**: AGENT-004 ✅ 已完成，解除 AGENT-005 阻塞
 
 ### 2026-04-10 (晚)
@@ -428,9 +445,9 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-005**: v2 重写 exporter 指标推送（2026-04-12）
+- **AGENT-004**: v2 重写 exporter 指标采集（2026-04-12）
 - **AGENT-006**: 端到端联调验证通过（2026-04-10）
-- **AGENT-005**: 实现 exporter 指标推送（2026-04-10）
-- **AGENT-004**: 实现 exporter 指标采集（2026-04-10）
 - **AGENT-001**: 设计安装脚本方案（2026-04-10）
 
 ---
