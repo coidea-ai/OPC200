@@ -1,391 +1,410 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    OPC200 Agent Windows 部署脚本（MVP 验证版）
+    OPC200 Agent Windows 安装脚本 (v2)
 .DESCRIPTION
-    一键部署 OpenClaw Agent 到 Windows 系统，支持服务注册和自动启动
+    按 AGENT-001 (docs/INSTALL_SCRIPT_SPEC.md) 规范实现。
+    流程: 环境检查 → 配置获取 → 下载 Agent → 安装部署 → 注册服务 → 启动验证 → 完成输出
 .PARAMETER PlatformUrl
-    平台端点地址
+    平台端点地址 (默认 https://platform.opc200.co)
 .PARAMETER CustomerId
     用户唯一标识
 .PARAMETER ApiKey
     API 认证密钥
 .PARAMETER InstallDir
-    安装目录（默认：$env:LOCALAPPDATA\OPC200）
+    安装目录 (默认 ~/.opc200)
+.PARAMETER Port
+    本地服务端口 (默认 8080)
 .PARAMETER Silent
     静默安装模式
 .EXAMPLE
-    .\install.ps1 -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx"
+    .\install.ps1
+.EXAMPLE
+    .\install.ps1 -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx" -Silent
 #>
 
 param(
     [string]$PlatformUrl = "",
     [string]$CustomerId = "",
-    [string]$ApiKey = "",
+    [string]$ApiKey     = "",
     [string]$InstallDir = "",
+    [int]$Port          = 8080,
     [switch]$Silent
 )
 
-# 配置常量
-$script:Config = @{
-    Version = "1.0.0"
-    AgentDownloadUrl = "https://github.com/coidea-ai/OPC200/releases/download/v2.3.0/opc-agent-windows-amd64.exe"
-    # 后续切换到自有服务器: "https://cdn.opc200.co/agent/latest/opc-agent-windows-amd64.exe"
-    AgentFileName = "opc-agent.exe"
-    ServiceName = "OPC200-Agent"
-    ServiceDisplayName = "OPC200 Agent Service"
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ── 常量 ──────────────────────────────────────────────────────────
+
+$script:AGENT_VERSION   = "2.3.0"
+$script:DOWNLOAD_BASE   = "https://github.com/coidea-ai/OPC200/releases/download/v$($script:AGENT_VERSION)"
+$script:AGENT_BINARY    = "opc-agent-windows-amd64.exe"
+$script:CHECKSUM_FILE   = "SHA256SUMS"
+$script:SERVICE_NAME    = "OPC200-Agent"
+$script:SERVICE_DISPLAY = "OPC200 Agent Service"
+$script:DEFAULT_URL     = "https://platform.opc200.co"
+$script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
+$script:MIN_DISK_GB     = 1
+
+# 错误码 (AGENT-001 §6.1)
+$script:E001 = 1   # 权限不足
+$script:E002 = 2   # 网络连接失败
+$script:E003 = 3   # 端口占用
+$script:E004 = 4   # 校验失败
+$script:E005 = 5   # 服务注册失败
+
+# ── 辅助函数 ──────────────────────────────────────────────────────
+
+function Write-Step  { param([string]$M) Write-Host "[STEP] $M" -ForegroundColor Cyan }
+function Write-Ok    { param([string]$M) Write-Host "  [OK] $M" -ForegroundColor Green }
+function Write-Warn  { param([string]$M) Write-Host " [WARN] $M" -ForegroundColor Yellow }
+function Write-Err   { param([string]$M) Write-Host "  [ERR] $M" -ForegroundColor Red }
+
+function Fail {
+    param([int]$Code, [string]$M)
+    Write-Err $M
+    Invoke-Rollback
+    exit $Code
 }
 
-# 颜色输出函数
-function Write-Info { param([string]$Message) Write-Host "[INFO] $Message" -ForegroundColor Cyan }
-function Write-Success { param([string]$Message) Write-Host "[OK] $Message" -ForegroundColor Green }
-function Write-Warning { param([string]$Message) Write-Host "[WARN] $Message" -ForegroundColor Yellow }
-function Write-Error { param([string]$Message) Write-Host "[ERR] $Message" -ForegroundColor Red }
+# ── 回滚 ─────────────────────────────────────────────────────────
 
-# 检查管理员权限
-function Test-AdminRights {
-    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$script:RollbackActions = [System.Collections.ArrayList]::new()
+
+function Register-Rollback {
+    param([scriptblock]$Action)
+    [void]$script:RollbackActions.Add($Action)
 }
 
-# 检查系统要求
-function Test-SystemRequirements {
-    Write-Info "检查系统要求..."
-    
+function Invoke-Rollback {
+    if ($script:RollbackActions.Count -eq 0) { return }
+    Write-Warn "正在回滚..."
+    for ($i = $script:RollbackActions.Count - 1; $i -ge 0; $i--) {
+        try { & $script:RollbackActions[$i] } catch { Write-Warn "回滚步骤失败: $_" }
+    }
+}
+
+# ── Step 1: 环境检查 ─────────────────────────────────────────────
+
+function Test-Environment {
+    Write-Step "1/7 环境检查"
+
+    # 管理员权限
+    $principal = New-Object Security.Principal.WindowsPrincipal(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Fail $script:E001 "E001: 请以管理员身份运行 PowerShell"
+    }
+    Write-Ok "管理员权限"
+
     # Windows 版本
-    $osInfo = Get-CimInstance Win32_OperatingSystem
-    $osVersion = [System.Version]$osInfo.Version
-    
-    if ($osVersion -lt [System.Version]"10.0.17763") {
-        throw "需要 Windows 10 版本 1809 或更高版本"
+    $osVer = [System.Version](Get-CimInstance Win32_OperatingSystem).Version
+    if ($osVer -lt $script:MIN_WIN_BUILD) {
+        Fail $script:E001 "E001: 需要 Windows 10 1809+ (当前 $osVer)"
     }
-    
-    # 架构检查
+    Write-Ok "Windows $osVer"
+
+    # 架构
     if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
-        throw "暂时仅支持 x64 架构"
+        Fail $script:E001 "E001: 仅支持 x64 架构 (当前 $($env:PROCESSOR_ARCHITECTURE))"
     }
-    
+    Write-Ok "x64 架构"
+
     # 磁盘空间
-    $systemDrive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'"
-    $freeSpaceGB = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
-    if ($freeSpaceGB -lt 1) {
-        throw "磁盘空间不足，需要至少 1GB 可用空间"
+    $drive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'"
+    $freeGB = [math]::Round($drive.FreeSpace / 1GB, 2)
+    if ($freeGB -lt $script:MIN_DISK_GB) {
+        Fail $script:E001 "E001: 磁盘可用 ${freeGB}GB, 需要 ${script:MIN_DISK_GB}GB+"
     }
-    
-    Write-Success "系统检查通过 (Windows $($osInfo.Version), $freeSpaceGB GB 可用)"
+    Write-Ok "磁盘可用 ${freeGB}GB"
+
+    # 端口占用
+    $portInUse = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($portInUse) {
+        Fail $script:E003 "E003: 端口 $Port 被占用"
+    }
+    Write-Ok "端口 $Port 可用"
 }
 
-# 交互式配置输入
-function Get-InteractiveConfig {
-    Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "    OPC200 Agent 安装向导" -ForegroundColor Cyan
-    Write-Host "========================================`n" -ForegroundColor Cyan
-    
-    # Platform URL
-    $defaultUrl = "https://platform.opc200.co"
-    $inputUrl = Read-Host "请输入平台地址 [$defaultUrl]"
-    $script:Config.PlatformUrl = if ($inputUrl) { $inputUrl } else { $defaultUrl }
-    
-    # Customer ID
-    do {
-        $script:Config.CustomerId = Read-Host "请输入 Customer ID (必需)"
-        if (-not $script:Config.CustomerId) {
-            Write-Error "Customer ID 不能为空"
-        }
-    } while (-not $script:Config.CustomerId)
-    
-    # API Key
-    do {
-        $secureKey = Read-Host "请输入 API Key (必需)" -AsSecureString
-        $script:Config.ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
-        )
-        if (-not $script:Config.ApiKey) {
-            Write-Error "API Key 不能为空"
-        }
-    } while (-not $script:Config.ApiKey)
-    
-    # Install Directory
-    $defaultDir = Join-Path $env:LOCALAPPDATA "OPC200"
-    $inputDir = Read-Host "请输入安装目录 [$defaultDir]"
-    $script:Config.InstallDir = if ($inputDir) { $inputDir } else { $defaultDir }
+# ── Step 2: 获取配置 ─────────────────────────────────────────────
+
+function Get-InstallConfig {
+    Write-Step "2/7 获取配置"
+
+    if ($Silent) {
+        if (-not $PlatformUrl)  { $script:PlatformUrl = $script:DEFAULT_URL } else { $script:PlatformUrl = $PlatformUrl }
+        if (-not $CustomerId)   { Fail $script:E001 "E001: 静默模式必须提供 -CustomerId" }
+        if (-not $ApiKey)       { Fail $script:E001 "E001: 静默模式必须提供 -ApiKey" }
+        $script:CustomerId = $CustomerId
+        $script:ApiKey     = $ApiKey
+    }
+    else {
+        $inputUrl = Read-Host "平台地址 [$($script:DEFAULT_URL)]"
+        $script:PlatformUrl = if ($inputUrl) { $inputUrl } else { $script:DEFAULT_URL }
+
+        do {
+            $script:CustomerId = Read-Host "Customer ID (必需)"
+            if (-not $script:CustomerId) { Write-Err "Customer ID 不能为空" }
+        } while (-not $script:CustomerId)
+
+        do {
+            $sec = Read-Host "API Key (必需)" -AsSecureString
+            $script:ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+            )
+            if (-not $script:ApiKey) { Write-Err "API Key 不能为空" }
+        } while (-not $script:ApiKey)
+    }
+
+    # 安装目录
+    if ($InstallDir) {
+        $script:InstallRoot = $InstallDir
+    }
+    else {
+        $script:InstallRoot = Join-Path $HOME ".opc200"
+    }
+
+    Write-Ok "平台: $($script:PlatformUrl)"
+    Write-Ok "用户: $($script:CustomerId)"
+    Write-Ok "目录: $($script:InstallRoot)"
 }
 
-# 下载 Agent 二进制
-function Download-Agent {
-    param([string]$Destination)
-    
-    Write-Info "正在下载 Agent..."
-    Write-Info "来源: $($script:Config.AgentDownloadUrl)"
-    
+# ── Step 3: 下载 Agent ───────────────────────────────────────────
+
+function Get-AgentBinary {
+    Write-Step "3/7 下载 Agent"
+
+    $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
+    $shaUrl  = "$($script:DOWNLOAD_BASE)/$($script:CHECKSUM_FILE)"
+    $tmpDir  = Join-Path $env:TEMP "opc200-install"
+    $binDest = Join-Path $tmpDir $script:AGENT_BINARY
+    $shaDest = Join-Path $tmpDir $script:CHECKSUM_FILE
+
+    if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+
     try {
-        $progressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $script:Config.AgentDownloadUrl -OutFile $Destination -UseBasicParsing
-        $progressPreference = 'Continue'
-        
-        if (-not (Test-Path $Destination)) {
-            throw "下载失败：文件未创建"
-        }
-        
-        $fileSize = (Get-Item $Destination).Length / 1MB
-        Write-Success "下载完成 ($([math]::Round($fileSize, 2)) MB)"
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest -Uri $binUrl -OutFile $binDest -UseBasicParsing
+        Write-Ok "已下载 $($script:AGENT_BINARY)"
     }
     catch {
-        throw "下载 Agent 失败: $_"
+        Fail $script:E002 "E002: 下载失败 - $_"
     }
-}
 
-# 创建目录结构
-function Initialize-DirectoryStructure {
-    param([string]$BaseDir)
-    
-    Write-Info "创建目录结构..."
-    
-    $dirs = @(
-        $BaseDir,
-        (Join-Path $BaseDir "config"),
-        (Join-Path $BaseDir "data"),
-        (Join-Path $BaseDir "data\journal"),
-        (Join-Path $BaseDir "logs"),
-        (Join-Path $BaseDir "update")
-    )
-    
-    foreach ($dir in $dirs) {
-        if (-not (Test-Path $dir)) {
-            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    # SHA256 校验
+    try {
+        Invoke-WebRequest -Uri $shaUrl -OutFile $shaDest -UseBasicParsing
+        $expectedHash = (Get-Content $shaDest | Where-Object { $_ -match $script:AGENT_BINARY } | ForEach-Object { ($_ -split '\s+')[0] })
+        if ($expectedHash) {
+            $actualHash = (Get-FileHash -Path $binDest -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -ne $expectedHash.ToLower()) {
+                Fail $script:E004 "E004: SHA256 校验失败 (期望 $expectedHash, 实际 $actualHash)"
+            }
+            Write-Ok "SHA256 校验通过"
+        }
+        else {
+            Write-Warn "SHA256SUMS 中未找到对应条目，跳过校验"
         }
     }
-    
-    Write-Success "目录创建完成"
+    catch {
+        Write-Warn "无法下载 SHA256SUMS，跳过校验"
+    }
+
+    $script:TmpBinary = $binDest
 }
 
-# 写入配置文件
-function Write-Configuration {
-    param([string]$ConfigDir)
-    
-    Write-Info "写入配置文件..."
-    
-    $configContent = @"
-# OPC200 Agent 配置文件
-# 生成时间: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+# ── Step 4: 安装部署 ─────────────────────────────────────────────
 
+function Install-Agent {
+    Write-Step "4/7 安装部署"
+
+    $root = $script:InstallRoot
+
+    # 目录结构 (AGENT-001 §3.1)
+    $dirs = @(
+        $root,
+        (Join-Path $root "bin"),
+        (Join-Path $root "config"),
+        (Join-Path $root "data"),
+        (Join-Path $root "data\journal"),
+        (Join-Path $root "data\exporter"),
+        (Join-Path $root "logs")
+    )
+
+    foreach ($d in $dirs) {
+        if (-not (Test-Path $d)) {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+        }
+    }
+
+    Register-Rollback {
+        if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    Write-Ok "目录结构已创建"
+
+    # 复制二进制
+    $agentDest = Join-Path $root "bin\opc-agent.exe"
+    Copy-Item -Path $script:TmpBinary -Destination $agentDest -Force
+    Write-Ok "Agent 二进制已部署"
+
+    # config.yml (AGENT-001 §3.2)
+    $configYml = @"
 platform:
-  url: "$($script:Config.PlatformUrl)"
+  url: "$($script:PlatformUrl)"
   metrics_endpoint: "/metrics/job"
 
 customer:
-  id: "$($script:Config.CustomerId)"
+  id: "$($script:CustomerId)"
 
 agent:
-  version: "$($script:Config.Version)"
+  version: "$($script:AGENT_VERSION)"
   check_interval: 60
   push_interval: 30
 
 gateway:
   host: "127.0.0.1"
-  port: 8080
+  port: $Port
 
 journal:
-  storage_path: "data/journal"
+  storage_path: "$($root -replace '\\','/')/data/journal"
   max_size: "1GB"
 
 logging:
   level: "info"
-  file: "logs/agent.log"
+  file: "$($root -replace '\\','/')/logs/agent.log"
   max_size: "100MB"
   max_backups: 5
 "@
+    $configPath = Join-Path $root "config\config.yml"
+    [System.IO.File]::WriteAllText($configPath, $configYml, [System.Text.UTF8Encoding]::new($false))
+    Write-Ok "config.yml 已写入"
 
-    $configPath = Join-Path $ConfigDir "config.yml"
-    $configContent | Out-File -FilePath $configPath -Encoding UTF8
-    
-    # 写入环境变量文件（敏感信息）
-    $envContent = "OPC200_API_KEY=$($script:Config.ApiKey)`n"
-    $envPath = Join-Path $ConfigDir ".env"
-    $envContent | Out-File -FilePath $envPath -Encoding UTF8
-    
-    # 设置文件权限（仅限当前用户访问）
-    $envItem = Get-Item $envPath
-    $envItem.SetAccessControl((New-Object System.Security.AccessControl.FileSecurity))
-    
-    Write-Success "配置写入完成"
+    # .env (权限受限)
+    $envPath = Join-Path $root ".env"
+    [System.IO.File]::WriteAllText($envPath, "OPC200_API_KEY=$($script:ApiKey)`n", [System.Text.UTF8Encoding]::new($false))
+
+    $acl = Get-Acl $envPath
+    $acl.SetAccessRuleProtection($true, $false)
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+        "FullControl", "Allow"
+    )
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $envPath -AclObject $acl
+    Write-Ok ".env 已写入 (权限受限)"
+
+    $script:AgentExe  = $agentDest
+    $script:ConfigYml = $configPath
 }
 
-# 注册 Windows 服务
-function Register-AgentService {
-    param(
-        [string]$AgentPath,
-        [string]$ConfigPath
-    )
-    
-    Write-Info "注册 Windows 服务..."
-    
-    # 检查服务是否已存在
-    $existingService = Get-Service -Name $script:Config.ServiceName -ErrorAction SilentlyContinue
-    if ($existingService) {
-        Write-Warning "服务已存在，先停止并删除..."
-        Stop-Service -Name $script:Config.ServiceName -Force -ErrorAction SilentlyContinue
-        sc.exe delete $script:Config.ServiceName | Out-Null
+# ── Step 5: 注册系统服务 ─────────────────────────────────────────
+
+function Register-Service {
+    Write-Step "5/7 注册系统服务"
+
+    $existing = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Warn "服务已存在，先停止并删除"
+        Stop-Service -Name $script:SERVICE_NAME -Force -ErrorAction SilentlyContinue
+        sc.exe delete $script:SERVICE_NAME | Out-Null
         Start-Sleep -Seconds 2
     }
-    
-    # 创建服务
-    $serviceCmd = '"$AgentPath" --config "$ConfigPath" service run'
-    $binPath = "`"$AgentPath`" --config `"$ConfigPath`" service run"
-    
-    $result = sc.exe create $script:Config.ServiceName `
+
+    $binPath = "`"$($script:AgentExe)`" --config `"$($script:ConfigYml)`" service run"
+    $result  = sc.exe create $script:SERVICE_NAME `
         binPath= $binPath `
-        DisplayName= $script:Config.ServiceDisplayName `
+        DisplayName= $script:SERVICE_DISPLAY `
         start= auto `
         obj= "NT AUTHORITY\LocalService" 2>&1
-    
+
     if ($LASTEXITCODE -ne 0) {
-        throw "服务注册失败: $result"
+        Fail $script:E005 "E005: 服务注册失败 - $result"
     }
-    
-    Write-Success "服务注册完成"
+
+    Register-Rollback {
+        Stop-Service -Name $script:SERVICE_NAME -Force -ErrorAction SilentlyContinue
+        sc.exe delete $script:SERVICE_NAME 2>&1 | Out-Null
+    }
+
+    Write-Ok "服务 $($script:SERVICE_NAME) 已注册 (自动启动)"
 }
 
-# 启动服务
-function Start-AgentService {
-    Write-Info "启动 Agent 服务..."
-    
+# ── Step 6: 启动验证 ─────────────────────────────────────────────
+
+function Start-AndVerify {
+    Write-Step "6/7 启动验证"
+
     try {
-        Start-Service -Name $script:Config.ServiceName -ErrorAction Stop
-        Start-Sleep -Seconds 3
-        
-        $service = Get-Service -Name $script:Config.ServiceName
-        if ($service.Status -eq "Running") {
-            Write-Success "服务启动成功"
-        }
-        else {
-            throw "服务状态异常: $($service.Status)"
-        }
+        Start-Service -Name $script:SERVICE_NAME -ErrorAction Stop
     }
     catch {
-        throw "服务启动失败: $_"
+        Fail $script:E005 "E005: 服务启动失败 - $_"
     }
-}
 
-# 测试健康检查
-function Test-AgentHealth {
-    param([int]$Port = 8080)
-    
-    Write-Info "测试 Agent 健康状态..."
-    
-    $maxRetries = 10
-    $retryInterval = 2
-    
-    for ($i = 1; $i -le $maxRetries; $i++) {
+    Start-Sleep -Seconds 2
+    $svc = Get-Service -Name $script:SERVICE_NAME
+    if ($svc.Status -ne "Running") {
+        Fail $script:E005 "E005: 服务状态异常 ($($svc.Status))"
+    }
+    Write-Ok "服务已启动"
+
+    # 健康检查
+    $healthUrl = "http://127.0.0.1:$Port/health"
+    $healthy   = $false
+    for ($i = 1; $i -le 10; $i++) {
         try {
-            $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/health" -UseBasicParsing -TimeoutSec 5
-            if ($response.StatusCode -eq 200) {
-                Write-Success "Agent 健康检查通过"
-                return $true
-            }
+            $resp = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
+            if ($resp.StatusCode -eq 200) { $healthy = $true; break }
         }
-        catch {
-            Write-Warning "第 $i/$maxRetries 次检查失败，${retryInterval}秒后重试..."
-            Start-Sleep -Seconds $retryInterval
-        }
+        catch { Start-Sleep -Seconds 2 }
     }
-    
-    Write-Error "健康检查失败，Agent 可能未正常启动"
-    return $false
-}
 
-# 显示安装摘要
-function Show-InstallSummary {
-    param([string]$InstallDir)
-    
-    Write-Host "`n========================================" -ForegroundColor Green
-    Write-Host "    安装完成！" -ForegroundColor Green
-    Write-Host "========================================`n" -ForegroundColor Green
-    
-    Write-Host "安装目录: $InstallDir" -ForegroundColor Cyan
-    Write-Host "配置文件: $(Join-Path $InstallDir "config\config.yml")" -ForegroundColor Cyan
-    Write-Host "数据目录: $(Join-Path $InstallDir "data")" -ForegroundColor Cyan
-    Write-Host "日志文件: $(Join-Path $InstallDir "logs\agent.log")" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "服务名称: $($script:Config.ServiceName)" -ForegroundColor Cyan
-    Write-Host "管理地址: http://127.0.0.1:8080" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "常用命令:" -ForegroundColor Yellow
-    Write-Host "  查看状态: Get-Service $($script:Config.ServiceName)" -ForegroundColor Gray
-    Write-Host "  停止服务: Stop-Service $($script:Config.ServiceName)" -ForegroundColor Gray
-    Write-Host "  启动服务: Start-Service $($script:Config.ServiceName)" -ForegroundColor Gray
-    Write-Host "  查看日志: Get-Content '$(Join-Path $InstallDir "logs\agent.log")' -Tail 50" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "卸载方法:" -ForegroundColor Yellow
-    Write-Host "  1. 停止服务: Stop-Service $($script:Config.ServiceName)" -ForegroundColor Gray
-    Write-Host "  2. 删除服务: sc.exe delete $($script:Config.ServiceName)" -ForegroundColor Gray
-    Write-Host "  3. 删除目录: Remove-Item -Recurse '$InstallDir'" -ForegroundColor Gray
-    Write-Host ""
-}
-
-# 主安装流程
-function Install-OPCAgent {
-    try {
-        Write-Host "`nOPC200 Agent Windows 安装脚本 v$($script:Config.Version)`n" -ForegroundColor Cyan
-        
-        # 步骤1: 检查管理员权限
-        if (-not (Test-AdminRights)) {
-            throw "请以管理员身份运行 PowerShell 然后重试"
-        }
-        
-        # 步骤2: 检查系统要求
-        Test-SystemRequirements
-        
-        # 步骤3: 获取配置
-        if ($Silent) {
-            if (-not $PlatformUrl -or -not $CustomerId -or -not $ApiKey) {
-                throw "静默模式需要提供所有参数: -PlatformUrl, -CustomerId, -ApiKey"
-            }
-            $script:Config.PlatformUrl = $PlatformUrl
-            $script:Config.CustomerId = $CustomerId
-            $script:Config.ApiKey = $ApiKey
-            $script:Config.InstallDir = if ($InstallDir) { $InstallDir } else { Join-Path $env:LOCALAPPDATA "OPC200" }
-        }
-        else {
-            Get-InteractiveConfig
-        }
-        
-        # 步骤4: 创建目录
-        Initialize-DirectoryStructure -BaseDir $script:Config.InstallDir
-        
-        # 步骤5: 下载 Agent
-        $agentPath = Join-Path $script:Config.InstallDir $script:Config.AgentFileName
-        Download-Agent -Destination $agentPath
-        
-        # 步骤6: 写入配置
-        $configDir = Join-Path $script:Config.InstallDir "config"
-        Write-Configuration -ConfigDir $configDir
-        
-        # 步骤7: 注册服务
-        Register-AgentService -AgentPath $agentPath -ConfigPath (Join-Path $configDir "config.yml")
-        
-        # 步骤8: 启动服务
-        Start-AgentService
-        
-        # 步骤9: 健康检查
-        $health = Test-AgentHealth
-        
-        # 步骤10: 显示摘要
-        Show-InstallSummary -InstallDir $script:Config.InstallDir
-        
-        if (-not $health) {
-            Write-Warning "Agent 可能未完全启动，请检查日志"
-        }
-        
-        Write-Success "安装流程完成"
-        return 0
+    if ($healthy) {
+        Write-Ok "健康检查通过 ($healthUrl)"
     }
-    catch {
-        Write-Error "安装失败: $_"
-        return 1
+    else {
+        Write-Warn "健康检查超时，Agent 可能仍在启动中"
     }
 }
 
-# 执行安装
-$exitCode = Install-OPCAgent
+# ── Step 7: 完成输出 ─────────────────────────────────────────────
+
+function Show-Summary {
+    Write-Step "7/7 安装完成"
+
+    $root = $script:InstallRoot
+    Write-Host ""
+    Write-Host "  安装目录 : $root" -ForegroundColor Cyan
+    Write-Host "  配置文件 : $root\config\config.yml" -ForegroundColor Cyan
+    Write-Host "  日志文件 : $root\logs\agent.log" -ForegroundColor Cyan
+    Write-Host "  服务名称 : $($script:SERVICE_NAME)" -ForegroundColor Cyan
+    Write-Host "  健康检查 : http://127.0.0.1:$Port/health" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  查看状态 : Get-Service $($script:SERVICE_NAME)" -ForegroundColor Gray
+    Write-Host "  查看日志 : Get-Content '$root\logs\agent.log' -Tail 50" -ForegroundColor Gray
+    Write-Host "  卸载     : .\uninstall.ps1 -InstallDir '$root'" -ForegroundColor Gray
+    Write-Host ""
+}
+
+# ── 主流程 ────────────────────────────────────────────────────────
+
+function Main {
+    Write-Host "`nOPC200 Agent Installer v$($script:AGENT_VERSION) (Windows)`n" -ForegroundColor Cyan
+
+    Test-Environment
+    Get-InstallConfig
+    Get-AgentBinary
+    Install-Agent
+    Register-Service
+    Start-AndVerify
+    Show-Summary
+
+    return 0
+}
+
+$exitCode = Main
 exit $exitCode
