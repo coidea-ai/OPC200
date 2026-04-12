@@ -4,7 +4,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-12（AGENT-004/005 v2 重写完成）
+**最后更新**: 2026-04-12（AGENT-002/004/005 v2 重写完成）
 
 ---
 
@@ -176,24 +176,26 @@
 ---
 
 #### AGENT-002: 实现 Windows 安装脚本（PowerShell）
-- **状态**: ✅ MVP 已完成（待功能完善后增强）
+- **状态**: ✅ 已完成（v2 重写）
 - **负责人**: @zhang-yao-claw
 - **协作方**: 无
 - **预计 AI 工时**: 2h
-- **实际完成**: Day 1 下午（MVP 版本）
+- **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - ✅ `agent/scripts/install.ps1` - 安装脚本（交互式 + 静默模式）
-  - ✅ `agent/scripts/uninstall.ps1` - 卸载脚本
-  - ✅ `agent/scripts/TEST_PLAN.md` - 测试方案
-  - ✅ 支持 Windows 10/11
-  - ✅ 自动下载 Agent 可执行文件（GitHub Releases）
-  - ✅ 创建系统服务（开机自启）
-  - ✅ 健康检查验证
-- **提交**: `7515747` - feat(agent): add Windows deployment scripts (MVP)
-- **后续增强**:
-  - 切换到自有 CDN 下载
-  - 图形界面安装向导
-  - 数字签名验证
+  - ✅ `agent/scripts/install.ps1` — 7 步安装流程，严格按 AGENT-001 SPEC
+  - ✅ `agent/scripts/uninstall.ps1` — 3 步卸载，支持 KeepData
+  - ✅ `agent/src/tests/test_agent002_install.py` — 49 个规范一致性测试
+  - ✅ 目录结构 `~/.opc200/`（bin/config/data/journal/exporter/logs）
+  - ✅ SHA256 校验、端口占用检测、磁盘空间检查
+  - ✅ 错误码 E001-E005（按 SPEC §6.1）
+  - ✅ 失败自动回滚（按 SPEC §6.2）
+  - ✅ .env ACL 权限受限存储 API Key
+- **测试**: 49/49 规范一致性测试通过
+- **提交**: `d2c84fb`（v2），~~`7515747`~~（v1 已废弃）
+- **v2 改进**:
+  - 安装目录从 `$LOCALAPPDATA\OPC200` 改为 `~/.opc200/`（与 SPEC 对齐）
+  - 新增 `bin/` 子目录、SHA256 校验、端口检测、回滚机制
+  - 删除旧 TEST_PLAN.md / LOCAL_TEST_GUIDE.md / run-local-tests.sh
 - **依赖**: AGENT-001 ✅
 
 ---
@@ -382,6 +384,13 @@
 
 ## 📝 任务变更日志
 
+### 2026-04-12 (晚)
+- **重写**: AGENT-002 Windows 安装/卸载脚本（v2）
+  - 清理 `agent/scripts/` 旧文件（5 个），全部重写
+  - 严格按 AGENT-001 SPEC 实现 7 步安装流程 + 回滚
+  - 49 个规范一致性测试通过
+  - 提交: `d2c84fb`
+
 ### 2026-04-12
 - **重写**: AGENT-004 + AGENT-005 全部重写（v2）
   - 清理 `agent/src/exporter/` 旧代码（collector.py / pusher.py / test_collector.py / README.md）
@@ -445,6 +454,7 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-002**: v2 重写 Windows 安装脚本（2026-04-12）
 - **AGENT-005**: v2 重写 exporter 指标推送（2026-04-12）
 - **AGENT-004**: v2 重写 exporter 指标采集（2026-04-12）
 - **AGENT-006**: 端到端联调验证通过（2026-04-10）
