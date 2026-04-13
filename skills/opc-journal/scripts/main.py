@@ -88,7 +88,6 @@ def _build_parser() -> _NoExitParser:
     p.add_argument("--format", default="markdown")
     p.add_argument("--time-range", default="all")
     p.add_argument("--output-path", default="")
-    p.add_argument("--time-range", default="all")
 
     # analyze
     p = subparsers.add_parser("analyze", help="Analyze patterns")
