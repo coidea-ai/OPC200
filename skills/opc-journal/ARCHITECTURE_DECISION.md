@@ -12,15 +12,15 @@
 
 ---
 
-## ADR-002: LLM-First Interpretation Layer (v2.5.0)
+## ADR-002: LLM-First Interpretation Layer (v2.5.1)
 
 **Date**: 2026-04-13  
 **Status**: Accepted  
-**Decision**: Remove all hardcoded semantic interpretation from commands. Commands act as pure data layers returning raw signals and context for the caller (LLM) to interpret dynamically.
+**Decision**: Remove all hardcoded semantic interpretation from commands. Commands act as data layers returning structural signals and context for the caller (LLM) to interpret dynamically.
 
 ### Affected Commands
 
-| Command | Previous Behavior | v2.5.0 Behavior |
+| Command | Previous Behavior | v2.5.1 Behavior |
 |---------|------------------|-----------------|
 | `record` | Hardcoded emotion analysis via keywords | Returns raw content; emotion only if caller provides it |
 | `analyze` | Pre-baked emotional/work/decision interpretations | Returns structural signals (punctuation, caps, quotes) plus minimal keyword fragments (action/challenge/achievement regex matches) |
