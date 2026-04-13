@@ -41,29 +41,99 @@ metadata:
 
 ## Architecture
 
+### Directory Structure
+
 ```
 opc-journal/
 ├── scripts/
 │   ├── main.py           # CLI entry point
 │   └── commands/
-│       ├── init.py
-│       ├── record.py
-│       ├── search.py
-│       ├── export.py
-│       ├── analyze.py
-│       ├── milestones.py
-│       ├── insights.py
-│       ├── task.py
-│       ├── batch_task.py
-│       ├── status.py
-│       ├── delete.py
-│       ├── archive.py
-│       └── update_meta.py
+│       ├── init.py       # Initialize journal with charter
+│       ├── record.py     # Append entries with auto ID generation
+│       ├── search.py     # Full-text local search
+│       ├── export.py     # Markdown/JSON export
+│       ├── analyze.py    # Structural signal + keyword fragment extraction
+│       ├── milestones.py # Milestone candidate detection
+│       ├── insights.py   # Context assembly for LLM interpretation
+│       ├── task.py       # Single task creation (persistent)
+│       ├── batch_task.py # Bulk task creation
+│       ├── status.py     # Statistics and streak calculation
+│       ├── delete.py     # Entry removal (requires --force)
+│       ├── archive.py    # Backup and clear operations (requires --force)
+│       ├── update_meta.py# Metadata and language updates
+│       └── _meta.py      # Meta helpers with file locking
 ├── utils/
-│   └── storage.py
-├── tests/
-└── config.yml
+│   ├── storage.py        # File I/O with path sanitization
+│   ├── parsing.py        # Entry block splitting/joining
+│   ├── task_storage.py   # Task CRUD with fcntl locking
+│   └── timezone.py       # Asia/Shanghai timezone utilities
+├── tests/                # 57 pytest test cases
+└── config.yml            # Skill metadata
 ```
+
+### Data Flow
+
+```
+User Input → main.py → Command Router → Command Module → Storage Utils → Local Files
+                                              ↓
+                                         Return JSON {status, result, message}
+```
+
+All commands follow a uniform return pattern:
+- `status`: "success" or "error"
+- `result`: Structured data (dict, list, or None)
+- `message`: Human-readable description
+
+### Security Model
+
+| Layer | Implementation |
+|-------|---------------|
+| Path Sanitization | `_sanitize_customer_id()` strips `..`, `/`, `\`; empty falls back to "default" |
+| File Locking | `fcntl.flock()` with shared (read) / exclusive (write) locks on meta and tasks |
+| Backup Strategy | `.bak` files created before any mutation (record, delete, archive) |
+| Destructive Ops | `--force` flag required for delete and archive --clear |
+| Scope | All I/O constrained to `~/.openclaw/customers/{customer_id}/` |
+
+### LLM-First Design
+
+This skill delegates **interpretation** to the caller (LLM) while providing **structured extraction**:
+
+| Command | What Skill Does | What LLM Does |
+|---------|-----------------|---------------|
+| `analyze` | Extracts structural signals (punctuation, caps) + keyword fragments | Interprets emotional/psychological state |
+| `insights` | Assembles context + signal counts | Generates personalized recommendations |
+| `milestones` | Detects structural candidates (first entry, pattern breaks) | Validates and celebrates true milestones |
+| `record` | Stores raw text + optional caller-provided emotion | Infers emotion if not provided |
+
+**Key principle**: The skill extracts patterns but never draws conclusions about the user's mental state.
+
+### Concurrency
+
+- **Single-user optimized**: File locking prevents corruption but is not designed for high-concurrency multi-user scenarios
+- **POSIX only**: Uses `fcntl` (not available on Windows)
+- **Atomic writes**: Metadata writes use `flock(LOCK_EX)` + `fsync()` + `flock(LOCK_UN)`
+
+### Storage Format
+
+**Entry Block Format:**
+```markdown
+---
+type: entry
+entry_id: JE-20260413-A1B2C3
+date: 13-04-26
+day: 1
+emotion: excited
+language: en
+---
+
+Your entry content here.
+```
+
+**File Organization:**
+- `memory/DD-MM-YY.md`: Daily entry files
+- `journal_meta.json`: Goals, language, total count
+- `tasks.json`: Persistent task list
+- `archive/YYYYMMDD-HHMMSS/`: Timestamped backups
 
 ## Development Notes
 
