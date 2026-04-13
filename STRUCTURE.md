@@ -361,7 +361,7 @@ scripts/
 |------|------|------|
 | 文档 | 🟡 | REFACTOR_PLAN 已建立，SYSTEM 架构文档待更新 |
 | 架构 | 🟡 | v2.2 → v2.4 重构中 |
-| Skills | 🟡 | opc-remi-lite 已废弃，套件从 5 个压缩到 3 个核心 |
+| Skills | 🟢 | `opc-journal` 统一技能已取代旧套件，包含 13 个核心命令 |
 | 脚本 | 🟡 | install-skills.sh 已更新，其余待适配新架构 |
 | Python 核心 | ✅ | src/ 14个模块 |
 | 测试 | ✅ | 12个测试文件，TDD 完成 |

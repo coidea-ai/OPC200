@@ -1,2 +1,0 @@
-# Runtime dependencies
-# Remi Lite has no external dependencies - local only
