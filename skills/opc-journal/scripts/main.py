@@ -13,6 +13,7 @@ Commands:
     insights    Generate insights
     task        Create async task (legacy)
     status      Show journal status
+    update-meta Update journal metadata
     help        Show this help
 """
 import sys

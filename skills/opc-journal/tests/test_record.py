@@ -10,6 +10,7 @@ from scripts.commands import record
 def test_record_success(tmp_path, monkeypatch):
     monkeypatch.setattr(record, "build_memory_path", lambda cid: str(tmp_path / f"{cid}.md"))
     monkeypatch.setattr(record, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    monkeypatch.setattr(record, "get_language", lambda cid: "en")
     result = record.run("OPC-001", {"content": "Shipped MVP today", "day": 5})
     assert result["status"] == "success"
     assert result["result"]["day"] == 5

@@ -10,6 +10,7 @@ from scripts.commands import analyze
 def test_analyze_with_memory(tmp_path, monkeypatch):
     import scripts.commands.analyze as ana_mod
     monkeypatch.setattr(ana_mod, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    monkeypatch.setattr(ana_mod, "get_language", lambda cid: "en")
     (tmp_path / "OPC-001" / "memory").mkdir(parents=True)
     (tmp_path / "OPC-001" / "memory" / "11-04-26.md").write_text(
         "---\ntype: entry\ndate: 11-04-26\nday: 1\n---\n\nCompleted the login feature today, felt happy and satisfied. Decided to adopt JWT."

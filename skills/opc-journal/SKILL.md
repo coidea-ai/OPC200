@@ -61,8 +61,10 @@ opc-journal/
 
 ## Development Notes
 
-- `analyze` reads `dreams.md` and `memory/*.md` to produce OPC-specific interpretations.
-- `insights` generates business insights and recommendations from memory files.
-- `update-meta` supports retroactive document translation when switching languages.
+- `analyze` reads `dreams.md` and `memory/*.md` and returns **raw signals + context** for the caller (LLM) to interpret dynamically. No hardcoded emotional, decision, or work-rhythm interpretations are baked in.
+- `insights` returns **raw memory context and file metadata** for the caller (LLM) to generate recommendations dynamically.
+- `milestones` returns a **raw candidate object** for the caller (LLM) to validate and classify. No keyword-based auto-detection.
+- `record` defers emotional interpretation to the caller. The `emotion` frontmatter field is only populated if the caller provides it in `metadata`.
+- `update-meta` updates journal metadata (language, goals, preferences). Retroactive translation rules are kept minimal because templates are now English-only by design.
 - All data is stored locally under `~/.openclaw/customers/{customer_id}/`.
 - No external network calls are made.

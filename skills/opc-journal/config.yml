@@ -6,17 +6,7 @@ journal:
   retention_days: 365
   privacy_level: "standard"
 
-pattern_recognition:
-  mode: "interpretation_layer"
-  source: "openclaw_dreams"
-  analysis_frequency: "weekly"
-
-milestone:
-  auto_detect: true
-  celebration_enabled: true
-
-insight:
-  generation_frequency: "daily"
-  include_recommendations: true
-
 # NOTE: This skill is LOCAL-ONLY. No network calls.
+# v2.5.0 Architecture:
+# - analyze / insights / milestones act as pure data layers.
+# - All interpretation, recommendation, and classification are left to the caller (LLM).
