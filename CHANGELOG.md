@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (Breaking)
 - **LLM-first architecture for `opc-journal`**: removed all hardcoded local interpretation layers. The skill now acts as a pure data layer, returning raw signals and context for the caller (LLM) to interpret dynamically.
-  - `analyze` — returns `raw_text`, `signal_summary`, and file metadata instead of pre-baked emotional/work/decision interpretations.
+  - `analyze` — returns `raw_text`, `signal_summary`, and file metadata instead of hardcoded emotional/work/decision interpretations.
   - `insights` — returns raw memory context and recent file metadata instead of fixed theme/recommendation pairs.
-  - `milestones` — returns a raw `candidate` object instead of keyword-based milestone detection.
+  - `milestones` — returns a raw `candidate` object instead of performing keyword-based milestone detection.
   - `record` — removes auto-emotion analysis (`_analyze_emotion`); defers emotional interpretation to the caller.
-  - `init` — generates a minimal charter without hardcoded motivational quotes or bilingual blocks.
+  - `init` — generates a minimal charter without hardcoded motivational quotes or dual-language content.
   - `status` — returns raw statistics (`total_entries`, `latest_entry_date`, `journal_active`) and defers message generation to the caller.
 
 ### Fixed
@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved Day 1 onboarding experience with charter generation.
 
 ### Fixed
-- 5 failing integration tests fixed; full test suite green (227 passed).
-- Removed all remaining references from `opc-journal-suite` to `opc-journal`.
+- 5 failing integration tests fixed; full test suite is green (227 tests passed).
+- Removed all remaining references to `opc-journal-suite`, replacing them with `opc-journal`.
 - Standardized `SKILL.md` frontmatter YAML format for ClawHub compatibility.
 
 ---
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Intent-based routing with natural language triggers
   - 9 comprehensive unit tests
 
-- **Learning Tracker** — Three-confirmation learning mechanism
+- **Learning Tracker** — Three-stage learning confirmation mechanism
   - 1st occurrence → daily memory
   - 3rd occurrence → project memory
   - 10th occurrence → permanent memory
@@ -78,8 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import error in milestone tracker (removed non-existent notify module)
 - Documentation consistency across all skill modules
 - Script executable permissions (`backup-manager.sh`, `emergency-recovery.sh`)
-- `detect-secrets` CI failures with proper baseline configuration
-- Invalid qdrant health checks in docker-compose files
+- `detect-secrets` CI failures resolved with proper baseline configuration
+- Invalid Qdrant health checks in docker-compose files
 
 ### Changed
 - **Version unification**: All project documents and skills aligned to v2.3.0
@@ -157,5 +157,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `EXECUTIVE_SUMMARY.md` to match latest audit conclusions (A- / 94.5 / ~90%)
   - Updated `DEVELOPMENT_PLAN.md` progress and acceptance checklist statuses
   - Updated `PROJECT_STATUS.md` metadata and action priorities
-s
-rities
