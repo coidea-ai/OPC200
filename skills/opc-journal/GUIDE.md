@@ -77,6 +77,49 @@ Searches across all entries and returns matching blocks with context.
 
 ---
 
+## Common Workflows
+
+### Daily Standup Workflow
+```bash
+# Morning: Check your status
+opc-journal status
+
+# Log your work
+opc-journal record "Refactored auth module. Blocked on API rate limits."
+
+# End of day: Create tomorrow's tasks
+opc-journal batch-task --descriptions "Email API support" "Draft rate limit workaround"
+```
+
+### Weekly Review Workflow
+```bash
+# Analyze the past week
+opc-journal analyze --days 7
+
+# Generate insights for your AI
+opc-journal insights --days 7
+
+# Export to share with advisor/coach
+opc-journal export --time-range 7d --output-path ~/weekly.md
+
+# Archive old entries to keep things tidy
+opc-journal archive --clear
+```
+
+### Milestone Tracking Workflow
+```bash
+# Record a potential milestone
+opc-journal record "Just got our first paying customer!" --emotion excited
+
+# Detect milestones from recent entries
+opc-journal milestones --days 7
+
+# Update your goals based on progress
+opc-journal update-meta --goals "Reach 10 customers" "Hire first contractor"
+```
+
+---
+
 ## Command Reference
 
 ### `init` — Initialize Your Journal
@@ -84,7 +127,8 @@ Searches across all entries and returns matching blocks with context.
 ```bash
 opc-journal init --day 1 \
   --goals "Launch product" "Reach ramen profitability" \
-  --preferences '{"timezone": "Asia/Shanghai"}'
+  --preferences '{"timezone": "Asia/Shanghai"}' \
+  --language en
 ```
 
 **What happens:**
@@ -96,6 +140,7 @@ opc-journal init --day 1 \
 - `--day`: Starting day number (default: 1)
 - `--goals`: List of string goals
 - `--preferences`: JSON object for timezone, communication style, etc.
+- `--language`: Force language (`zh` or `en`). Auto-detected if omitted.
 
 ---
 
@@ -158,7 +203,10 @@ opc-journal export --format json --time-range 30d
 
 **Supported formats:** `markdown`, `json`
 
-**Time ranges:** `7d`, `1w`, `1m`, `all`
+**Flags:**
+- `--format`: Output format (`markdown` or `json`, default: `markdown`)
+- `--time-range`: Date filter (`7d`, `1w`, `1m`, `all`, default: `all`)
+- `--output-path`: Custom file path for the exported file
 
 **Output:**
 - Markdown: Formatted document with headers and entry bodies
@@ -275,8 +323,14 @@ opc-journal task --type research \
 opc-journal batch-task --descriptions \
   "Draft blog post" \
   "Email investor update" \
-  "Review Q2 metrics"
+  "Review Q2 metrics" \
+  --timeout-hours 24
 ```
+
+**Flags:**
+- `--descriptions`: List of task descriptions (required, space-separated)
+- `--type`: Task category for all tasks (default: `research`)
+- `--timeout-hours`: Expected turnaround time for all tasks (default: 8)
 
 **Returns:**
 - List of created task IDs
@@ -316,11 +370,12 @@ opc-journal archive --clear
 
 **What happens:**
 - Copies all `*.md` files to `archive/YYYYMMDD-HHMMSS/`
-- Excludes `.bak` files
+- **Note:** `.bak` backup files are excluded from archiving
 - With `--clear`: deletes source `.md` and `.bak` **only if** all copies succeeded
 
 **Safety:**
 - `archive --clear` will fail if any copy operation fails
+- Backup files (`.bak`) remain in `memory/` even after `--clear` for safety
 
 ---
 
@@ -336,6 +391,14 @@ opc-journal update-meta --language zh --goals "发布产品" "获取前100名用
 - `--day`: Update current day number
 
 **Note:** Changing language does **not** retroactively translate entries.
+
+### `help` — Show Command Help
+
+```bash
+opc-journal help
+```
+
+Displays the full list of available commands and their usage.
 
 ---
 
