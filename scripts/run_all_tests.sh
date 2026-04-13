@@ -50,31 +50,15 @@ run_test_suite "集成测试" "tests/integration" "--timeout=120"
 # 3. Skills测试
 echo "📦 运行: Skills测试"
 echo "------------------------------"
-if [ -d "skills/opc-journal-suite" ]; then
-    cd skills/opc-journal-suite
+if [ -d "skills/opc-journal" ]; then
+    cd skills/opc-journal
     if pytest tests/ -v --tb=short; then
-        echo -e "${GREEN}✅ Skills主测试通过${NC}"
+        echo -e "${GREEN}✅ Skills测试通过${NC}"
         PASSED=$((PASSED + 1))
     else
-        echo -e "${RED}❌ Skills主测试失败${NC}"
+        echo -e "${RED}❌ Skills测试失败${NC}"
         FAILED=$((FAILED + 1))
     fi
-    
-    # 子技能测试
-    for dir in opc-*/; do
-        if [ -d "$dir/tests" ]; then
-            echo "  测试子技能: $dir"
-            cd "$dir"
-            if pytest tests/ -v --tb=short 2>&1; then
-                echo -e "${GREEN}  ✅ $dir 通过${NC}"
-                PASSED=$((PASSED + 1))
-            else
-                echo -e "${RED}  ❌ $dir 失败${NC}"
-                FAILED=$((FAILED + 1))
-            fi
-            cd ..
-        fi
-    done
     cd ../..
 else
     echo -e "${YELLOW}⚠️  Skills目录不存在${NC}"

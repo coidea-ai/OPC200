@@ -171,7 +171,7 @@ install_skills() {
         clawhub install xiaowenzhou/active-maintenance || true
         clawhub install arminnaimi/agent-team-orchestration || true
         clawhub install dennis-da-menace/agent-memory || true
-        clawhub install coidea/opc-journal-suite || true
+        clawhub install coidea/opc-journal || true
     "
     
     print_success "Skills 安装完成"

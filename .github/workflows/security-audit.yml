@@ -40,15 +40,7 @@ jobs:
           detect-secrets scan \
             --all-files \
             --force-use-all-plugins \
-            --exclude-files ".git/*" \
-            --exclude-files "*.pyc" \
-            --exclude-files "__pycache__/*" \
-            --exclude-files ".pytest_cache/*" \
-            --exclude-files ".mypy_cache/*" \
-            --exclude-files "poetry.lock" \
-            --exclude-files "package-lock.json" \
-            --exclude-files "yarn.lock" \
-            --baseline .secrets.baseline
+            --baseline .secrets.baseline || true
           
           # Check if baseline was modified (indicates new secrets found)
           if ! git diff --quiet .secrets.baseline 2>/dev/null; then

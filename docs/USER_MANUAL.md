@@ -38,7 +38,7 @@
 
 4. **安装 Skills**
    ```bash
-   ./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal-suite
+   ./scripts/deploy/install-skills.sh --id OPC-001 --skill opc-journal
    ```
 
 ## 核心功能

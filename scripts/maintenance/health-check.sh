@@ -173,7 +173,8 @@ run_health_check_worker() {
     
     local endpoint
     local numeric_id=$(opc_parse_customer_id "$customer_id")
-    if [[ $numeric_id -le 150 ]]; then
+    # v2.4 重构后部署比例: 20本地 + 180云端
+    if [[ $numeric_id -le 20 ]]; then
         endpoint="http://opc-${numeric_id}.tailnet.opc200.local"
     else
         endpoint="https://${customer_code}.opc200.coidea.ai"
@@ -203,11 +204,22 @@ EOF
     backup_health=$(check_backup_status "$customer_id")
     
     local skills_health="HEALTHY"
-    for skill in opc-journal-core opc-pattern-recognition opc-milestone-tracker opc-async-task-manager opc-insight-generator; do
+    # v2.4 重构后只检查核心技能
+    for skill in opc-journal-core opc-milestone-tracker opc-insight-generator; do
         local skill_status
         skill_status=$(check_skill_health "$customer_id" "$skill")
         if [[ "$skill_status" != "HEALTHY" ]]; then
             skills_health="UNHEALTHY:$skill"
+            break
+        fi
+    done
+    
+    # Legacy skills 不再默认检查
+    for legacy_skill in opc-async-task-manager opc-pattern-recognition; do
+        local legacy_status
+        legacy_status=$(check_skill_health "$customer_id" "$legacy_skill")
+        if [[ "$legacy_status" != "HEALTHY" && "$skills_health" == "HEALTHY" ]]; then
+            skills_health="DEGRADED:$legacy_skill"
             break
         fi
     done

@@ -69,7 +69,7 @@ opc200/
 │   └── insights/          # 洞察生成
 │
 ├── skills/                # OpenClaw Skills
-│   └── opc-journal-suite/ # Journal 套件
+│   └── opc-journal/           # OPC Journal 单一 CLI Skill
 │
 ├── config/                # 配置文件
 │   ├── gateway.yml

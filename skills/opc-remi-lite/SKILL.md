@@ -1,38 +1,33 @@
 ---
 name: opc-remi-lite
 description: |
-  Remi Lite - 极简个人记忆系统
+  ⚠️ DEPRECATED: 此 Skill 已被 OpenClaw v2026.4.9+ 原生 dreaming / REM / 结构化 diary 能力完全覆盖，不再维护。
   
-  只做三件事：
-  1. 自动总结对话中的有价值内容
-  2. 自然语言查询历史记忆
-  3. 一键备份/导入
+  保留目录仅作为历史参考。新用户请勿安装。
   
-  诚实设计：不假装比 OpenClaw 原生机制更聪明
+  替代方案：直接使用 OpenClaw 内置的 memory/YYYY-MM-DD.md + dreams.md + /tasks 面板。
 
 namespace: coidea
-version: 0.1.0
+version: 0.1.0-deprecated
 
-user-invocable: true
+user-invocable: false
 command-dispatch: tool
 tool: coordinate
 
 commands:
   remi:
-    description: "主入口"
-    examples:
-      - "今天完成了原型设计"
-      - "我数据库怎么优化的？"
-      - "/remi backup"
-      - "/remi imports"
+    description: "[已废弃] 主入口"
+    examples: []
 
 metadata:
   openclaw:
-    emoji: 🧠
+    emoji: 🚫
     requires: {}
 ---
 
-# Remi Lite
+# Remi Lite (DEPRECATED)
+
+> **⚠️ 废弃声明**: 自 OpenClaw v2026.4.9 起，此 Skill 已被平台原生能力完全覆盖，不再维护。
 
 > "记住该记住的，忘记该忘记的"
 

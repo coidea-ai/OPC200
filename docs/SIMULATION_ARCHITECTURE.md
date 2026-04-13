@@ -93,7 +93,7 @@ services:
 
   # 技能套件 (每个实例独立)
   skills-suite:
-    image: openclaw/skills:opc-journal-suite-2.3.0
+    image: openclaw/skills:opc-journal-2.3.0
     deploy:
       replicas: 150
     volumes:

@@ -4,19 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 2.2.0)'
+        description: 'Version to publish (e.g., 2.4.2)'
         required: true
-        default: '2.2.0'
-      publish_suite:
-        description: 'Publish Suite (meta package)'
-        required: true
-        type: boolean
-        default: true
-      publish_individual:
-        description: 'Publish Individual Skills'
-        required: true
-        type: boolean
-        default: true
+        default: '2.4.3'
       dry_run:
         description: 'Dry run (no actual publish)'
         required: true
@@ -27,10 +17,9 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  publish-suite:
-    name: 📦 Publish OPC Journal Suite
+  publish-opc-journal:
+    name: 📦 Publish OPC Journal
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.publish_suite == 'true' }}
     
     steps:
       - name: Checkout code
@@ -52,80 +41,30 @@ jobs:
           clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
           clawhub whoami
 
-      - name: Dry Run - Validate Suite Package
+      - name: Dry Run - Validate Package
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          echo "🔍 Dry run mode - validating opc-journal-suite..."
-          ls -la skills/opc-journal-suite/
-          cat skills/opc-journal-suite/SKILL.md | head -30
-          echo "✅ Suite package structure validated"
+          echo "🔍 Dry run mode - validating opc-journal..."
+          ls -la skills/opc-journal/
+          cat skills/opc-journal/SKILL.md | head -30
+          echo "✅ Package structure validated"
 
-      - name: Publish Suite to ClawHub
+      - name: Publish opc-journal to ClawHub
         if: ${{ github.event.inputs.dry_run == 'false' }}
         run: |
-          echo "📤 Publishing opc-journal-suite v${{ github.event.inputs.version }}..."
-          cd skills/opc-journal-suite
+          echo "📤 Publishing opc-journal v${{ github.event.inputs.version }}..."
+          cd skills/opc-journal
           clawhub publish . \
-            --slug opc-journal-suite \
-            --name "OPC Journal Suite" \
+            --slug opc-journal \
+            --name "OPC Journal" \
             --version ${{ github.event.inputs.version }} \
-            --changelog "OPC200 Journal Suite - User growth tracking and insights"
-          echo "✅ Suite published successfully"
-
-  publish-individual:
-    name: 🔧 Publish Individual Skills
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.publish_individual == 'true' }}
-    needs: publish-suite
-    strategy:
-      matrix:
-        skill:
-          - { dir: 'opc-journal-core', name: 'Journal Core', desc: 'Core journaling and memory management' }
-          - { dir: 'opc-pattern-recognition', name: 'Pattern Recognition', desc: 'Behavioral pattern analysis' }
-          - { dir: 'opc-milestone-tracker', name: 'Milestone Tracker', desc: 'Automatic milestone detection' }
-          - { dir: 'opc-async-task-manager', name: 'Async Task Manager', desc: '7x24 async task execution' }
-          - { dir: 'opc-insight-generator', name: 'Insight Generator', desc: 'Personalized insights and recommendations' }
-      fail-fast: false
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install ClawHub CLI
-        run: npm install -g clawhub
-
-      - name: Configure ClawHub Auth
-        run: |
-          clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}"
-
-      - name: Dry Run - Validate ${{ matrix.skill.dir }}
-        if: ${{ github.event.inputs.dry_run == 'true' }}
-        run: |
-          echo "🔍 Dry run mode - validating ${{ matrix.skill.dir }}..."
-          ls -la skills/opc-journal-suite/${{ matrix.skill.dir }}/
-          test -f skills/opc-journal-suite/${{ matrix.skill.dir }}/SKILL.md && echo "✅ SKILL.md exists"
-
-      - name: Publish ${{ matrix.skill.name }}
-        if: ${{ github.event.inputs.dry_run == 'false' }}
-        run: |
-          echo "📤 Publishing ${{ matrix.skill.dir }} v${{ github.event.inputs.version }}..."
-          cd skills/opc-journal-suite/${{ matrix.skill.dir }}
-          clawhub publish . \
-            --slug ${{ matrix.skill.dir }} \
-            --name "${{ matrix.skill.name }}" \
-            --version ${{ github.event.inputs.version }} \
-            --changelog "${{ matrix.skill.desc }}"
-          echo "✅ ${{ matrix.skill.name }} published successfully"
+            --changelog "Single CLI skill for OPC journaling, pattern analysis, milestones, insights and task tracking. LOCAL-ONLY."
+          echo "✅ opc-journal published successfully"
 
   notify:
     name: 📢 Notify Completion
     runs-on: ubuntu-latest
-    needs: [publish-suite, publish-individual]
+    needs: publish-opc-journal
     if: always()
     
     steps:
@@ -135,18 +74,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Package | Version | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| opc-journal-suite | ${{ github.event.inputs.version }} | ${{ needs.publish-suite.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| opc-journal-core | ${{ github.event.inputs.version }} | ${{ needs.publish-individual.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| opc-journal | ${{ github.event.inputs.version }} | ${{ needs.publish-opc-journal.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Install Commands" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo '# Install full suite' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-journal-suite@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo '' >> $GITHUB_STEP_SUMMARY
-          echo '# Or install individual skills' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-journal-core@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-pattern-recognition@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-milestone-tracker@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-async-task-manager@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
-          echo 'clawhub install coidea/opc-insight-generator@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
+          echo 'clawhub install coidea/opc-journal@${{ github.event.inputs.version }}' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

@@ -91,12 +91,12 @@ tests/e2e/
 
 ### 3.4 Skills专项测试
 
-**位置**: `skills/opc-journal-suite/`
+**位置**: `skills/opc-journal/`
 
 **状态**: 已完整 (83个测试)
 
 ```
-skills/opc-journal-suite/
+skills/opc-journal/
 ├── tests/                         ✅ 44个测试
 │   ├── test_coordinate.py
 │   ├── test_cron_scheduler.py
@@ -304,7 +304,7 @@ pytest tests/integration -v --timeout=120 || exit 1
 
 # 3. Skills测试
 echo "3. 运行Skills测试..."
-cd skills/opc-journal-suite
+cd skills/opc-journal
 pytest tests/ -v --cov=. || exit 1
 for dir in opc-*/; do
     cd "$dir" && pytest tests/ -v || exit 1
@@ -405,7 +405,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: |
-          cd skills/opc-journal-suite
+          cd skills/opc-journal
           pytest tests/ -v --cov=. --cov-fail-under=80
           for dir in opc-*/; do
             cd "$dir" && pytest tests/ -v && cd ..

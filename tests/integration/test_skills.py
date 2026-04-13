@@ -1,246 +1,172 @@
-"""Integration tests for OPC Journal Suite Skills.
+"""Integration tests for opc-journal skill.
 
-Tests each skill's core functionality flows.
+Tests the unified CLI-style skill entry point through OpenClaw context.
 """
 import sys
 import tempfile
-import shutil
 from pathlib import Path
 
-# Add skill paths
+# Add opc-journal to path
 BASE_DIR = Path(__file__).parent.parent.parent
-SKILLS_DIR = BASE_DIR / "skills" / "opc-journal-suite"
+sys.path.insert(0, str(BASE_DIR / "skills" / "opc-journal"))
 
-sys.path.insert(0, str(SKILLS_DIR / "opc-journal-core" / "scripts"))
-sys.path.insert(0, str(SKILLS_DIR / "opc-pattern-recognition" / "scripts"))
-sys.path.insert(0, str(SKILLS_DIR / "opc-milestone-tracker" / "scripts"))
-sys.path.insert(0, str(SKILLS_DIR / "opc-async-task-manager" / "scripts"))
-sys.path.insert(0, str(SKILLS_DIR / "opc-insight-generator" / "scripts"))
-sys.path.insert(0, str(SKILLS_DIR / "scripts"))
-
-from init import main as journal_init
-from record import main as journal_record
-from search import main as journal_search
-from export import main as journal_export
-from analyze import main as pattern_analyze
-from detect import main as milestone_detect
-from create import main as task_create
-from status import main as task_status
-from daily_summary import main as insight_daily_summary
-from coordinate import main as suite_coordinate
+from scripts.main import main
 
 
-def test_journal_core_init():
-    """Test journal core initialization."""
-    result = journal_init({
+def test_opc_journal_init():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "day": 1,
-            "goals": ["Complete MVP"],
-            "preferences": {"timezone": "Asia/Shanghai"}
+            "argv": ["init", "--day", "1", "--goals", "Ship MVP"]
         }
     })
-    
     assert result["status"] == "success"
     assert result["result"]["initialized"] is True
     assert result["result"]["customer_id"] == "OPC-TEST-001"
-    print("✓ journal_core.init: PASSED")
-    return True
+    print("✓ opc-journal.init: PASSED")
 
 
-def test_journal_core_record():
-    """Test recording journal entries."""
-    result = journal_record({
+def test_opc_journal_record():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "content": "今天完成了用户注册功能",
-            "day": 5,
-            "metadata": {"energy_level": 6}
+            "argv": ["record", "Shipped MVP today", "--day", "5"]
         }
     })
-    
     assert result["status"] == "success"
     assert "entry_id" in result["result"]
-    print("✓ journal_core.record: PASSED")
-    return True
+    print("✓ opc-journal.record: PASSED")
 
 
-def test_journal_core_search():
-    """Test searching journal entries."""
-    result = journal_search({
-        "customer_id": "OPC-TEST-001",
-        "input": {"query": "database connection"}
-    })
-    
-    assert result["status"] == "success"
-    assert "search_params" in result["result"]
-    print("✓ journal_core.search: PASSED")
-    return True
-
-
-def test_journal_core_export():
-    """Test exporting journal entries."""
-    result = journal_export({
+def test_opc_journal_search():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "format": "markdown",
-            "time_range": "all"
+            "argv": ["search", "--query", "MVP"]
         }
     })
-    
+    assert result["status"] == "success"
+    assert "query" in result["result"]
+    print("✓ opc-journal.search: PASSED")
+
+
+def test_opc_journal_export():
+    result = main({
+        "customer_id": "OPC-TEST-001",
+        "input": {
+            "argv": ["export", "--format", "markdown", "--time-range", "all"]
+        }
+    })
     assert result["status"] == "success"
     assert result["result"]["export_format"] == "markdown"
-    print("✓ journal_core.export: PASSED")
-    return True
+    print("✓ opc-journal.export: PASSED")
 
 
-def test_pattern_recognition_analyze():
-    """Test pattern analysis."""
-    result = pattern_analyze({
+def test_opc_journal_analyze():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "entries": [
-                {"metadata": {"emotional_state": "happy", "blockers": []}},
-                {"metadata": {"emotional_state": "frustrated", "blockers": ["DB-001"]}},
-                {"metadata": {"emotional_state": "happy", "blockers": []}},
-            ],
-            "type": "weekly"
+            "argv": ["analyze", "--days", "7"]
         }
     })
-    
     assert result["status"] == "success"
-    assert "patterns" in result["result"]
-    print("✓ pattern_recognition.analyze: PASSED")
-    return True
+    assert "signal_summary" in result["result"]
+    print("✓ opc-journal.analyze: PASSED")
 
 
-def test_milestone_tracker_detect():
-    """Test milestone detection."""
-    result = milestone_detect({
+def test_opc_journal_milestones():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "content": "终于把产品部署上线了！",
-            "day": 45
+            "argv": ["milestones", "--content", "Finally launched the product!", "--day", "28"]
         }
     })
-    
     assert result["status"] == "success"
-    assert "milestones_detected" in result["result"]
-    print("✓ milestone_tracker.detect: PASSED")
-    return True
+    assert "candidate" in result["result"]
+    print("✓ opc-journal.milestones: PASSED")
 
 
-def test_async_task_manager_create():
-    """Test task creation."""
-    result = task_create({
+def test_opc_journal_task():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "type": "research",
-            "description": "竞品分析报告",
-            "timeout_hours": 8
+            "argv": ["task", "--description", "Research competitors", "--timeout-hours", "8"]
         }
     })
-    
     assert result["status"] == "success"
     assert "task_id" in result["result"]
-    print("✓ async_task_manager.create: PASSED")
-    return True
+    print("✓ opc-journal.task: PASSED")
 
 
-def test_async_task_manager_status():
-    """Test task status query."""
-    result = task_status({
-        "customer_id": "OPC-TEST-001",
-        "input": {"task_id": "TASK-20260327-A1B2C3"}
-    })
-    
-    assert result["status"] == "success"
-    assert "search_params" in result["result"]
-    print("✓ async_task_manager.status: PASSED")
-    return True
-
-
-def test_insight_generator_daily_summary():
-    """Test daily summary generation."""
-    result = insight_daily_summary({
+def test_opc_journal_insights():
+    result = main({
         "customer_id": "OPC-TEST-001",
         "input": {
-            "day": 7,
-            "entries": [
-                {"content": "Worked on feature A"},
-                {"content": "Met with customer"}
-            ]
+            "argv": ["insights", "--day", "7"]
         }
     })
-    
     assert result["status"] == "success"
-    assert result["result"]["day"] == 7
-    print("✓ insight_generator.daily_summary: PASSED")
-    return True
+    assert "signal_counts" in result["result"]
+    print("✓ opc-journal.insights: PASSED")
 
 
-def test_suite_coordinate():
-    """Test suite coordination."""
-    result = suite_coordinate({
+def test_opc_journal_status():
+    result = main({
         "customer_id": "OPC-TEST-001",
-        "input": {"text": "记录今天的进度"}
+        "input": {
+            "argv": ["status"]
+        }
     })
-    
     assert result["status"] == "success"
-    assert result["result"]["action"] == "delegate"
-    assert result["result"]["delegation"]["target_skill"] == "opc-journal-core"
-    print("✓ suite.coordinate: PASSED")
-    return True
+    assert "total_entries" in result["result"]
+    print("✓ opc-journal.status: PASSED")
 
 
-def test_suite_coordinate_chinese():
-    """Test suite coordination with Chinese input."""
-    result = suite_coordinate({
+def test_opc_journal_help():
+    result = main({
         "customer_id": "OPC-TEST-001",
-        "input": {"text": "分析我的工作习惯"}
+        "input": {
+            "argv": ["help"]
+        }
     })
-    
     assert result["status"] == "success"
-    assert result["result"]["delegation"]["intent"] == "pattern_analyze"
-    print("✓ suite.coordinate_chinese: PASSED")
-    return True
+    assert result["result"]["help_displayed"] is True
+    print("✓ opc-journal.help: PASSED")
 
 
 def run_all_tests():
-    """Run all integration tests."""
     print("\n" + "=" * 60)
-    print("OPC Journal Suite - Integration Tests")
+    print("OPC Journal - Integration Tests")
     print("=" * 60 + "\n")
-    
+
     tests = [
-        test_journal_core_init,
-        test_journal_core_record,
-        test_journal_core_search,
-        test_journal_core_export,
-        test_pattern_recognition_analyze,
-        test_milestone_tracker_detect,
-        test_async_task_manager_create,
-        test_async_task_manager_status,
-        test_insight_generator_daily_summary,
-        test_suite_coordinate,
-        test_suite_coordinate_chinese,
+        test_opc_journal_init,
+        test_opc_journal_record,
+        test_opc_journal_search,
+        test_opc_journal_export,
+        test_opc_journal_analyze,
+        test_opc_journal_milestones,
+        test_opc_journal_task,
+        test_opc_journal_insights,
+        test_opc_journal_status,
+        test_opc_journal_help,
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     for test in tests:
         try:
-            if test():
-                passed += 1
+            test()
+            passed += 1
         except Exception as e:
             print(f"✗ {test.__name__}: FAILED - {e}")
             failed += 1
-    
+
     print("\n" + "=" * 60)
     print(f"Results: {passed} passed, {failed} failed")
     print("=" * 60 + "\n")
-    
+
     return failed == 0
 
 

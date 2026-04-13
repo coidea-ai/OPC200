@@ -1,5 +1,15 @@
 """
 Insights Generator Module - Generate insights and recommendations.
+
+🔄 REFACTORED (v2.4): The insight generation pipeline has shifted from this
+statistical activity-model approach to a dreaming-based interpretation layer.
+
+The active path in OPC200 now reads OpenClaw dreaming output (dreams.md /
+memory/*.md) and applies OPC-specific themes (势能上升, 战略反思期, 注意节奏,
+快速成长, 连接需求) to produce daily insights.
+
+This module remains available as a structured-engine fallback for environments
+where OpenClaw dreaming is not yet enabled.
 """
 import json
 import time

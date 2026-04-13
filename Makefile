@@ -34,17 +34,17 @@ test-fast: ## Run tests marked as fast
 
 # Skills Testing
 test-skills: ## Run all skills tests
-	cd skills/opc-journal-suite && pytest tests/ -v --cov=. --cov-report=term
+	cd skills/opc-journal && pytest tests/ -v --cov=scripts --cov-report=term
 
 test-skills-coverage: ## Run skills tests with coverage report
-	cd skills/opc-journal-suite && pytest tests/ -v --cov=. --cov-report=html --cov-report=term
-	@echo "Skills coverage report: skills/opc-journal-suite/htmlcov/index.html"
+	cd skills/opc-journal && pytest tests/ -v --cov=scripts --cov-report=html --cov-report=term
+	@echo "Skills coverage report: skills/opc-journal/htmlcov/index.html"
 
 test-skills-watch: ## Run skills tests in watch mode (auto-rerun on change)
-	cd skills/opc-journal-suite && ptw -- -v
+	cd skills/opc-journal && ptw -- -v
 
 test-skills-matrix: ## Run skills tests on all Python versions
-	cd skills/opc-journal-suite && \
+	cd skills/opc-journal && \
 	for version in 3.10 3.11 3.12; do \
 		echo "=== Testing with Python $$version ==="; \
 		python$$version -m pytest tests/ -v || exit 1; \
@@ -53,16 +53,16 @@ test-skills-matrix: ## Run skills tests on all Python versions
 # TDD Commands
 tdd-red: ## Run tests (expect failure - Red phase)
 	@echo "🔴 Red phase: Running tests (expect failures)"
-	cd skills/opc-journal-suite && pytest tests/ -v --tb=short || true
+	cd skills/opc-journal && pytest tests/ -v --tb=short || true
 
 tdd-green: ## Run tests (expect success - Green phase)
 	@echo "🟢 Green phase: Running tests (expect success)"
-	cd skills/opc-journal-suite && pytest tests/ -v
+	cd skills/opc-journal && pytest tests/ -v
 tdd-refactor: tdd-green ## Run tests after refactoring
 	@echo "🔵 Refactor phase complete: All tests passing"
 
 tdd-coverage: ## Check coverage meets threshold
-	cd skills/opc-journal-suite && pytest tests/ --cov=. --cov-fail-under=80 -v
+	cd skills/opc-journal && pytest tests/ --cov=scripts --cov-fail-under=80 -v
 
 coverage: ## Generate coverage report
 	pytest tests/ --cov=src --cov-report=xml --cov-report=html --cov-report=term-missing

@@ -1,5 +1,10 @@
 """
 Tasks Scheduler Module - Task scheduling and queue management.
+
+⚠️ LEGACY (v2.4): OpenClaw Task Flow + /tasks panel now covers this capability.
+This module is retained for backward compatibility but is no longer the default
+scheduling mechanism in OPC200. New code should prefer OpenClaw native cron/task
+primitives where available.
 """
 import asyncio
 import json
@@ -25,7 +30,7 @@ else:
 
 @dataclass
 class TaskScheduler(MetricsMixin):
-    """Schedule and manage recurring tasks."""
+    """Schedule and manage recurring tasks. (Legacy)"""
     
     jobs: dict = field(default_factory=dict)
     
@@ -304,7 +309,7 @@ class CronParser:
 
 @dataclass
 class TaskQueue:
-    """Async task queue with priority support."""
+    """Async task queue with priority support. (Legacy)"""
     
     tasks: list = field(default_factory=list)
     default_timeout: int = 60
@@ -374,7 +379,7 @@ class TaskQueue:
 
 @dataclass
 class RecurringTask(MetricsMixin):
-    """A recurring scheduled task with metrics tracking."""
+    """A recurring scheduled task with metrics tracking. (Legacy)"""
     
     func: Callable
     cron: str
@@ -464,7 +469,7 @@ class RecurringTask(MetricsMixin):
 
 @dataclass
 class SchedulerPersistence:
-    """Persist scheduler state."""
+    """Persist scheduler state. (Legacy)"""
     
     storage_path: Path
     
@@ -528,7 +533,7 @@ class SchedulerPersistence:
 
 @dataclass
 class SchedulerMetrics:
-    """Track scheduler metrics."""
+    """Track scheduler metrics. (Legacy)"""
     
     scheduler: TaskScheduler
     

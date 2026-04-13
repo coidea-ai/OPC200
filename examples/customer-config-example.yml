@@ -105,7 +105,7 @@ journal:
 skills:
   # 自动安装
   auto_install:
-    - "opc-journal-suite"
+    - "opc-journal"
     - "agent-team-orchestration"
     - "active-maintenance"
   

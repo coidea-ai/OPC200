@@ -1,5 +1,15 @@
 """
 Patterns Analyzer Module - Behavior pattern detection and analysis.
+
+⚠️ REPOSITIONED (v2.4): The heavy statistical behavior analysis in this module
+has been superseded by OpenClaw v2026.4.9+ native dreaming and memory compaction.
+
+The skill-level pattern recognition is now an "Interpretation Layer" that reads
+OpenClaw-generated dreams.md / memory/*.md and performs OPC-specific business
+interpretation rather than raw statistical modeling.
+
+This module is retained as a fallback / reference implementation but is no longer
+the active path for routine pattern analysis in OPC200.
 """
 import json
 import math

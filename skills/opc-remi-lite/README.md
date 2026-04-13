@@ -1,6 +1,16 @@
 # Remi Lite - 极简记忆系统
 
-## 概述
+> **⚠️ DEPRECATED**: 此 Skill 已于 2026-04-10 被标记为废弃。
+> 
+> **原因**: OpenClaw v2026.4.9+ 的原生 dreaming、REM backfill、结构化 diary view 和 `/tasks` 面板已完全覆盖 Remi Lite 的所有功能。
+> 
+> **替代方案**: 直接使用 OpenClaw 内置的 `memory/YYYY-MM-DD.md`、`dreams.md`、sqlite-vec 搜索和 Task Flow。
+> 
+> 本目录仅保留作为历史参考，新用户请勿安装。
+
+---
+
+## 概述（历史存档）
 
 Remi Lite 是 OPC200 项目的轻量级记忆 skill，只做三件事：
 1. **自动总结** - 对话中自动记录有价值的内容

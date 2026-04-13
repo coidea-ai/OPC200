@@ -93,7 +93,7 @@ class Calculator:
 ### 目录结构
 
 ```
-skills/opc-journal-suite/
+skills/opc-journal/
 ├── opc-*/
 │   ├── scripts/
 │   │   └── feature.py       # 生产代码
@@ -207,7 +207,7 @@ def test_file_write(tmp_path):
 
 ```bash
 # 本地检查
-cd skills/opc-journal-suite
+cd skills/opc-journal
 pytest --cov=. --cov-report=term-missing --cov-report=html
 
 # 查看 HTML 报告
@@ -245,7 +245,7 @@ fail_under = 80
 # .github/workflows/skills-test.yml
 - name: Run tests with coverage
   run: |
-    cd skills/opc-journal-suite
+    cd skills/opc-journal
     pytest tests/ --cov=. --cov-report=xml --cov-fail-under=80
 ```
 

@@ -40,7 +40,7 @@ coidea/
 ├── opc-milestone-tracker/
 ├── opc-async-task-manager/
 ├── opc-insight-generator/
-└── opc-journal-suite/         # 协调层 Skill
+└── opc-journal/         # 协调层 Skill
 ```
 
 **支撑价值**:
@@ -295,7 +295,7 @@ coidea/                          # GitHub Organization
 ├── opc-milestone-tracker/       # Skill 仓库 (私有)
 ├── opc-async-task-manager/      # Skill 仓库 (私有)
 ├── opc-insight-generator/       # Skill 仓库 (私有)
-└── opc-journal-suite/           # Skill 仓库 (私有)
+└── opc-journal/           # Skill 仓库 (私有)
 ```
 
 ### 5.2 客户问题追踪流程

@@ -1,0 +1,77 @@
+# OPC200 本地简化部署编排
+# 目标: 1-2 个容器 (All-in-One + 可选 Qdrant)
+# 适合: 本地部署、边缘设备、预装硬件盒子
+
+version: "3.8"
+
+services:
+  opc200:
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    container_name: opc200
+    restart: unless-stopped
+    ports:
+      - "18789:18789"       # OpenClaw Gateway
+      - "8080:8080"         # Journal API
+      - "9091:9091"         # 本地 Metrics
+    volumes:
+      - opc200-data:/data
+      - ./config/gateway.yml:/etc/opc200/gateway.yml:ro
+      - ./config/skills.yml:/app/config/skills.yml:ro
+      - ./logs:/var/log/opc200
+    environment:
+      - OPC200_GATEWAY_TOKEN=${OPC200_GATEWAY_TOKEN}
+      - OPC200_DATA_DIR=/data
+    networks:
+      - opc200-onprem
+    # 资源限制：适配低配设备 (如树莓派 4B 8GB)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+  # Qdrant: 可选，如果设备内存 < 4GB 建议使用 sqlite-vec (内置于 allinone)
+  # 通过环境变量 QDRANT_ENABLED=true 来启用此服务
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: opc200-qdrant
+    restart: unless-stopped
+    profiles:
+      - qdrant
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - opc200-onprem
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+networks:
+  opc200-onprem:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  opc200-data:
+    driver: local
+  qdrant-data:
+    driver: local
