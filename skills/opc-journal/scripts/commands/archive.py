@@ -2,9 +2,9 @@
 import glob
 import os
 import shutil
-from datetime import datetime
 
 from utils.storage import build_customer_dir
+from utils.timezone import now_tz
 from scripts.commands._meta import read_meta, write_meta
 
 
@@ -17,7 +17,7 @@ def run(customer_id: str, args: dict) -> dict:
     if not os.path.exists(memory_dir) or not os.listdir(memory_dir):
         return {"status": "error", "result": None, "message": "No journal data to archive"}
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = now_tz().strftime("%Y%m%d-%H%M%S")
     archive_dir = os.path.join(base, "archive", timestamp)
     os.makedirs(archive_dir, exist_ok=True)
 

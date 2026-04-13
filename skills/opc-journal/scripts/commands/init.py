@@ -1,8 +1,8 @@
 """Journal command: initialize."""
 import json
-from datetime import datetime
 
 from utils.storage import build_customer_dir, build_memory_path, write_memory_file
+from utils.timezone import now_tz
 from scripts.commands._meta import detect_language, write_meta
 
 
@@ -19,7 +19,7 @@ def run(customer_id: str, args: dict) -> dict:
         }
 
     language = args.get("language") or detect_language(goals + list(preferences.values()))
-    today_str = datetime.now().strftime("%d-%m-%y")
+    today_str = now_tz().strftime("%d-%m-%y")
 
     # Minimal charter without hardcoded motivational text or bilingual blocks.
     goals_text = json.dumps(goals, ensure_ascii=False) if goals else "[]"
@@ -53,7 +53,7 @@ language: {language}
     meta = {
         "customer_id": customer_id,
         "started_day": day,
-        "started_at": datetime.now().isoformat(),
+        "started_at": now_tz().isoformat(),
         "version": "2.5.0",
         "goals": goals,
         "preferences": preferences,

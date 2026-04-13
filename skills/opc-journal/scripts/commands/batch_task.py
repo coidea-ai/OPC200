@@ -1,17 +1,19 @@
-"""Journal command: batch-task (create multiple async tasks at once)."""
+"""Journal command: batch-task (create multiple async tasks at once with persistence)."""
 import uuid
-from datetime import datetime, timedelta
-from typing import List
+from datetime import timedelta
+
+from utils.task_storage import add_tasks
+from utils.timezone import now_tz
 
 
 def generate_task_id() -> str:
-    today = datetime.now().strftime("%Y%m%d")
+    today = now_tz().strftime("%Y%m%d")
     suffix = uuid.uuid4().hex[:6].upper()
     return f"TASK-{today}-{suffix}"
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Create multiple async task records at once."""
+    """Create multiple persisted async task records at once."""
     descriptions = args.get("descriptions")
     task_type = args.get("type", "research")
     timeout_hours = args.get("timeout_hours", 8)
@@ -26,7 +28,7 @@ def run(customer_id: str, args: dict) -> dict:
         return {"status": "error", "result": None, "message": "No valid task descriptions provided"}
 
     created_tasks = []
-    now = datetime.now()
+    now = now_tz()
     eta = now + timedelta(hours=timeout_hours)
 
     for desc in descriptions:
@@ -48,6 +50,13 @@ def run(customer_id: str, args: dict) -> dict:
     if not created_tasks:
         return {"status": "error", "result": None, "message": "No valid task descriptions provided"}
 
+    if not add_tasks(customer_id, created_tasks):
+        return {
+            "status": "error",
+            "result": None,
+            "message": f"Failed to persist {len(created_tasks)} tasks",
+        }
+
     return {
         "status": "success",
         "result": {
@@ -57,5 +66,5 @@ def run(customer_id: str, args: dict) -> dict:
             "task_type": task_type,
             "timeout_hours": timeout_hours,
         },
-        "message": f"Created {len(created_tasks)} task(s)",
+        "message": f"Created and persisted {len(created_tasks)} task(s)",
     }

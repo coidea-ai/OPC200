@@ -3,8 +3,9 @@
 import os
 import re
 import shutil
-from datetime import datetime
 from typing import Dict, List, Any, Optional
+
+from utils.timezone import now_tz
 
 
 def _sanitize_customer_id(customer_id: str) -> str:
@@ -22,7 +23,7 @@ def build_memory_path(customer_id: str, date: str = None) -> str:
     """Build standard memory file path using dd-mm-yy format."""
     customer_id = _sanitize_customer_id(customer_id)
     if date is None:
-        date = datetime.now().strftime("%d-%m-%y")
+        date = now_tz().strftime("%d-%m-%y")
     return f"~/.openclaw/customers/{customer_id}/memory/{date}.md"
 
 

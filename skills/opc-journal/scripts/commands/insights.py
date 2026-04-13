@@ -2,9 +2,9 @@
 import glob
 import os
 import re
-from datetime import datetime
 
 from utils.storage import build_customer_dir, read_memory_file
+from utils.timezone import now_tz
 from scripts.commands._meta import get_language
 
 
@@ -31,13 +31,14 @@ def _parse_file_date(path: str) -> str:
 
 
 def _read_recent(sources: list, days: int = 7):
+    from datetime import datetime
     dated = []
     for source_type, s in sources:
         file_date = _parse_file_date(s)
         if file_date != "00-00-00":
             dated.append((file_date, source_type, s))
         else:
-            mtime_str = datetime.fromtimestamp(os.path.getmtime(s)).strftime("%d-%m-%y")
+            mtime_str = datetime.fromtimestamp(os.path.getmtime(s), now_tz().tzinfo).strftime("%d-%m-%y")
             dated.append((mtime_str, source_type, s))
     dated.sort(key=lambda x: datetime.strptime(x[0], "%d-%m-%y"))
     recent = dated[-min(days, len(dated)):]
@@ -100,7 +101,7 @@ def run(customer_id: str, args: dict) -> dict:
             "sources": dates_read,
             "raw_text": raw_text,
             "signal_counts": signal_counts,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": now_tz().isoformat(),
             "data_source": "openclaw_dreams_memory",
         },
         "message": f"Insight context prepared for Day {day} from the last {len(dates_read)} source(s).",

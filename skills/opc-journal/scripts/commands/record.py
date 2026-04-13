@@ -3,15 +3,15 @@ import glob
 import json
 import os
 import uuid
-from datetime import datetime
 from pathlib import Path
 
 from utils.storage import build_customer_dir, build_memory_path, write_memory_file
+from utils.timezone import now_tz
 from scripts.commands._meta import get_language, read_meta, write_meta
 
 
 def generate_entry_id() -> str:
-    today = datetime.now().strftime("%Y%m%d")
+    today = now_tz().strftime("%Y%m%d")
     suffix = uuid.uuid4().hex[:6].upper()
     return f"JE-{today}-{suffix}"
 
@@ -42,8 +42,8 @@ def run(customer_id: str, args: dict) -> dict:
     entry_id = generate_entry_id()
     day = args.get("day", 1)
     metadata = args.get("metadata", {})
-    today_str = datetime.now().strftime("%d-%m-%y")
-    iso_time = datetime.now().isoformat()
+    today_str = now_tz().strftime("%d-%m-%y")
+    iso_time = now_tz().isoformat()
 
     # Do NOT hardcode emotion descriptions. Accept caller-provided state or leave empty.
     emotional_state = metadata.get("emotional_state", "")

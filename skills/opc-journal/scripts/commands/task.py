@@ -1,16 +1,19 @@
-"""Journal command: task (legacy async task tracking)."""
+"""Journal command: task (async task tracking with persistence)."""
 import uuid
 from datetime import datetime, timedelta
 
+from utils.task_storage import add_task
+from utils.timezone import now_tz
+
 
 def generate_task_id() -> str:
-    today = datetime.now().strftime("%Y%m%d")
+    today = now_tz().strftime("%Y%m%d")
     suffix = uuid.uuid4().hex[:6].upper()
     return f"TASK-{today}-{suffix}"
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Create an async task record."""
+    """Create a persisted async task record."""
     task_type = args.get("type", "research")
     description = args.get("description", "")
     timeout_hours = args.get("timeout_hours", 8)
@@ -19,7 +22,7 @@ def run(customer_id: str, args: dict) -> dict:
         return {"status": "error", "result": None, "message": "description is required"}
 
     task_id = generate_task_id()
-    now = datetime.now()
+    now = now_tz()
     eta = now + timedelta(hours=timeout_hours)
 
     task = {
@@ -33,8 +36,15 @@ def run(customer_id: str, args: dict) -> dict:
         "timeout_hours": timeout_hours,
     }
 
+    if not add_task(customer_id, task):
+        return {
+            "status": "error",
+            "result": None,
+            "message": f"Failed to persist task {task_id}",
+        }
+
     return {
         "status": "success",
         "result": {"task_id": task_id, "task": task},
-        "message": f"Task {task_id} created",
+        "message": f"Task {task_id} created and persisted",
     }
