@@ -79,11 +79,15 @@ def _build_parser() -> _NoExitParser:
     p = subparsers.add_parser("search", help="Search journal entries")
     p.add_argument("--customer-id", default="OPC-001")
     p.add_argument("--query", default="")
+    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--case-sensitive", action="store_true", default=False)
 
     # export
     p = subparsers.add_parser("export", help="Export journal")
     p.add_argument("--customer-id", default="OPC-001")
     p.add_argument("--format", default="markdown")
+    p.add_argument("--time-range", default="all")
+    p.add_argument("--output-path", default="")
     p.add_argument("--time-range", default="all")
 
     # analyze

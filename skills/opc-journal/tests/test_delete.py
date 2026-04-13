@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.commands import delete, record, init
 from scripts.commands import _meta
 from utils import storage
+from utils.parsing import extract_entries
 
 
 def test_delete_entry_success(tmp_path, monkeypatch):
@@ -69,3 +70,8 @@ def test_delete_multi_entry_file(tmp_path, monkeypatch):
     content = path.read_text()
     assert eid1 not in content
     assert eid2 in content
+
+    # CRITICAL-1 regression test: remaining entries must still be parsable
+    entries = extract_entries(content)
+    assert len(entries) == 1
+    assert entries[0]["entry_id"] == eid2

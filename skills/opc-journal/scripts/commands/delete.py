@@ -1,9 +1,11 @@
 """Journal command: delete entry by entry_id."""
 import glob
 import os
+import shutil
 from pathlib import Path
 
 from utils.storage import build_customer_dir
+from utils.parsing import split_entries, join_entries
 from scripts.commands._meta import read_meta, write_meta
 
 
@@ -19,35 +21,14 @@ def _find_entry_file(base: str, entry_id: str):
 
 
 def _remove_entry(content: str, entry_id: str) -> str:
-    """Remove an entry block by entry_id.
-
-    Entries are separated by \n\n---\ntype: entry (with the first entry
-    starting at the beginning of the file with ---\ntype: entry).
-    """
-    separator = "\n\n---\ntype: entry"
-    if separator not in content:
-        # Only one entry in the file
-        if f"entry_id: {entry_id}" in content:
-            return ""
-        return content
-
-    parts = content.split(separator)
+    """Remove an entry block by entry_id, preserving separators for remaining blocks."""
+    blocks = split_entries(content)
     kept = []
-    for idx, part in enumerate(parts):
-        if idx == 0:
-            block = part
-        else:
-            block = separator[2:] + part  # prepend '---\ntype: entry'
-        stripped = block.strip()
-        if not stripped:
-            continue
-        if f"entry_id: {entry_id}" in stripped:
+    for block in blocks:
+        if f"entry_id: {entry_id}" in block:
             continue
         kept.append(block)
-
-    if not kept:
-        return ""
-    return "".join(kept)
+    return join_entries(kept)
 
 
 def run(customer_id: str, args: dict) -> dict:
@@ -65,8 +46,6 @@ def run(customer_id: str, args: dict) -> dict:
 
     # Backup before mutation
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        import shutil
-
         shutil.copy2(file_path, file_path + ".bak")
 
     if not new_content.strip():

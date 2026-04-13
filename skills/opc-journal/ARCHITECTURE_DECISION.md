@@ -1,107 +1,146 @@
-# Architecture Decision: Should all commands live in one Python file? Does file count affect process overhead?
+# Architecture Decision Records
 
-## Short answer
+## ADR-001: Local-Only Architecture
 
-**Technically yes**, but maintainability would suffer. More importantly — **multi-process overhead has nothing to do with file count**; Python does not spawn extra processes just because there are more files.
+**Date**: 2024-03-21  
+**Status**: Accepted  
+**Decision**: All OPC skills are strictly local-only with no external network calls.
+
+**Rationale**: Privacy-first design ensures user data never leaves the local environment.
+
+**Consequences**: Skills cannot use cloud services, all data must be stored locally.
 
 ---
 
-## 1. Can we put all commands into a single file?
+## ADR-002: LLM-First Interpretation Layer (v2.5.0)
 
-**Yes.** Nothing in Python prevents you from writing `init`, `record`, `search`, `export`, `analyze`, `milestones`, `insights`, `task`, and `status` all into one `commands.py`.
+**Date**: 2026-04-13  
+**Status**: Accepted  
+**Decision**: Remove all hardcoded semantic interpretation from commands. Commands act as pure data layers returning raw signals and context for the caller (LLM) to interpret dynamically.
 
-For example:
+### Affected Commands
+
+| Command | Previous Behavior | v2.5.0 Behavior |
+|---------|------------------|-----------------|
+| `record` | Hardcoded emotion analysis via keywords | Returns raw content; emotion only if caller provides it |
+| `analyze` | Pre-baked emotional/work/decision interpretations | Returns structural signals (punctuation, caps, quotes) only |
+| `insights` | Fixed theme/recommendation pairs | Returns raw context + signal counts |
+| `milestones` | Keyword-based milestone detection | Returns raw candidate object |
+| `status` | Generated status messages | Returns raw statistics |
+
+### Rationale
+
+1. **Language Agnostic**: Hardcoded English keywords failed for Chinese, Japanese, and other languages
+2. **Flexibility**: LLM can adapt interpretation based on full context, not just local patterns
+3. **Maintainability**: No need to update keyword lists as language evolves
+4. **Consistency**: Single source of truth (LLM) for all semantic analysis
+
+### Consequences
+
+- Commands return more data, not conclusions
+- Callers (LLM) must perform interpretation
+- Better multi-language support without i18n complexity
+- More network-efficient (full text + signals vs. pre-computed interpretations)
+
+---
+
+## ADR-003: File Locking for Concurrency
+
+**Date**: 2026-04-13  
+**Status**: Accepted  
+**Decision**: Use `fcntl.flock()` for POSIX-compliant file locking on metadata and task storage.
+
+### Implementation
+
+- `journal_meta.json`: Shared lock (LOCK_SH) for reads, exclusive lock (LOCK_EX) for writes
+- `tasks.json`: Same locking strategy
+- All writes followed by `fsync()` for durability
+
+### Rationale
+
+Prevents race conditions when multiple commands execute simultaneously.
+
+### Consequences
+
+- Unix/Linux/Mac only (fcntl not available on Windows)
+- Slight performance overhead (microseconds)
+- Single-writer scalability limit acceptable for personal journaling
+
+---
+
+## ADR-004: Timezone-Aware Datetimes
+
+**Date**: 2026-04-13  
+**Status**: Accepted  
+**Decision**: All datetime operations use explicit `Asia/Shanghai` timezone via `zoneinfo`.
+
+### Implementation
 
 ```python
-# commands.py (monolithic version)
-def cmd_init(customer_id, args): ...
-def cmd_record(customer_id, args): ...
-def cmd_search(customer_id, args): ...
-# ... all 9 commands
+from utils.timezone import now_tz
+now = now_tz()  # Always returns Asia/Shanghai aware datetime
 ```
 
-Then in `main.py` you just map them with a dict:
+### Rationale
 
-```python
-COMMANDS = {
-    "init": cmd_init,
-    "record": cmd_record,
-    ...
-}
-```
+- Consistent timestamps across DST changes
+- Explicit timezone prevents ambiguity
+- Matches user preference (Danny's timezone)
 
-### Why not do it?
+### Consequences
 
-| Dimension | Multi-file (current) | Single file |
-|-----------|----------------------|-------------|
-| **Git diff** | Change `analyze.py` and only analysis logic changes | Any command change diffs the whole file |
-| **Parallel dev** | Multiple people can work on different commands without conflicts | High chance of merge conflicts |
-| **Hot reload** | Reload one small module | Reload the entire monolith |
-| **Readability** | Open a file and know exactly which feature you are reading | Scroll through a giant file to find logic |
-| **Test granularity** | Import one command per test file | High coupling |
-
-For an Agent skill with lightweight code, splitting files has zero runtime cost; the benefits are entirely in developer experience.
+- Requires Python 3.9+ (zoneinfo)
+- Cannot rely on naive datetime comparisons
 
 ---
 
-## 2. Would a single file avoid multi-process overhead?
+## ADR-005: Entry Block Parsing
 
-**No, because multi-process overhead does not come from file count.**
+**Date**: 2026-04-13  
+**Status**: Accepted  
+**Decision**: Use centralized `utils/parsing.py` for entry block extraction to ensure consistent separator handling.
 
-### Python import process
+### Format
 
-When you write in `main.py`:
+Entries are separated by:
+```markdown
 
-```python
-from scripts.commands import init, record, analyze
+---
+type: entry
 ```
 
-The Python interpreter:
-1. Finds `init.py`
-2. Reads it → compiles to bytecode → executes it in the **current process**
+### Implementation
 
-All three files run inside the **same Python process**; no new processes are spawned.
+- `split_entries()`: Split file content into blocks
+- `join_entries()`: Reconstruct file from blocks preserving separators
+- `extract_entries()`: Parse blocks into structured data
 
-### Where does real multi-process overhead come from?
+### Rationale
 
-If your skill is invoked via OpenClaw `sessions_spawn()`, or via `subprocess.run(["python", "scripts/main.py"])`, only then do you incur multi-process overhead.
-
-| Invocation | Multi-process? | Overhead source |
-|------------|----------------|-----------------|
-| `import scripts.main` then `main()` | ❌ Single process | None |
-| `subprocess.run(["python", "main.py"])` | ✅ Multi-process | OS fork/exec |
-| `sessions_spawn()` (OpenClaw) | ✅ Multi-process | New isolated session |
-| `multiprocessing.Process(target=main)` | ✅ Multi-process | OS fork + IPC |
-
-**Conclusion**: Whether you split commands into 9 files or 1 file, as long as the invocation is `import + function call`, it is single process. If the invocation is `subprocess` or `sessions_spawn`, it is multi-process — **completely independent of how many `.py` files you have**.
+- Prevents separator loss bugs during deletions
+- DRY principle: one parsing implementation for search, export, delete
+- Easier to extend parsing logic (e.g., new frontmatter fields)
 
 ---
 
-## 3. Is there really zero benefit to a single file?
+## ADR-006: Task Persistence
 
-Not exactly. One hard-to-ignore benefit exists:
+**Date**: 2026-04-13  
+**Status**: Accepted  
+**Decision**: Tasks created via `task` and `batch-task` are persisted to `tasks.json` with full CRUD operations.
 
-**Slightly lower I/O overhead at startup due to fewer imports.**
+### Storage Model
 
-Reading one 10 KB file is theoretically faster than reading nine 1 KB files (fewer syscalls), but at the skill level this difference is typically **< 1 ms** and can be ignored.
-
----
-
-## 4. Recommendation for the journal skill
-
-**Keep the current multi-file structure; it is the better engineering decision.**
-
-If in the future you have a hard requirement for a single file (e.g., some deployment constraint), you can add a build step:
-
-```bash
-# build.py — inline all commands/*.py into one monolithic journal.py
-python build.py  # outputs dist/journal_single_file.py
+```
+customers/{cid}/tasks.json
 ```
 
-Keep multi-file during development, and generate a single file for release. This gives you the best of both worlds.
+### Rationale
 
----
+Previous implementation stored tasks only in memory, lost on restart.
 
-## One-sentence summary
+### Consequences
 
-> **More files ≠ more processes. File count does not determine runtime cost; invocation method does. A single file is possible, but maintenance costs outweigh performance gains.**
+- Tasks survive process restarts
+- CRUD operations available via `task_storage.py`
+- File locking required for concurrent access
