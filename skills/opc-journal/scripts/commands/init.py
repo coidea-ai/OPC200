@@ -37,7 +37,7 @@ language: {language}
 # OPC Journal Charter — Day {day}
 
 **Customer**: {customer_id}
-**Version**: 2.4.3
+**Version**: 2.5.0
 **Language**: {language}
 
 ## Goals

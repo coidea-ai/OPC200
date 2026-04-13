@@ -72,11 +72,11 @@ def run(customer_id: str, args: dict) -> dict:
         "total_lines": len(lines),
         "days_span": days,
         "sources_count": len(files_meta),
-        "emotion_mentions": _extract_tokens(raw_text, r"(开心|焦虑|困惑|沮丧|兴奋|疲惫|满足|担心|紧张|放松|失落|激动|happy|anxious|confused|frustrated|excited|tired|relaxed|sad|nervous)"),
-        "decision_fragments": _extract_fragments(raw_text, r"(决定|选择|放弃|切换|采用|改用|定下来|拍板|纠结|犹豫|decided|choose|switch|adopt|finalize|hesitate)(.*?)(?:。|；|;|\n|\.)"),
-        "milestone_fragments": _extract_fragments(raw_text, r"(完成|发布|上线|销售|签约|收款|MVP|原型|第一笔|第一个|突破|里程碑|completed|launched|shipped|sale|signed|revenue|MVP|prototype|milestone|breakthrough)(.*?)(?:。|；|;|\n|\.)"),
-        "blocker_fragments": _extract_fragments(raw_text, r"(卡|卡住|阻塞|瓶颈|搞不定|没思路|失败|报错|bug|问题|stuck|blocked|bottleneck|failed|error|bug|issue)(.*?)(?:。|；|;|\n|\.)"),
-        "help_seeking_count": len(re.findall(r"(问|请教|讨论|委托|让.*帮忙|找.*解决|求助|ask|discuss|delegate|help)", raw_text, re.IGNORECASE)),
+        "emotion_mentions": _extract_tokens(raw_text, r"(happy|anxious|confused|frustrated|excited|tired|satisfied|worried|nervous|relaxed|sad)"),
+        "decision_fragments": _extract_fragments(raw_text, r"(decided|choose|switch|adopt|finalize|hesitate)(.*?)(?:;|\n|\.)"),
+        "milestone_fragments": _extract_fragments(raw_text, r"(completed|launched|shipped|sale|signed|revenue|MVP|prototype|milestone|breakthrough)(.*?)(?:;|\n|\.)"),
+        "blocker_fragments": _extract_fragments(raw_text, r"(stuck|blocked|bottleneck|failed|error|bug|issue)(.*?)(?:;|\n|\.)"),
+        "help_seeking_count": len(re.findall(r"(ask|discuss|delegate|help)", raw_text, re.IGNORECASE)),
     }
 
     return {

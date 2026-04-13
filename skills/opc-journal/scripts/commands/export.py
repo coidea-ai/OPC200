@@ -5,8 +5,7 @@ from scripts.commands._meta import get_language
 def run(customer_id: str, args: dict) -> dict:
     """Export journal entries."""
     export_format = args.get("format", "markdown")
-    lang = get_language(customer_id)
-    msg = f"Export prepared for {customer_id} ({export_format})" if lang == "en" else f"已为 {customer_id} 准备导出（格式：{export_format}）"
+    msg = f"Export prepared for {customer_id} ({export_format})"
     return {
         "status": "success",
         "result": {

@@ -20,11 +20,9 @@ def read_meta(customer_id: str) -> dict:
 def get_language(customer_id: str) -> str:
     meta = read_meta(customer_id)
     lang = meta.get("language", "")
-    if lang.startswith("zh"):
-        return "zh"
     if lang.startswith("en"):
         return "en"
-    return "zh"
+    return "en"
 
 
 def _has_chinese(texts: list) -> bool:

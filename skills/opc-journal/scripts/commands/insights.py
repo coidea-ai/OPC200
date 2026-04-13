@@ -74,7 +74,7 @@ def run(customer_id: str, args: dict) -> dict:
 
     raw_text, dates_read = _read_recent(sources, days_back)
     emotion_tokens = re.findall(
-        r"(开心|焦虑|困惑|沮丧|兴奋|疲惫|满足|担心|紧张|放松|失落|激动|happy|anxious|confused|frustrated|excited|tired|satisfied|worried|relaxed|sad|nervous)",
+        r"(happy|anxious|confused|frustrated|excited|tired|satisfied|worried|nervous|relaxed|sad)",
         raw_text,
         re.IGNORECASE,
     )
@@ -85,11 +85,11 @@ def run(customer_id: str, args: dict) -> dict:
     activity_mentions = len([l for l in raw_text.split("\n") if l.strip() and not l.strip().startswith("#")])
 
     signal_counts = {
-        "pivot_signals": len(re.findall(r"(没效果|traction|方向|转型|换方向|PMF|验证失败|pivot|direction|validation failed)", raw_text, re.IGNORECASE)),
-        "momentum_signals": len(re.findall(r"(完成|发布|上线|销售|收款|签约|里程碑|突破|completed|shipped|launched|sale|milestone|breakthrough)", raw_text, re.IGNORECASE)),
-        "overload_signals": len(re.findall(r"(太多|忙不过来|焦虑|疲惫|burnout|通宵|加班|overwhelm|burnout|exhausted|too much)", raw_text, re.IGNORECASE)),
-        "isolation_signals": len(re.findall(r"(没人|孤独|一个人|没反馈|迷茫|没思路|lonely|alone|no feedback|lost|isolated)", raw_text, re.IGNORECASE)),
-        "learning_signals": len(re.findall(r"(学会|掌握了|第一次|新技能|恍然大悟|理解|搞懂了|learned|first time|new skill|figured out|understood)", raw_text, re.IGNORECASE)),
+        "pivot_signals": len(re.findall(r"(traction|pivot|direction|validation failed)", raw_text, re.IGNORECASE)),
+        "momentum_signals": len(re.findall(r"(completed|shipped|launched|sale|milestone|breakthrough)", raw_text, re.IGNORECASE)),
+        "overload_signals": len(re.findall(r"(overwhelm|burnout|exhausted|too much)", raw_text, re.IGNORECASE)),
+        "isolation_signals": len(re.findall(r"(lonely|alone|no feedback|lost|isolated)", raw_text, re.IGNORECASE)),
+        "learning_signals": len(re.findall(r"(learned|first time|new skill|figured out|understood)", raw_text, re.IGNORECASE)),
         "emotion_mentions": emotion_counts,
         "activity_lines": activity_mentions,
     }

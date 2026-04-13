@@ -15,9 +15,9 @@ def test_detect_milestone():
 
 
 def test_detect_first_entry_milestone():
-    result = milestones.run("OPC-001", {"content": "这是第一个记录，开始了！", "day": 1})
+    result = milestones.run("OPC-001", {"content": "This is the first entry, it begins!", "day": 1})
     assert result["status"] == "success"
-    assert result["result"]["candidate"]["raw_content"] == "这是第一个记录，开始了！"
+    assert result["result"]["candidate"]["raw_content"] == "This is the first entry, it begins!"
 
 
 def test_no_milestone():
