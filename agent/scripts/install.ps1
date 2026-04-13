@@ -1,10 +1,10 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     OPC200 Agent Windows 安装脚本 (v2)
 .DESCRIPTION
     按 AGENT-001 (docs/INSTALL_SCRIPT_SPEC.md) 规范实现。
-    流程: 环境检查 → 配置获取 → 下载 Agent → 安装部署 → 注册服务 → 启动验证 → 完成输出
+    流程: 环境检查 → 配置获取 → 下载 Agent → 安装部署 → 注册计划任务(登录自启) → 启动验证 → 完成输出
 .PARAMETER PlatformUrl
     平台端点地址 (默认 https://platform.opc200.co)
 .PARAMETER CustomerId
@@ -17,10 +17,14 @@
     本地服务端口 (默认 8080)
 .PARAMETER Silent
     静默安装模式
+.PARAMETER LocalBinary
+    本地 opc-agent 可执行文件路径；指定时跳过从 GitHub Release 下载（适用于 Release 尚未发布或离线安装）
 .EXAMPLE
     .\install.ps1
 .EXAMPLE
     .\install.ps1 -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx" -Silent
+.EXAMPLE
+    .\install.ps1 -Silent -LocalBinary "C:\build\opc-agent-windows-amd64.exe" -PlatformUrl "http://127.0.0.1:9091" -CustomerId "e2e-1" -ApiKey "x"
 #>
 
 param(
@@ -29,7 +33,8 @@ param(
     [string]$ApiKey     = "",
     [string]$InstallDir = "",
     [int]$Port          = 8080,
-    [switch]$Silent
+    [switch]$Silent,
+    [string]$LocalBinary = ""
 )
 
 Set-StrictMode -Version Latest
@@ -43,6 +48,7 @@ $script:AGENT_BINARY    = "opc-agent-windows-amd64.exe"
 $script:CHECKSUM_FILE   = "SHA256SUMS"
 $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
+$script:TASK_NAME       = "OPC200-Agent"
 $script:DEFAULT_URL     = "https://platform.opc200.co"
 $script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
 $script:MIN_DISK_GB     = 1
@@ -174,6 +180,16 @@ function Get-InstallConfig {
 # ── Step 3: 下载 Agent ───────────────────────────────────────────
 
 function Get-AgentBinary {
+    if ($LocalBinary) {
+        Write-Step "3/7 使用本地 Agent 二进制 (跳过下载)"
+        if (-not (Test-Path -LiteralPath $LocalBinary)) {
+            Fail $script:E002 "E002: 本地文件不存在: $LocalBinary"
+        }
+        $script:TmpBinary = (Resolve-Path -LiteralPath $LocalBinary).Path
+        Write-Ok "本地二进制: $($script:TmpBinary)"
+        return
+    }
+
     Write-Step "3/7 下载 Agent"
 
     $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
@@ -241,7 +257,10 @@ function Install-Agent {
     }
 
     Register-Rollback {
-        if (Test-Path $root) { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+        $ir = $script:InstallRoot
+        if ($ir -and (Test-Path -LiteralPath $ir)) {
+            Remove-Item -LiteralPath $ir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Write-Ok "目录结构已创建"
@@ -301,36 +320,44 @@ logging:
     $script:ConfigYml = $configPath
 }
 
-# ── Step 5: 注册系统服务 ─────────────────────────────────────────
+# ── Step 5: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
 
 function Register-Service {
-    Write-Step "5/7 注册系统服务"
+    Write-Step "5/7 注册计划任务(登录时启动)"
 
-    $existing = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Warn "服务已存在，先停止并删除"
+    $legacy = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
+    if ($legacy) {
+        Write-Warn "检测到旧版 Windows 服务项，正在移除"
         Stop-Service -Name $script:SERVICE_NAME -Force -ErrorAction SilentlyContinue
-        sc.exe delete $script:SERVICE_NAME | Out-Null
+        sc.exe delete $script:SERVICE_NAME 2>&1 | Out-Null
         Start-Sleep -Seconds 2
     }
 
-    $binPath = "`"$($script:AgentExe)`" --config `"$($script:ConfigYml)`" service run"
-    $result  = sc.exe create $script:SERVICE_NAME `
-        binPath= $binPath `
-        DisplayName= $script:SERVICE_DISPLAY `
-        start= auto `
-        obj= "NT AUTHORITY\LocalService" 2>&1
+    Unregister-ScheduledTask -TaskName $script:TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
 
-    if ($LASTEXITCODE -ne 0) {
-        Fail $script:E005 "E005: 服务注册失败 - $result"
+    $exe = $script:AgentExe
+    $cfg = $script:ConfigYml
+    $arg = "--config `"$cfg`" run"
+    $workDir = Split-Path -Parent $exe
+
+    try {
+        $action = New-ScheduledTaskAction -Execute $exe -Argument $arg -WorkingDirectory $workDir
+        $userId = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
+        $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+        Register-ScheduledTask -TaskName $script:TASK_NAME -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings -Force | Out-Null
+    }
+    catch {
+        Fail $script:E005 "E005: 计划任务注册失败 - $_"
     }
 
     Register-Rollback {
-        Stop-Service -Name $script:SERVICE_NAME -Force -ErrorAction SilentlyContinue
-        sc.exe delete $script:SERVICE_NAME 2>&1 | Out-Null
+        Unregister-ScheduledTask -TaskName $script:TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
     }
 
-    Write-Ok "服务 $($script:SERVICE_NAME) 已注册 (自动启动)"
+    Write-Ok "计划任务 $($script:TASK_NAME) 已注册 (当前用户登录后自动运行)"
 }
 
 # ── Step 6: 启动验证 ─────────────────────────────────────────────
@@ -339,18 +366,14 @@ function Start-AndVerify {
     Write-Step "6/7 启动验证"
 
     try {
-        Start-Service -Name $script:SERVICE_NAME -ErrorAction Stop
+        Start-ScheduledTask -TaskName $script:TASK_NAME -ErrorAction Stop
     }
     catch {
-        Fail $script:E005 "E005: 服务启动失败 - $_"
+        Fail $script:E005 "E005: 计划任务启动失败 - $_"
     }
 
-    Start-Sleep -Seconds 2
-    $svc = Get-Service -Name $script:SERVICE_NAME
-    if ($svc.Status -ne "Running") {
-        Fail $script:E005 "E005: 服务状态异常 ($($svc.Status))"
-    }
-    Write-Ok "服务已启动"
+    Start-Sleep -Seconds 3
+    Write-Ok "已触发计划任务启动 Agent"
 
     # 健康检查
     $healthUrl = "http://127.0.0.1:$Port/health"
@@ -381,19 +404,21 @@ function Show-Summary {
     Write-Host "  安装目录 : $root" -ForegroundColor Cyan
     Write-Host "  配置文件 : $root\config\config.yml" -ForegroundColor Cyan
     Write-Host "  日志文件 : $root\logs\agent.log" -ForegroundColor Cyan
-    Write-Host "  服务名称 : $($script:SERVICE_NAME)" -ForegroundColor Cyan
+    Write-Host "  计划任务 : $($script:TASK_NAME) (登录时运行)" -ForegroundColor Cyan
     Write-Host "  健康检查 : http://127.0.0.1:$Port/health" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  查看状态 : Get-Service $($script:SERVICE_NAME)" -ForegroundColor Gray
-    Write-Host "  查看日志 : Get-Content '$root\logs\agent.log' -Tail 50" -ForegroundColor Gray
-    Write-Host "  卸载     : .\uninstall.ps1 -InstallDir '$root'" -ForegroundColor Gray
+    Write-Host "  查看任务 : Get-ScheduledTask -TaskName $($script:TASK_NAME)" -ForegroundColor Gray
+    Write-Host ('  查看日志 : Get-Content {0}\logs\agent.log -Tail 50' -f $root) -ForegroundColor Gray
+    Write-Host ('  卸载     : .\uninstall.ps1 -InstallDir {0}' -f $root) -ForegroundColor Gray
     Write-Host ""
 }
 
 # ── 主流程 ────────────────────────────────────────────────────────
 
 function Main {
-    Write-Host "`nOPC200 Agent Installer v$($script:AGENT_VERSION) (Windows)`n" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host ('OPC200 Agent Installer v' + $script:AGENT_VERSION + ' (Windows)') -ForegroundColor Cyan
+    Write-Host ""
 
     Test-Environment
     Get-InstallConfig
