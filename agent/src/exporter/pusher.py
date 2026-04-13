@@ -1,9 +1,14 @@
-"""Metrics pusher for OPC Agent.
+"""AGENT-005: 指标推送器
 
-Pushes collected metrics to the platform Pushgateway using
-Prometheus text format with Bearer Token authentication.
+将 AGENT-004 采集到的 SystemMetrics 推送到平台 Pushgateway。
+协议: docs/METRICS_PROTOCOL.md (PLAT-003)
 
-Protocol: docs/METRICS_PROTOCOL.md (PLAT-003)
+功能:
+- Bearer Token 认证
+- 指数退避重试 (最多 5 次, 最大 60s)
+- 离线缓存 (JSON Lines spool, 上限 500 条, 超 24h 丢弃, 恢复后每批 50 条)
+- 批量推送上限 100 条/次
+- 推送间隔 60 秒
 """
 
 from __future__ import annotations
@@ -11,11 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 import random
-import sys
 import time
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,62 +27,46 @@ from agent.src.exporter.collector import MetricsCollector, SystemMetrics
 
 logger = logging.getLogger(__name__)
 
-AGENT_VERSION = "0.1.0"
 MAX_SPOOL_ENTRIES = 500
 SPOOL_BATCH_SIZE = 50
-PUSH_BATCH_SIZE = 100
-SPOOL_TTL_SECONDS = 86400  # 24h
+SPOOL_TTL_SECONDS = 86400
+PUSH_BATCH_LIMIT = 100
 MAX_RETRY_ATTEMPTS = 5
 RETRY_BASE_DELAY = 1.0
 RETRY_MAX_DELAY = 60.0
+DEFAULT_PUSH_INTERVAL = 60
 
-_NON_RETRYABLE_STATUS = {400, 401, 404}
-
-
-@dataclass
-class SpoolEntry:
-    payload: str
-    timestamp: float
+_NON_RETRYABLE = {400, 401, 404}
 
 
-def _get_os() -> str:
-    s = sys.platform
-    if s.startswith("win"):
-        return "windows"
-    if s.startswith("darwin"):
-        return "darwin"
-    return "linux"
+def _build_payload(metrics: SystemMetrics, tenant_id: str) -> str:
+    return metrics.to_prometheus(tenant_id)
 
 
-def _build_payload(metrics: SystemMetrics) -> str:
-    os_name = _get_os()
-    labels = f'agent_version="{AGENT_VERSION}",os="{os_name}"'
-    lines = [
-        f'agent_health{{{labels}}} {1 if metrics.agent_healthy else 0}',
-        f'cpu_usage{{{labels}}} {metrics.cpu_percent}',
-        f'memory_usage{{{labels}}} {metrics.memory_percent}',
-        f'disk_usage{{{labels}}} {metrics.disk_percent}',
-    ]
-    return "\n".join(lines) + "\n"
+def _backoff_delay(attempt: int) -> float:
+    delay = min(RETRY_BASE_DELAY * (2 ** attempt), RETRY_MAX_DELAY)
+    return delay + random.uniform(0, 1)
 
 
 class MetricsPusher:
-    """Pushes system metrics to the platform Pushgateway."""
-
     def __init__(
         self,
         platform_url: Optional[str] = None,
-        customer_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         api_key: Optional[str] = None,
         spool_dir: Optional[Path] = None,
-        push_interval: int = 60,
+        push_interval: int = DEFAULT_PUSH_INTERVAL,
         collector: Optional[MetricsCollector] = None,
         https_proxy: Optional[str] = None,
     ):
-        self._platform_url = (platform_url or os.environ.get("PLATFORM_URL", "")).rstrip("/")
-        self._customer_id = customer_id or os.environ.get("CUSTOMER_ID", "")
+        self._platform_url = (
+            platform_url or os.environ.get("PLATFORM_URL", "")
+        ).rstrip("/")
+        self._tenant_id = tenant_id or os.environ.get("TENANT_ID", "")
         self._api_key = api_key or os.environ.get("API_KEY", "")
-        self._push_interval = int(os.environ.get("PUSH_INTERVAL", push_interval))
+        self._push_interval = int(
+            os.environ.get("PUSH_INTERVAL", str(push_interval))
+        )
         self._collector = collector or MetricsCollector()
         self._https_proxy = https_proxy or os.environ.get("HTTPS_PROXY")
 
@@ -97,7 +83,7 @@ class MetricsPusher:
 
     @property
     def push_url(self) -> str:
-        return f"{self._platform_url}/metrics/job/{self._customer_id}"
+        return f"{self._platform_url}/metrics/job/{self._tenant_id}"
 
     @property
     def _headers(self) -> dict:
@@ -106,26 +92,28 @@ class MetricsPusher:
             "Content-Type": "text/plain",
         }
 
+    # ---------- public API ----------
+
     def push(self, metrics: SystemMetrics) -> bool:
-        """Push a single metrics snapshot. Returns True on success."""
-        payload = _build_payload(metrics)
-        success = self._push_with_retry(payload)
-        if not success:
-            self._spool(payload)
+        payload = _build_payload(metrics, self._tenant_id)
+        ok = self._push_with_retry(payload)
+        if not ok:
+            self._spool_write(payload)
         else:
             self._flush_spool()
-        return success
+        return ok
 
     def push_loop(self) -> None:
-        """Blocking push loop. Collects and pushes every push_interval seconds."""
-        logger.info("Starting push loop (interval=%ds)", self._push_interval)
+        logger.info("push loop started (interval=%ds)", self._push_interval)
         while True:
             try:
-                metrics = self._collector.collect()
+                metrics = self._collector.collect_all()
                 self.push(metrics)
             except Exception:
-                logger.exception("Unexpected error in push loop")
+                logger.exception("push loop error")
             time.sleep(self._push_interval)
+
+    # ---------- retry ----------
 
     def _push_with_retry(self, payload: str) -> bool:
         for attempt in range(MAX_RETRY_ATTEMPTS):
@@ -133,83 +121,84 @@ class MetricsPusher:
                 resp = self._session.post(
                     self.push_url,
                     headers=self._headers,
-                    data=payload,
+                    data=payload.encode("utf-8"),
                     timeout=10,
                 )
-                if resp.status_code in _NON_RETRYABLE_STATUS:
-                    logger.error("Non-retryable error %d pushing metrics", resp.status_code)
+                if resp.status_code == 200:
+                    return True
+                if resp.status_code in _NON_RETRYABLE:
+                    logger.error(
+                        "non-retryable %d: %s", resp.status_code, resp.text[:200]
+                    )
                     return False
-                resp.raise_for_status()
-                logger.debug("Metrics pushed successfully")
-                return True
-            except requests.exceptions.HTTPError as e:
-                if e.response is not None and e.response.status_code in _NON_RETRYABLE_STATUS:
-                    logger.error("Non-retryable HTTP error: %s", e)
-                    return False
-                delay = self._backoff_delay(attempt)
-                logger.warning("Push failed (attempt %d/%d), retrying in %.1fs: %s", attempt + 1, MAX_RETRY_ATTEMPTS, delay, e)
-                time.sleep(delay)
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                delay = self._backoff_delay(attempt)
-                logger.warning("Push failed (attempt %d/%d), retrying in %.1fs: %s", attempt + 1, MAX_RETRY_ATTEMPTS, delay, e)
-                time.sleep(delay)
-        logger.error("All %d push attempts failed", MAX_RETRY_ATTEMPTS)
+                logger.warning("retryable %d (attempt %d)", resp.status_code, attempt)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                logger.warning("network error (attempt %d): %s", attempt, exc)
+            except Exception:
+                logger.exception("unexpected push error")
+                return False
+            time.sleep(_backoff_delay(attempt))
         return False
 
-    def _backoff_delay(self, attempt: int) -> float:
-        delay = min(RETRY_BASE_DELAY * (2 ** attempt), RETRY_MAX_DELAY)
-        jitter = random.uniform(0, 1)
-        return delay + jitter
+    # ---------- spool (offline cache) ----------
 
-    def _spool(self, payload: str) -> None:
-        entries = self._load_spool()
-        entries.append(SpoolEntry(payload=payload, timestamp=time.time()))
-        if len(entries) > MAX_SPOOL_ENTRIES:
-            entries = entries[-MAX_SPOOL_ENTRIES:]
-        self._save_spool(entries)
-        logger.debug("Spooled metrics (total=%d)", len(entries))
+    def _spool_write(self, payload: str) -> None:
+        entry = {"payload": payload, "ts": time.time()}
+        try:
+            lines = self._spool_read_lines()
+            lines.append(json.dumps(entry, ensure_ascii=False))
+            if len(lines) > MAX_SPOOL_ENTRIES:
+                lines = lines[-MAX_SPOOL_ENTRIES:]
+            self._spool_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            logger.exception("spool write failed")
 
-    def _flush_spool(self) -> None:
-        entries = self._load_spool()
-        if not entries:
-            return
-
-        now = time.time()
-        entries = [e for e in entries if now - e.timestamp < SPOOL_TTL_SECONDS]
-        if not entries:
-            self._save_spool([])
-            return
-
-        logger.info("Flushing %d spooled entries", len(entries))
-        remaining: List[SpoolEntry] = []
-
-        for i in range(0, len(entries), SPOOL_BATCH_SIZE):
-            batch = entries[i : i + SPOOL_BATCH_SIZE]
-            combined = "".join(e.payload for e in batch)
-            if not self._push_with_retry(combined):
-                remaining.extend(entries[i:])
-                break
-
-        self._save_spool(remaining)
-
-    def _load_spool(self) -> List[SpoolEntry]:
+    def _spool_read_lines(self) -> List[str]:
         if not self._spool_path.exists():
             return []
-        entries: List[SpoolEntry] = []
         try:
-            for line in self._spool_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line:
-                    d = json.loads(line)
-                    entries.append(SpoolEntry(**d))
+            raw = self._spool_path.read_text(encoding="utf-8").strip()
+            return [l for l in raw.split("\n") if l]
         except Exception:
-            logger.exception("Failed to load spool, resetting")
-            self._spool_path.unlink(missing_ok=True)
-        return entries
+            return []
 
-    def _save_spool(self, entries: List[SpoolEntry]) -> None:
+    def _flush_spool(self) -> None:
+        lines = self._spool_read_lines()
+        if not lines:
+            return
+        now = time.time()
+        remaining: List[str] = []
+        batch: List[str] = []
+        for raw_line in lines:
+            try:
+                entry = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if now - entry.get("ts", 0) > SPOOL_TTL_SECONDS:
+                continue
+            batch.append(entry["payload"])
+            if len(batch) >= SPOOL_BATCH_SIZE:
+                if not self._push_batch(batch):
+                    remaining.extend(
+                        json.dumps({"payload": p, "ts": entry["ts"]})
+                        for p in batch
+                    )
+                batch = []
+        if batch:
+            if not self._push_batch(batch):
+                remaining.extend(
+                    json.dumps({"payload": p, "ts": now}) for p in batch
+                )
         try:
-            content = "\n".join(json.dumps(asdict(e)) for e in entries)
-            self._spool_path.write_text(content + "\n" if content else "", encoding="utf-8")
+            if remaining:
+                self._spool_path.write_text(
+                    "\n".join(remaining) + "\n", encoding="utf-8"
+                )
+            else:
+                self._spool_path.unlink(missing_ok=True)
         except Exception:
-            logger.exception("Failed to save spool")
+            logger.exception("spool cleanup failed")
+
+    def _push_batch(self, payloads: List[str]) -> bool:
+        combined = "".join(payloads[:PUSH_BATCH_LIMIT])
+        return self._push_with_retry(combined)
