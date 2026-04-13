@@ -20,10 +20,12 @@ def test_analyze_with_memory(tmp_path, monkeypatch):
 
     result = analyze.run("OPC-001", {"days": 7, "dimension": "general"})
     assert result["status"] == "success"
-    assert "interpretation" in result["result"]
-    interp = result["result"]["interpretation"]
-    assert "emotional_pattern" in interp
-    assert "decision_style" in interp
+    assert "signal_summary" in result["result"]
+    signals = result["result"]["signal_summary"]
+    assert "emotion_mentions" in signals
+    assert "decision_fragments" in signals
+    assert "blocker_fragments" in signals
+    assert result["result"]["language"] == "zh"
 
 
 def test_analyze_empty_memory(tmp_path, monkeypatch):
@@ -33,7 +35,9 @@ def test_analyze_empty_memory(tmp_path, monkeypatch):
 
     result = analyze.run("OPC-001", {"days": 7})
     assert result["status"] == "success"
-    assert "note" in result["result"]
+    assert result["result"]["files"] == []
+    assert result["result"]["signal_summary"]["sources_count"] == 0
+    assert result["result"]["raw_text"] == ""
 
 
 def test_analyze_emotional_trends(tmp_path, monkeypatch):
@@ -45,10 +49,8 @@ def test_analyze_emotional_trends(tmp_path, monkeypatch):
     )
 
     result = analyze.run("OPC-001", {"days": 7})
-
-    interp = result["result"]["interpretation"]
-    emotions = interp["emotional_pattern"]
-    assert emotions["dominant_emotion"] == "开心"
-    assert emotions["emotion_distribution"]["开心"] == 2
-    assert emotions["emotion_distribution"]["沮丧"] == 1
-    assert emotions["emotion_distribution"]["兴奋"] == 1
+    signals = result["result"]["signal_summary"]
+    emotions = signals["emotion_mentions"]
+    assert emotions.get("开心", 0) == 2
+    assert emotions.get("沮丧", 0) == 1
+    assert emotions.get("兴奋", 0) == 1
