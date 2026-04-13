@@ -490,7 +490,7 @@ Every mutation creates a `.bak`. Accidents happen. We make them recoverable.
 
 ## Version
 
-**Current**: `2.5.1`
+**Current**: `2.5.2`
 
 **Requirements**:
 - Python 3.9+

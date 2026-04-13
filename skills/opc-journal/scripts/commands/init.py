@@ -54,7 +54,7 @@ language: {language}
         "customer_id": customer_id,
         "started_day": day,
         "started_at": now_tz().isoformat(),
-        "version": "2.5.1",
+        "version": "2.5.2",
         "goals": goals,
         "preferences": preferences,
         "language": language,

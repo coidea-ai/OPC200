@@ -14,7 +14,7 @@ metadata:
 
 # opc-journal
 
-**Version**: 2.5.1  
+**Version**: 2.5.2  
 **Type**: Single CLI-style Skill  
 **Status**: Active
 

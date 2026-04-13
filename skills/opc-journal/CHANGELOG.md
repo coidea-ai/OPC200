@@ -5,6 +5,13 @@ All notable changes to `opc-journal` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2026-04-14
+
+### Changed
+- Version bump across all components from 2.5.1 to 2.5.2
+- Expanded Architecture section in `SKILL.md`
+- Updated all documentation to accurately reflect minimal keyword-based signal extraction (not "zero semantic processing")
+
 ## [2.5.1] - 2026-04-14
 
 ### Fixed
@@ -296,5 +303,6 @@ No breaking changes. All existing data formats are compatible.
 
 ---
 
+[2.5.2]: https://github.com/coidea-ai/OPC200/releases/tag/opc-journal-v2.5.2
 [2.5.1]: https://github.com/coidea-ai/OPC200/releases/tag/opc-journal-v2.5.1
 [2.5.0]: https://github.com/coidea-ai/OPC200/releases/tag/opc-journal-v2.5.0

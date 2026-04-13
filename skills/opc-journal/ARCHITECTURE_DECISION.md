@@ -20,7 +20,7 @@
 
 ### Affected Commands
 
-| Command | Previous Behavior | v2.5.1 Behavior |
+| Command | Previous Behavior | v2.5.2 Behavior |
 |---------|------------------|-----------------|
 | `record` | Hardcoded emotion analysis via keywords | Returns raw content; emotion only if caller provides it |
 | `analyze` | Pre-baked emotional/work/decision interpretations | Returns structural signals (punctuation, caps, quotes) plus minimal keyword fragments (action/challenge/achievement regex matches) |
