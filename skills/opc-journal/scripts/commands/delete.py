@@ -1,7 +1,6 @@
 """Journal command: delete entry by entry_id."""
 import glob
 import os
-import re
 from pathlib import Path
 
 from utils.storage import build_customer_dir
@@ -20,18 +19,35 @@ def _find_entry_file(base: str, entry_id: str):
 
 
 def _remove_entry(content: str, entry_id: str) -> str:
-    # Match entry blocks starting with ---\ntype: entry and ending before the next \n---\n or EOF.
-    pattern = r"(?:^|\n\n)(---\ntype: entry.*?)(?=\n---\n|$)"
-    matches = list(re.finditer(pattern, content, re.DOTALL))
-    new_blocks = []
-    for m in matches:
-        block = m.group(1)
-        if f"entry_id: {entry_id}" in block:
+    """Remove an entry block by entry_id.
+
+    Entries are separated by \n\n---\ntype: entry (with the first entry
+    starting at the beginning of the file with ---\ntype: entry).
+    """
+    separator = "\n\n---\ntype: entry"
+    if separator not in content:
+        # Only one entry in the file
+        if f"entry_id: {entry_id}" in content:
+            return ""
+        return content
+
+    parts = content.split(separator)
+    kept = []
+    for idx, part in enumerate(parts):
+        if idx == 0:
+            block = part
+        else:
+            block = separator[2:] + part  # prepend '---\ntype: entry'
+        stripped = block.strip()
+        if not stripped:
             continue
-        new_blocks.append(block)
-    if not new_blocks:
+        if f"entry_id: {entry_id}" in stripped:
+            continue
+        kept.append(block)
+
+    if not kept:
         return ""
-    return "\n\n".join(new_blocks)
+    return "".join(kept)
 
 
 def run(customer_id: str, args: dict) -> dict:

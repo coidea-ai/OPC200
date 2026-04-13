@@ -73,24 +73,20 @@ def run(customer_id: str, args: dict) -> dict:
         }
 
     raw_text, dates_read = _read_recent(sources, days_back)
-    emotion_tokens = re.findall(
-        r"(happy|anxious|confused|frustrated|excited|tired|satisfied|worried|nervous|relaxed|sad)",
-        raw_text,
-        re.IGNORECASE,
-    )
-    emotion_counts = {}
-    for emo in emotion_tokens:
-        emotion_counts[emo.lower()] = emotion_counts.get(emo.lower(), 0) + 1
-
     activity_mentions = len([l for l in raw_text.split("\n") if l.strip() and not l.strip().startswith("#")])
 
+    # Language-agnostic structural signals. No hardcoded semantic keywords.
     signal_counts = {
-        "pivot_signals": len(re.findall(r"(traction|pivot|direction|validation failed)", raw_text, re.IGNORECASE)),
-        "momentum_signals": len(re.findall(r"(completed|shipped|launched|sale|milestone|breakthrough)", raw_text, re.IGNORECASE)),
-        "overload_signals": len(re.findall(r"(overwhelm|burnout|exhausted|too much)", raw_text, re.IGNORECASE)),
-        "isolation_signals": len(re.findall(r"(lonely|alone|no feedback|lost|isolated)", raw_text, re.IGNORECASE)),
-        "learning_signals": len(re.findall(r"(learned|first time|new skill|figured out|understood)", raw_text, re.IGNORECASE)),
-        "emotion_mentions": emotion_counts,
+        "action_signals": len(re.findall(r"\b(completed|shipped|launched|sale|signed|revenue|MVP|milestone|breakthrough|decided|adopted)\b", raw_text, re.IGNORECASE)),
+        "challenge_signals": len(re.findall(r"\b(stuck|blocked|bottleneck|failed|error|bug|issue|overwhelm|burnout)\b", raw_text, re.IGNORECASE)),
+        "learning_signals": len(re.findall(r"\b(learned|first time|new skill|figured out|understood)\b", raw_text, re.IGNORECASE)),
+        "pivot_signals": len(re.findall(r"\b(traction|pivot|direction|validation failed)\b", raw_text, re.IGNORECASE)),
+        "structural_signals": {
+            "exclamation_marks": raw_text.count("!"),
+            "question_marks": raw_text.count("?"),
+            "all_caps_words": len(re.findall(r"\b[A-Z]{2,}\b", raw_text)),
+            "repeated_punctuation": len(re.findall(r"([!?.,])\1+", raw_text)),
+        },
         "activity_lines": activity_mentions,
     }
 

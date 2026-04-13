@@ -17,6 +17,10 @@ def generate_entry_id() -> str:
 
 
 def _is_first_entry(customer_id: str) -> bool:
+    meta = read_meta(customer_id)
+    if meta is not None and meta.get("total_entries", 0) > 0:
+        return False
+    # Fallback: scan files if meta is missing or corrupt
     memory_dir = os.path.expanduser(Path(build_customer_dir(customer_id)) / "memory")
     if not os.path.exists(memory_dir):
         return True

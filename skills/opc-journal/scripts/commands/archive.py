@@ -22,19 +22,39 @@ def run(customer_id: str, args: dict) -> dict:
     os.makedirs(archive_dir, exist_ok=True)
 
     archived_files = []
+    failed_copies = []
 
-    for f in sorted(glob.glob(os.path.join(memory_dir, "*"))):
+    for f in sorted(glob.glob(os.path.join(memory_dir, "*.md"))):  # Only .md, exclude .bak
         if os.path.isfile(f):
-            shutil.copy2(f, archive_dir)
-            archived_files.append(os.path.basename(f))
+            try:
+                shutil.copy2(f, archive_dir)
+                archived_files.append(os.path.basename(f))
+            except Exception as e:
+                failed_copies.append((f, str(e)))
 
     if os.path.exists(meta_path):
-        shutil.copy2(meta_path, archive_dir)
-        archived_files.append("journal_meta.json")
+        try:
+            shutil.copy2(meta_path, archive_dir)
+            archived_files.append("journal_meta.json")
+        except Exception as e:
+            failed_copies.append((meta_path, str(e)))
+
+    if failed_copies:
+        return {
+            "status": "error",
+            "result": {
+                "archive_path": archive_dir,
+                "archived_files": archived_files,
+                "failed_copies": failed_copies,
+            },
+            "message": f"Archive incomplete: {len(failed_copies)} file(s) failed to copy",
+        }
 
     clear_after = bool(args.get("clear", False))
     if clear_after:
-        for f in glob.glob(os.path.join(memory_dir, "*")):
+        for f in glob.glob(os.path.join(memory_dir, "*.md")):
+            os.remove(f)
+        for f in glob.glob(os.path.join(memory_dir, "*.bak")):
             os.remove(f)
         meta = read_meta(customer_id)
         if meta:

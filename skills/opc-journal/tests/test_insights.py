@@ -13,12 +13,16 @@ def test_insights_with_memory(tmp_path, monkeypatch):
     monkeypatch.setattr(ins_mod, "get_language", lambda cid: "en")
     (tmp_path / "OPC-001" / "memory").mkdir(parents=True)
     (tmp_path / "OPC-001" / "memory" / "11-04-26.md").write_text(
-        "---\ntype: entry\ndate: 11-04-26\nday: 1\n---\n\nCompleted a feature today, very happy. Momentum is rising."
+        "---\ntype: entry\ndate: 11-04-26\nday: 1\n---\n\nCompleted a feature today! VERY happy. Momentum is rising."
     )
 
     result = insights.run("OPC-001", {"day": 7, "days_back": 7})
     assert result["status"] == "success"
     assert "signal_counts" in result["result"]
+    counts = result["result"]["signal_counts"]
+    assert "action_signals" in counts
+    assert "challenge_signals" in counts
+    assert "structural_signals" in counts
     assert result["result"]["customer_id"] == "OPC-001"
     assert result["result"]["language"] == "en"
 
@@ -35,6 +39,10 @@ def test_insights_with_memory_en(tmp_path, monkeypatch):
     result = insights.run("OPC-001", {"day": 7, "days_back": 7})
     assert result["status"] == "success"
     assert "signal_counts" in result["result"]
+    counts = result["result"]["signal_counts"]
+    assert "action_signals" in counts
+    assert "learning_signals" in counts
+    assert "structural_signals" in counts
 
 
 def test_insights_empty_memory(tmp_path, monkeypatch):

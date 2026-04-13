@@ -18,14 +18,20 @@ def test_delete_entry_success(tmp_path, monkeypatch):
     monkeypatch.setattr(delete, "build_customer_dir", lambda cid: str(tmp_path / cid))
     monkeypatch.setattr(_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
 
-    init.run("OPC-001", {"day": 1, "goals": ["Launch"]})  # creates memory/13-04-26.md
+    init.run("OPC-001", {"day": 1, "goals": ["Launch"]})  # creates memory/13-04-26.md with charter
     rec_result = record.run("OPC-001", {"content": "First entry", "day": 1})
     entry_id = rec_result["result"]["entry_id"]
 
     result = delete.run("OPC-001", {"entry_id": entry_id})
     assert result["status"] == "success"
     assert result["result"]["entry_id"] == entry_id
-    assert result["result"]["file_removed"] is True
+    # Charter remains, so file is not removed
+    assert result["result"]["file_removed"] is False
+
+    path = tmp_path / "OPC-001" / "memory" / "13-04-26.md"
+    content = path.read_text()
+    assert entry_id not in content
+    assert "type: charter" in content
 
 
 def test_delete_entry_not_found(tmp_path, monkeypatch):
