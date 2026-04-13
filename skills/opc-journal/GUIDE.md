@@ -1,19 +1,19 @@
 # OPC Journal - User Guide
 
-> Your personal, local-first, LLM-powered journaling system.
+> Your personal, local-first journaling system.
 
 ## What is OPC Journal?
 
 **OPC Journal** is a privacy-first journaling skill designed for one-person companies and individual knowledge workers. Everything stays on your local machine — no data leaves, no cloud dependencies, no external APIs.
 
-Unlike traditional journaling apps, OPC Journal follows an **LLM-first architecture**. It doesn't pretend to understand your emotions or draw rigid conclusions. Instead, it extracts **raw signals and structured context** from your entries and hands the interpretation to your AI assistant — which actually understands nuance, language, and context.
+Unlike traditional journaling apps, OPC Journal follows an **interpretation-first architecture**. It doesn't pretend to understand your emotions or draw rigid conclusions. Instead, it extracts **raw signals and structured context** from your entries and hands the interpretation to your assistant — which actually understands nuance, language, and context.
 
 ---
 
 ## Core Philosophy
 
 - **Local-Only**: All data is stored in `~/.openclaw/customers/{id}/`
-- **LLM-First**: No hardcoded psychology. No keyword guessing. Pure data, rich interpretation.
+- **Interpretation-First**: No hardcoded psychology. No keyword guessing. Pure data, rich interpretation.
 - **Frictionless**: Append-only by default. Search, export, archive when you need to.
 - **Safe by Design**: Backups before every mutation. File locking for concurrent access.
 
@@ -24,7 +24,7 @@ Unlike traditional journaling apps, OPC Journal follows an **LLM-first architect
 ### 1. Initialize Your Journal
 
 ```bash
-opc-journal init --day 1 --goals "Launch MVP" "Get first 100 users"
+opc-journal init --customer-id Danny --day 1 --goals "Launch MVP" "Get first 100 users"
 ```
 
 This creates your customer directory and writes a **charter** — your founding document.
@@ -32,7 +32,7 @@ This creates your customer directory and writes a **charter** — your founding 
 ### 2. Record Your First Entry
 
 ```bash
-opc-journal record "Today I sketched the landing page and felt oddly confident."
+opc-journal record --customer-id Danny "Today I sketched the landing page and felt oddly confident."
 ```
 
 Entries are appended to today's memory file automatically.
@@ -40,7 +40,7 @@ Entries are appended to today's memory file automatically.
 ### 3. Check Status
 
 ```bash
-opc-journal status
+opc-journal status --customer-id Danny
 ```
 
 Shows total entries, date range, streaks, and language preference.
@@ -48,7 +48,7 @@ Shows total entries, date range, streaks, and language preference.
 ### 4. Search the Past
 
 ```bash
-opc-journal search --query "confident"
+opc-journal search --customer-id Danny --query "confident"
 ```
 
 Searches across all entries and returns matching blocks with context.
@@ -66,7 +66,7 @@ Searches across all entries and returns matching blocks with context.
 | 3 | `search` | Full-text search across all entries locally |
 | 4 | `export` | Export entries to Markdown or JSON |
 | 5 | `analyze` | Extract structural signals (punctuation, caps, quotes) |
-| 6 | `insights` | Build context summary for LLM interpretation |
+| 6 | `insights` | Build context summary for interpretation |
 | 7 | `milestones` | Detect milestone candidates from recent entries |
 | 8 | `status` | View journal statistics and streaks |
 | 9 | `task` | Create a persistent async task |
@@ -82,40 +82,40 @@ Searches across all entries and returns matching blocks with context.
 ### Daily Standup Workflow
 ```bash
 # Morning: Check your status
-opc-journal status
+opc-journal status --customer-id Danny
 
 # Log your work
-opc-journal record "Refactored auth module. Blocked on API rate limits."
+opc-journal record --customer-id Danny "Refactored auth module. Blocked on API rate limits."
 
 # End of day: Create tomorrow's tasks
-opc-journal batch-task --descriptions "Email API support" "Draft rate limit workaround"
+opc-journal batch-task --customer-id Danny --descriptions "Email API support" "Draft rate limit workaround"
 ```
 
 ### Weekly Review Workflow
 ```bash
 # Analyze the past week
-opc-journal analyze --days 7
+opc-journal analyze --customer-id Danny --days 7
 
-# Generate insights for your AI
-opc-journal insights --days 7
+# Generate insights
+opc-journal insights --customer-id Danny --days 7
 
 # Export to share with advisor/coach
-opc-journal export --time-range 7d --output-path ~/weekly.md
+opc-journal export --customer-id Danny --time-range 7d --output-path ~/weekly.md
 
 # Archive old entries to keep things tidy
-opc-journal archive --clear
+opc-journal archive --customer-id Danny --clear
 ```
 
 ### Milestone Tracking Workflow
 ```bash
 # Record a potential milestone
-opc-journal record "Just got our first paying customer!" --emotion excited
+opc-journal record --customer-id Danny "Just got our first paying customer!" --emotion excited
 
 # Detect milestones from recent entries
-opc-journal milestones --days 7
+opc-journal milestones --customer-id Danny --days 7
 
 # Update your goals based on progress
-opc-journal update-meta --goals "Reach 10 customers" "Hire first contractor"
+opc-journal update-meta --customer-id Danny --goals "Reach 10 customers" "Hire first contractor"
 ```
 
 ---
@@ -125,21 +125,23 @@ opc-journal update-meta --goals "Reach 10 customers" "Hire first contractor"
 ### `init` — Initialize Your Journal
 
 ```bash
-opc-journal init --day 1 \
+opc-journal init --customer-id Danny --day 1 \
   --goals "Launch product" "Reach ramen profitability" \
-  --preferences '{"timezone": "Asia/Shanghai"}' \
+  --preferences '{"timezone": "Asia/Shanghai", "auto_record_daily": true, "review_schedule": ["weekly", "monthly", "quarterly"]}' \
   --language en
 ```
 
 **What happens:**
-- Creates `~/.openclaw/customers/OPC-001/`
+- Creates `~/.openclaw/customers/Danny/`
 - Writes `journal_meta.json` with your goals
 - Creates today's memory file with a `type: charter` block
+- Sets default preferences for auto-recording and review schedules
 
 **Flags:**
+- `--customer-id`: **Required**. Unique customer identifier
 - `--day`: Starting day number (default: 1)
 - `--goals`: List of string goals
-- `--preferences`: JSON object for timezone, communication style, etc.
+- `--preferences`: JSON object for timezone, communication style, auto_record_daily, review_schedule
 - `--language`: Force language (`zh` or `en`). Auto-detected if omitted.
 
 ---
@@ -162,7 +164,7 @@ opc-journal record "Shipped the auth flow. Sleep deprived but happy." \
 - `--emotion`: Caller-provided emotion tag (optional)
 - `--content`: The entry body (required if not passed as positional arg)
 
-**Tip:** If you don't provide `--emotion`, none is added. The LLM can infer it from context later.
+**Tip:** If you don't provide `--emotion`, none is added. The caller can infer it from context later.
 
 ---
 
@@ -221,7 +223,7 @@ opc-journal analyze --days 14
 ```
 
 **What it does:**
-Extracts **language-agnostic structural signals** and **minimal keyword fragments** for your LLM to interpret:
+Extracts **language-agnostic structural signals** and **minimal keyword fragments** for interpretation:
 
 **Structural signals** (purely quantitative):
 - `exclamation_marks`: Count of `!`
@@ -238,20 +240,20 @@ Extracts **language-agnostic structural signals** and **minimal keyword fragment
 **Why this design:**
 - Structural signals work in any language (Chinese, English, Japanese)
 - Keyword fragments provide quick context without rigid emotional interpretation
-- Your LLM sees both the numbers and the actual text. It can interpret a high `exclamation_marks` count as excitement *or* frustration — depending on context.
+- The caller sees both the numbers and the actual text, and can interpret a high `exclamation_marks` count as excitement *or* frustration — depending on context.
 
 **Note:** This is "minimal semantic processing" — not "zero semantic processing." The skill extracts keyword patterns but defers emotional/psychological interpretation to the caller.
 
 ---
 
-### `insights` — Context for LLM Interpretation
+### `insights` — Context for Interpretation
 
 ```bash
 opc-journal insights --days 30
 ```
 
 **What it does:**
-Collects themes, signal summaries, and raw entry context into a single payload designed for LLM consumption.
+Collects themes, signal summaries, and raw entry context into a single payload designed for interpretation.
 
 **Returns:**
 - `signal_summary`: Aggregated counts including:
@@ -261,9 +263,9 @@ Collects themes, signal summaries, and raw entry context into a single payload d
 - `recent_entries`: Full text of recent entries
 - `generated_at`: ISO timestamp
 
-**Use case:** Feed this directly into your LLM prompt for personalized coaching or reflection.
+**Use case:** Feed this into your preferred assistant or tool for personalized coaching or reflection.
 
-**Note:** Like `analyze`, `insights` performs lightweight keyword counting but does **not** draw emotional conclusions. The LLM interprets the patterns.
+**Note:** Like `analyze`, `insights` performs lightweight keyword counting but does **not** draw emotional conclusions. The caller interprets the patterns.
 
 ---
 
@@ -282,7 +284,7 @@ Scans entries for milestone indicators (first entry, significant events, pattern
 - `description`: Raw signal summary
 - `confidence`: Structural score (0-1)
 
-**Note:** The LLM decides whether this is truly a milestone worth celebrating.
+**Note:** The caller decides whether this is truly a milestone worth celebrating.
 
 ---
 
@@ -414,7 +416,7 @@ Displays the full list of available commands and their usage.
 ## File Structure
 
 ```
-~/.openclaw/customers/OPC-001/
+~/.openclaw/customers/Danny/
 ├── memory/
 │   ├── 13-04-26.md          # Today's entries
 │   ├── 13-04-26.md.bak      # Backup before last mutation
@@ -423,7 +425,7 @@ Displays the full list of available commands and their usage.
 ├── archive/
 │   └── 20260413-235959/     # Timestamped archive
 │       └── 12-04-26.md
-├── journal_meta.json        # Goals, language, stats
+├── journal_meta.json        # Goals, language, stats, auto_record, review_schedule
 └── tasks.json               # Persistent async tasks
 ```
 
@@ -435,31 +437,31 @@ Displays the full list of available commands and their usage.
 The value compounds. Even a single sentence is enough.
 
 ### 2. Use `analyze` + `insights` Together
-Run `analyze` for raw signals, then `insights` for LLM-ready context. Feed both to your AI for the richest reflections.
+Run `analyze` for raw signals, then `insights` for contextual data. Feed both to your preferred tool for the richest reflections.
 
 ### 3. Archive Monthly
 Keep your `memory/` directory lean by archiving old entries:
 
 ```bash
-opc-journal archive --clear
+opc-journal archive --customer-id Danny --clear
 ```
 
 ### 4. Back Up Your Customer Directory
 Since everything is local, your journal is only as safe as your backups:
 
 ```bash
-tar -czf opc-journal-backup.tar.gz ~/.openclaw/customers/OPC-001/
+tar -czf opc-journal-backup.tar.gz ~/.openclaw/customers/Danny/
 ```
 
 ### 5. Task Timeout as Intention
-The `--timeout-hours` on tasks isn't enforced by code — it's a **commitment device**. Use it to set expectations with yourself or your AI assistant.
+The `--timeout-hours` on tasks isn't enforced by code — it's a **commitment device**. Use it to set expectations with yourself or your assistant.
 
 ---
 
 ## Troubleshooting
 
 ### "No memory directory found"
-You haven't recorded any entries yet. Run `opc-journal init` followed by `opc-journal record`.
+You haven't recorded any entries yet. Run `opc-journal init --customer-id <name>` followed by `opc-journal record --customer-id <name>`.
 
 ### "Entry not found"
 Double-check the entry ID. Entry IDs are case-sensitive and look like `JE-20260413-A1B2C3`.
@@ -478,7 +480,7 @@ You're on a version older than v2.5.1. Upgrade to get persistent task storage.
 Your journal contains your rawest thoughts. We believe that data should never cross a network boundary without your explicit, informed consent.
 
 ### No Hardcoded Psychology
-We don't pretend to know what "stressed" or "motivated" looks like in every language and culture. We extract signals. Your LLM interprets them.
+We don't pretend to know what "stressed" or "motivated" looks like in every language and culture. We extract signals. The caller interprets them.
 
 ### Append-Only by Default
 Writing should be frictionless. Deletion and archiving are intentional, slower operations.

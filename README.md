@@ -445,7 +445,7 @@ OPC200 自动生成：
 
 ### opc-journal
 
-专为 OPC200 设计的用户日志与成长追踪技能。v2.5.2 版本采用 LLM-first 架构，所有数据本地存储。
+专为 OPC200 设计的用户日志与成长追踪技能。v2.5.2 版本采用 interpretation-first 架构，所有数据本地存储。
 
 | 功能模块 | 说明 | 命令示例 |
 |---------|------|---------|
@@ -454,7 +454,7 @@ OPC200 自动生成：
 | 导出 | Markdown/JSON 导出 | `/opc-journal export --format markdown` |
 | 模式分析 | 结构化信号提取 | `/opc-journal analyze --days 7` |
 | 里程碑 | 里程碑检测 | `/opc-journal milestones` |
-| 洞察生成 | LLM-ready 上下文 | `/opc-journal insights --days 30` |
+| 洞察生成 | 上下文聚合与信号统计 | `/opc-journal insights --days 30` |
 | 任务管理 | 持久化异步任务 | `/opc-journal task --description "调研"` |
 | 归档 | 备份与清理 | `/opc-journal archive --clear` |
 

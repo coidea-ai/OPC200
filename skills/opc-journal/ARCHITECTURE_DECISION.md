@@ -12,11 +12,11 @@
 
 ---
 
-## ADR-002: LLM-First Interpretation Layer (v2.5.1)
+## ADR-002: Interpretation-First Layer (v2.5.2)
 
 **Date**: 2026-04-13  
 **Status**: Accepted  
-**Decision**: Remove all hardcoded semantic interpretation from commands. Commands act as data layers returning structural signals and context for the caller (LLM) to interpret dynamically.
+**Decision**: Remove all hardcoded semantic interpretation from commands. Commands act as data layers returning structural signals and context for the caller to interpret dynamically.
 
 ### Affected Commands
 
@@ -30,17 +30,16 @@
 
 ### Rationale
 
-1. **Language Agnostic**: Hardcoded English interpretations failed for Chinese, Japanese, and other languages. Structural signals work everywhere.
-2. **Flexibility**: LLM can adapt interpretation based on full context, not just local patterns.
+1. **Language Agnostic**: Hardcoded interpretations failed for Chinese, Japanese, and other languages. Structural signals work everywhere.
+2. **Flexibility**: The caller can adapt interpretation based on full context, not just local patterns.
 3. **Maintainability**: No need to update complex interpretation logic as language evolves.
 4. **Honesty**: `analyze` and `insights` use minimal keyword regex patterns for quick context extraction. This is lightweight semantic extraction, not "zero semantic processing." Emotional and psychological interpretation is fully delegated to the caller.
 
 ### Consequences
 
 - Commands return more data, not conclusions
-- Callers (LLM) must perform interpretation
+- Callers must perform interpretation
 - Better multi-language support without i18n complexity
-- More network-efficient (full text + signals vs. pre-computed interpretations)
 
 ---
 

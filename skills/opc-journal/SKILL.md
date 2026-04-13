@@ -54,7 +54,7 @@ opc-journal/
 │       ├── export.py     # Markdown/JSON export
 │       ├── analyze.py    # Structural signal + keyword fragment extraction
 │       ├── milestones.py # Milestone candidate detection
-│       ├── insights.py   # Context assembly for LLM interpretation
+│       ├── insights.py   # Context assembly for interpretation
 │       ├── task.py       # Single task creation (persistent)
 │       ├── batch_task.py # Bulk task creation
 │       ├── status.py     # Statistics and streak calculation
@@ -94,15 +94,15 @@ All commands follow a uniform return pattern:
 | Destructive Ops | `--force` flag required for delete and archive --clear |
 | Scope | All I/O constrained to `~/.openclaw/customers/{customer_id}/` |
 
-### LLM-First Design
+### Interpretation-First Design
 
-This skill delegates **interpretation** to the caller (LLM) while providing **structured extraction**:
+This skill delegates **interpretation** to the caller while providing **structured extraction**:
 
-| Command | What Skill Does | What LLM Does |
-|---------|-----------------|---------------|
-| `analyze` | Extracts structural signals (punctuation, caps) + keyword fragments | Interprets emotional/psychological state |
-| `insights` | Assembles context + signal counts | Generates personalized recommendations |
-| `milestones` | Detects structural candidates (first entry, pattern breaks) | Validates and celebrates true milestones |
+| Command | What Skill Does | What Caller Does |
+|---------|-----------------|------------------|
+| `analyze` | Extracts structural signals (punctuation, caps) + keyword fragments | Interprets patterns and context |
+| `insights` | Assembles context + signal counts | Generates insights and recommendations |
+| `milestones` | Detects structural candidates (first entry, pattern breaks) | Validates and celebrates milestones |
 | `record` | Stores raw text + optional caller-provided emotion | Infers emotion if not provided |
 
 **Key principle**: The skill extracts patterns but never draws conclusions about the user's mental state.
@@ -137,13 +137,14 @@ Your entry content here.
 
 ## Development Notes
 
-- `analyze` reads `dreams.md` and `memory/*.md` and returns **structural signals + keyword fragments** for the caller (LLM) to interpret dynamically. Structural signals are purely quantitative (punctuation counts, caps, etc.). Keyword fragments use minimal regex patterns for common action/challenge/achievement words, but no emotional interpretation is baked in.
-- `insights` returns **raw memory context and signal counts** for the caller (LLM) to generate recommendations dynamically. Includes keyword-based signal counts but defers semantic interpretation to the caller.
-- `milestones` returns a **raw candidate object** for the caller (LLM) to validate and classify. No keyword-based auto-detection.
+- `analyze` reads `dreams.md` and `memory/*.md` and returns **structural signals + keyword fragments** for the caller to interpret dynamically. Structural signals are purely quantitative (punctuation counts, caps, etc.). Keyword fragments use minimal regex patterns for common action/challenge/achievement words, but no emotional interpretation is baked in.
+- `insights` returns **raw memory context and signal counts** for the caller to generate recommendations dynamically. Includes keyword-based signal counts but defers semantic interpretation to the caller.
+- `milestones` returns a **raw candidate object** for the caller to validate and classify. No keyword-based auto-detection.
 - `record` defers emotional interpretation to the caller. The `emotion` frontmatter field is only populated if the caller provides it in `metadata`.
 - `task` creates a single async task record; `batch-task` creates multiple tasks in one call.
 - `delete` removes an entry by `entry_id`, creates a `.bak` before modification, and updates the total count in meta. **Requires `--force` flag for destructive operations.**
 - `archive` copies all memory files and `journal_meta.json` to a timestamped `archive/` directory. Use `--clear` to reset the journal after archiving. **Requires `--force` flag when using `--clear`.**
 - `update-meta` updates journal metadata (language, goals, preferences). Retroactive translation rules are kept minimal because templates are now English-only by design.
+- **Default Preferences**: Upon init, sets `auto_record_daily: true` and `review_schedule: ["weekly", "monthly", "quarterly"]` for automated journaling workflows.
 - All data is stored locally under `~/.openclaw/customers/{customer_id}/`.
 - No external network calls are made.

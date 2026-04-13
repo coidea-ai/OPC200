@@ -16,6 +16,8 @@ def run(customer_id: str, args: dict) -> dict:
         preferences = {
             "communication_style": "friendly_professional",
             "timezone": "Asia/Shanghai",
+            "auto_record_daily": True,
+            "review_schedule": ["weekly", "monthly", "quarterly"],
         }
 
     language = args.get("language") or detect_language(goals + list(preferences.values()))

@@ -1,4 +1,4 @@
-"""Journal command: insights (raw context for LLM interpretation)."""
+"""Journal command: insights (raw context for interpretation)."""
 import glob
 import os
 import re
@@ -53,7 +53,7 @@ def _read_recent(sources: list, days: int = 7):
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Return recent journal context for the caller (LLM) to generate insights dynamically."""
+    """Return recent journal context for interpretation."""
     day = args.get("day", 1)
     days_back = args.get("days_back", 7)
     lang = get_language(customer_id)

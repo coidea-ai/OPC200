@@ -1,4 +1,4 @@
-"""Journal command: analyze (raw signal extraction for LLM interpretation)."""
+"""Journal command: analyze (raw signal extraction)."""
 import glob
 import os
 import re
@@ -31,7 +31,7 @@ def _find_sources(customer_id: str):
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Return structured raw signals and context for the caller (LLM) to interpret dynamically."""
+    """Return structured raw signals and context for interpretation."""
     days = args.get("days", 7)
     lang = get_language(customer_id)
     sources = _find_sources(customer_id)
@@ -94,7 +94,7 @@ def run(customer_id: str, args: dict) -> dict:
             "raw_text": raw_text,
             "signal_summary": signal_summary,
         },
-        "message": f"Pattern analysis context prepared for {customer_id}",
+        "message": f"Pattern analysis prepared for {customer_id}",
     }
 
 

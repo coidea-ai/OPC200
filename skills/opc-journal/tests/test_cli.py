@@ -26,6 +26,6 @@ def test_unknown_command():
 
 
 def test_parse_from_text():
-    result = main({"input": {"text": "status"}, "customer_id": "OPC-001"})
+    result = main({"input": {"text": "status --customer-id OPC-001"}, "customer_id": "OPC-001"})
     assert result["status"] == "success"
     assert "status" in result["message"].lower() or "retrieved" in result["message"].lower()
