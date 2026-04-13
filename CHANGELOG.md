@@ -5,6 +5,31 @@ All notable changes to the OPC200 project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-04-13
+
+### Changed (Breaking)
+- **LLM-first architecture for `opc-journal`**: removed all hardcoded local interpretation layers. The skill now acts as a pure data layer, returning raw signals and context for the caller (LLM) to interpret dynamically.
+  - `analyze` — returns `raw_text`, `signal_summary`, and file metadata instead of pre-baked emotional/work/decision interpretations.
+  - `insights` — returns raw memory context and recent file metadata instead of fixed theme/recommendation pairs.
+  - `milestones` — returns a raw `candidate` object instead of keyword-based milestone detection.
+  - `record` — removes auto-emotion analysis (`_analyze_emotion`); defers emotional interpretation to the caller.
+  - `init` — generates a minimal charter without hardcoded motivational quotes or bilingual blocks.
+  - `status` — returns raw statistics (`total_entries`, `latest_entry_date`, `journal_active`) and defers message generation to the caller.
+
+### Fixed
+- Aligned `VERSION` file, `SKILL.md`, `config.yml`, and generated charter metadata to the correct release version.
+
+## [2.4.0] - 2026-04-11
+
+### Changed
+- **Skill restructure**: `opc-journal-suite` (5 sub-skills + coordinator) collapsed into a single CLI skill `opc-journal`.
+- **Localization**: added Chinese language support across all commands and `update-meta` retroactive document translation.
+- **Deployment**: added `Dockerfile.allinone`, cloud multi-tenant compose, and on-premise compose configurations.
+- **Operations**: added `docs/SLA.md`, Prometheus/Grafana monitoring dashboards, and enhanced health-check/backup scripts.
+
+### Fixed
+- 5 failing integration tests fixed; full suite green (227 passed).
+
 ## [2.3.0] - 2026-04-01
 
 ### Added

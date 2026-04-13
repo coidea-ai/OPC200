@@ -30,7 +30,7 @@ type: charter
 date: {today_str}
 day: {day}
 customer_id: {customer_id}
-version: 2.4.3
+version: 2.5.0
 language: {language}
 ---
 
@@ -54,7 +54,7 @@ language: {language}
         "customer_id": customer_id,
         "started_day": day,
         "started_at": datetime.now().isoformat(),
-        "version": "2.4.3",
+        "version": "2.5.0",
         "goals": goals,
         "preferences": preferences,
         "language": language,
