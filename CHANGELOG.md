@@ -83,8 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Version unification**: All project documents and skills aligned to v2.3.0
-- Skills refactored to pure Python with standard library only (removed `src.*` dependencies)
-- Documentation structure improved with single source of truth
+- Skills refactored to pure Python using only the standard library (removed `src.*` dependencies)
+- Documentation structure improved with a single source of truth
 - Updated OpenClaw Gateway image reference to `ghcr.io/openclaw/openclaw`
 
 ---
@@ -157,3 +157,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `EXECUTIVE_SUMMARY.md` to match latest audit conclusions (A- / 94.5 / ~90%)
   - Updated `DEVELOPMENT_PLAN.md` progress and acceptance checklist statuses
   - Updated `PROJECT_STATUS.md` metadata and action priorities
+s
+rities
