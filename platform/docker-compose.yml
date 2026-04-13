@@ -34,6 +34,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
       - '--web.enable-lifecycle'
+      - '--alertmanager.url=http://opc200-alertmanager:9093'
     networks:
       - opc200-platform
     restart: unless-stopped
