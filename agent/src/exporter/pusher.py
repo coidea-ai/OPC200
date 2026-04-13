@@ -18,6 +18,7 @@ import logging
 import os
 import random
 import time
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -103,15 +104,19 @@ class MetricsPusher:
             self._flush_spool()
         return ok
 
-    def push_loop(self) -> None:
+    def push_loop(self, stop_event: Optional[threading.Event] = None) -> None:
         logger.info("push loop started (interval=%ds)", self._push_interval)
-        while True:
+        while stop_event is None or not stop_event.is_set():
             try:
                 metrics = self._collector.collect_all()
                 self.push(metrics)
             except Exception:
                 logger.exception("push loop error")
-            time.sleep(self._push_interval)
+            if stop_event is not None:
+                if stop_event.wait(timeout=self._push_interval):
+                    break
+            else:
+                time.sleep(self._push_interval)
 
     # ---------- retry ----------
 

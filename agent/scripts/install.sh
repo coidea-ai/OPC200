@@ -323,7 +323,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${agent_bin} --config ${config_yml} service run
+ExecStart=${agent_bin} --config ${config_yml} run
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${INSTALL_DIR}/logs/agent.log

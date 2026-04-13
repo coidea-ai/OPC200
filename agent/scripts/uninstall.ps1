@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     OPC200 Agent Windows 卸载脚本 (v2)
@@ -24,6 +24,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:SERVICE_NAME = "OPC200-Agent"
+$script:TASK_NAME    = "OPC200-Agent"
 
 function Write-Step { param([string]$M) Write-Host "[STEP] $M" -ForegroundColor Cyan }
 function Write-Ok   { param([string]$M) Write-Host "  [OK] $M" -ForegroundColor Green }
@@ -31,7 +32,9 @@ function Write-Warn { param([string]$M) Write-Host " [WARN] $M" -ForegroundColor
 function Write-Err  { param([string]$M) Write-Host "  [ERR] $M" -ForegroundColor Red }
 
 try {
-    Write-Host "`nOPC200 Agent Uninstaller`n" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "OPC200 Agent Uninstaller" -ForegroundColor Cyan
+    Write-Host ""
 
     # 管理员检查
     $principal = New-Object Security.Principal.WindowsPrincipal(
@@ -47,8 +50,11 @@ try {
         $InstallDir = Join-Path $HOME ".opc200"
     }
 
-    # Step 1: 停止并删除服务
-    Write-Step "1/3 移除服务"
+    # Step 1: 移除计划任务与旧版 Windows 服务
+    Write-Step "1/3 移除自动启动"
+    Unregister-ScheduledTask -TaskName $script:TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Ok "计划任务已移除 (若存在)"
+
     $svc = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
     if ($svc) {
         if ($svc.Status -eq "Running") {
@@ -56,10 +62,7 @@ try {
             Start-Sleep -Seconds 2
         }
         sc.exe delete $script:SERVICE_NAME | Out-Null
-        Write-Ok "服务 $($script:SERVICE_NAME) 已删除"
-    }
-    else {
-        Write-Warn "服务不存在，跳过"
+        Write-Ok "旧版 Windows 服务已删除"
     }
 
     # Step 2: 确认删除
