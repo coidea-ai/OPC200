@@ -2,12 +2,10 @@
 
 > **200 个一人公司，100 天 7×24 小时超级智能体陪伴式成长**
 
-[![Version](https://img.shields.io/badge/version-2.4--refactoring-blue.svg)](./VERSION)
-[![OpenClaw](https://img.shields.io/badge/OpenClaw-2026.4+-green.svg)](https://openclaw.ai)
+[![Version](https://img.shields.io/badge/version-2.2-blue.svg)](./VERSION)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-2026.3+-green.svg)](https://openclaw.ai)
 [![Security](https://img.shields.io/badge/security-Data%20Vault%20Architecture-red.svg)](./SYSTEM.md)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
-
-> **🚨 v2.4 重构中**: 基于 OpenClaw v2026.4.9 平台的记忆层升级，OPC200 正在进行战略转身。详见 [`CRITICAL_ANALYSIS_2026-04-10.md`](./CRITICAL_ANALYSIS_2026-04-10.md) 和 [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md)。
 
 ---
 
@@ -15,104 +13,306 @@
 
 OPC200 是一个面向 **One Person Company（一人公司）** 的 AI 智能体支持基础设施，通过 OpenClaw 平台提供持续 100 天的陪伴式成长服务。
 
+### 架构演进
+
+| 维度 | 旧架构（已废弃） | 新架构（开发中） |
+|------|-----------------|-----------------|
+| 用户端 | 5 容器（~6GB） | 1 Agent（~500MB） |
+| 监控 | 各客户独立 Grafana | 平台统一监控 |
+| 升级 | 逐个 SSH 升级 | 批量推送升级 |
+| 网络 | Tailscale VPN | 纯 HTTPS 出站 |
+| 代码位置 | `src/`, `skills/`, `config/` | `agent/`, `platform/`, `shared/` |
+
 ### 核心能力
 
 | 能力 | 说明 |
 |------|------|
 | **🤖 7×24 智能体陪伴** | 不只是问答，是连续 100 天的成长记录与回顾 |
-| **📝 User Journal** | 100 天旅程的特定里程碑模型和数据契约 |
+| **📝 User Journal** | 三层记忆架构（会话→短期→长期），记录完整用户旅程 |
 | **🔒 数据主权** | 本地数据保险箱，敏感信息绝不上云 |
-| **🌐 混合部署** | 20 本地部署 + 180 云端托管 |
-| **🛠️ 专属 Skills** | OPC Journal Suite（3 个核心差异化技能）|
+| **🌐 混合部署** | 150 本地部署 + 50 云端托管 |
+| **🛠️ 专属 Skills** | OPC Journal Suite 等 6+ 专属技能 |
+| **📊 平台监控** | 【新】统一监控 200 用户实例，故障主动发现 |
+| **🔄 自修复** | 【新】Agent 本地自动修复 80% 常见问题 |
 
 ---
 
-## 🏗️ 架构设计
+## 🏗️ 架构设计（新架构：Push 模式）
 
-### 部署架构
+### 架构概览
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     OPC200 部署分布 (200客户)                            │
+│                         OPC200 Push 架构                                 │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│   本地部署 (20)                           云端托管 (180)                 │
-│   ┌────────────────────────┐              ┌────────────────────────┐   │
-│   │ • Tailscale VPN 连接   │              │ • 多租户共享基础设施   │   │
-│   │ • 敏感数据本地存储     │              │ • Gateway-per-tenant   │   │
-│   │ • All-in-One 容器      │              │ • S3/B2 自动备份       │   │
-│   │ • 紧急远程访问授权     │              │                        │   │
-│   └────────────────────────┘              └────────────────────────┘   │
+│   📦 平台端 (云端集中)                                                    │
+│   ┌─────────────────────────────────────────────────────────────────┐  │
+│   │  Pushgateway  │  Prometheus  │  Grafana  │  AlertManager       │  │
+│   │  (指标接收)    │  (时序存储)   │  (可视化)  │  (告警分发)         │  │
+│   │  version-control/                                           │  │
+│   │  (版本管理 + 灰度发布)                                        │  │
+│   └─────────────────────────────────────────────────────────────────┘  │
+│                               ▲                                         │
+│                               │ HTTPS ( outbound only )                │
+│                               │                                         │
+│   📦 用户端 (本地/云端)                                                    │
+│   ┌───────────────────────────┴─────────────────────────────────────┐  │
+│   │  OPC Agent (精简版 OpenClaw)                                     │  │
+│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │  │
+│   │  │ Gateway  │  │  Journal │  │ Exporter │──┐                   │  │
+│   │  │ (精简)   │  │ (本地存储)│  │ (指标推送)│  │                   │  │
+│   │  └──────────┘  └──────────┘  └──────────┘  │                   │  │
+│   │  ┌──────────┐  ┌──────────┐                │                   │  │
+│   │  │SelfHealer│  │ Updater  │────────────────┘                   │  │
+│   │  │(自修复)  │  │(版本更新)│                                    │  │
+│   │  └──────────┘  └──────────┘                                    │  │
+│   │                                                                │  │
+│   │  资源占用: ~500MB (原 4-6GB)                                   │  │
+│   │  部署方式: 单容器一键启动                                       │  │
+│   └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
-│   ┌─────────────────────────────────────────────────────────────┐      │
-│   │                    支持中心 (Support Hub)                    │      │
-│   │  • 统一调度引擎  • 分级知识库  • 统一监控  • 应急响应中心     │      │
-│   └─────────────────────────────────────────────────────────────┘      │
-│                                                                         │
+│   部署分布: 150 本地部署 + 50 云端托管 = 200 用户                        │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 架构对比
+
+| 维度 | 旧架构 | 新架构 (Push 模式) |
+|------|--------|-------------------|
+| **用户端形态** | 5 容器 (Gateway+Journal+Qdrant+Prometheus+Grafana) | 1 Agent (~500MB) |
+| **监控方式** | 各客户独立 Grafana | 平台统一监控 |
+| **网络要求** | Tailscale VPN + 公网/端口开放 | 纯 HTTPS 出站 |
+| **升级方式** | 逐个 SSH 登录升级 | 平台批量推送 |
+| **运维效率** | 200 实例逐个处理 | 统一 Dashboard 管理 |
+| **资源占用** | 4-6GB / 用户 | ~500MB / 用户 |
+
+### 核心组件
+
+#### 📦 Agent 用户端
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| `gateway/` | 精简版 OpenClaw（去除监控组件） | 🔄 开发中 |
+| `journal/` | SQLite 本地存储（原 Qdrant 降级） | ✅ 已迁移 |
+| `exporter/` | Prometheus 指标推送 | 🔄 待实现 |
+| `selfhealer/` | 三级自修复机制 | 🔄 待实现 |
+| `updater/` | 版本更新客户端 | 🔄 待实现 |
+
+#### 📦 Platform 平台端
+
+| 服务 | 功能 | 端口 |
+|------|------|------|
+| Pushgateway | 接收所有 Agent 推送的指标 | 9091 |
+| Prometheus | 统一时序存储（200 用户聚合） | 9090 |
+| Grafana | 多租户可视化 Dashboard | 3000 |
+| AlertManager | 统一告警路由（飞书/邮件/短信） | 9093 |
+| Version Control | 版本仓库 + 灰度发布 | 8080 |
+
 ### 技术栈
 
-- **AI 平台**: [OpenClaw](https://openclaw.ai) Gateway
-- **安全网络**: Tailscale VPN (WireGuard)
-- **记忆存储**: SQLite + Qdrant 向量数据库
-- **技能生态**: [ClawHub](https://clawhub.ai)
-- **监控告警**: Prometheus + Grafana
-- **运维自动化**: Bash/Python + Cron
+- **AI 平台**: [OpenClaw](https://openclaw.ai) Gateway（精简版）
+- **用户端**: Docker 单容器 / Windows / Mac / Linux 可执行文件
+- **网络**: 纯 HTTPS 出站（无需 VPN、公网 IP、端口开放）
+- **存储**: SQLite（本地）+ Prometheus（云端时序）
+- **监控**: Prometheus + Grafana（平台统一）
+- **升级**: 平台端版本管理 + Agent 自动更新
 
 ---
 
-## 📁 项目结构
+## 👥 多 Agent 协作
+
+本项目采用**多 AI Agent 协同开发**模式。
+
+### 🎯 任务板
+
+**📋 当前任务**: [docs/TASK_BOARD.md](./docs/TASK_BOARD.md)
+
+任务板包含：
+- 11 个待实现任务（按 P0/P1/P2/P3 优先级分类）
+- 任务认领规则（📥 待领取 → 🏃 进行中 → 👀 审核中 → ✅ 已完成）
+- Agent 分工表
+- 阻塞问题追踪
+
+### 📝 如何参与
+
+```bash
+# 1. 查看当前任务
+cat docs/TASK_BOARD.md
+
+# 2. 认领任务（在 TASK_BOARD.md 对应任务下回复）
+# 格式: "@your-agent-name 认领"
+
+# 3. 开始开发
+git checkout feat/push-architecture
+# ... 编码 ...
+
+# 4. 提交修改
+git add .
+git commit -m "feat(agent): implement xxx"
+git push origin feat/push-architecture
+```
+
+### 🏷️ 任务优先级
+
+| 标识 | 优先级 | 当前任务 |
+|------|--------|----------|
+| 🔴 P0 | 紧急 | AGENT-001 (Dockerfile), AGENT-002 (exporter) |
+| 🟡 P1 | 高 | AGENT-003 (import 调整), AGENT-004 (selfhealer) 等 4 个 |
+| 🟢 P2 | 中 | AGENT-007 (通信协议), AGENT-008 (版本管理) 等 3 个 |
+| ⚪ P3 | 低 | AGENT-010 (删除旧目录), AGENT-011 (CI/CD) |
+
+### 🤝 协作规则
+
+1. **单任务制**: 一个 Agent 同时最多 **2 个** 任务
+2. **认领方式**: 在 `docs/TASK_BOARD.md` 对应任务下回复 `"@agent-name 认领"`
+3. **超时释放**: 任务 48 小时无更新自动标记为 `"待重新认领"`
+4. **阻塞上报**: 遇到阻塞立即标记状态并 `@other-agent` 协助
+
+### 📊 实时状态
+
+查看完整任务板: **[docs/TASK_BOARD.md](./docs/TASK_BOARD.md)**
+
+| 状态 | 数量 |
+|------|------|
+| 📥 待领取 | 11 |
+| 🏃 进行中 | 0 |
+| 👀 审核中 | 0 |
+| ✅ 已完成 | 0 |
+
+---
+
+## ⚠️ 重要：项目正在架构改造中
+
+> **当前分支**: `feat/push-architecture`  
+> **改造目标**: 从私有化全容器部署转向 Push 模式集中监控架构  
+> **任务板**: [docs/TASK_BOARD.md](./docs/TASK_BOARD.md)
+
+我们正在将项目重构为**平台侧**和**用户侧**双架构，以支持 200 用户规模化运营。
+
+---
+
+## 📁 项目结构（新架构）
 
 ```
 opc200/
 │
-├── README.md                    # 本文件
+├── README.md                    # 📍 本文件
 ├── SYSTEM.md                    # 架构方案文档（核心）
 ├── KNOWLEDGE_BASE.md            # 知识库与最佳实践
 ├── STRUCTURE.md                 # 项目文件结构
 ├── LICENSE                      # MIT 许可证
 │
-├── skills/                      # OpenClaw Skills（可发布到 ClawHub）
-│   └── opc-journal/             # OPC Journal（单一 CLI Skill）
-│       ├── SKILL.md             # Skill 文档
-│       ├── scripts/             # 命令实现（init, record, analyze...）
-│       ├── tests/               # 36 个测试
-│       └── config.yml           # Skill 配置
+├── 📦 agent/                    # 【新】用户侧（OPC Agent）
+│   ├── src/                     #   Agent 源代码
+│   │   ├── gateway/             #     精简版 OpenClaw Gateway
+│   │   ├── journal/             #     本地 SQLite 存储
+│   │   ├── exporter/            #     指标推送到平台
+│   │   ├── selfhealer/          #     自修复机制
+│   │   └── updater/             #     版本更新客户端
+│   ├── config/                  #   Agent 配置文件
+│   ├── skills/                  #   用户侧 Skills
+│   └── README.md                #   Agent 使用说明
 │
-├── opc-remi-lite/             # ⚠️ 已废弃 (DEPRECATED)
+├── 📦 platform/                 # 【新】平台侧（云端集中）
+│   ├── pushgateway/             #   指标接收服务
+│   ├── prometheus/              #   时序存储
+│   ├── grafana/                 #   可视化 Dashboard
+│   ├── alertmanager/            #   告警路由
+│   ├── version-control/         #   版本管理 + 灰度发布
+│   └── README.md                #   平台部署说明
+│
+├── 🔗 shared/                   # 【新】共享组件
+│   ├── proto/                   #   通信协议定义
+│   ├── pkg/                     #   共享工具包
+│   └── README.md
+│
+├── 📚 docs/                     # 文档
+│   ├── SCRIPTS.md               #   脚本使用手册
+│   ├── DEPLOYMENT.md            #   部署指南
+│   ├── ARCHITECTURE.md          #   【新】Push 架构设计
+│   ├── TASK_BOARD.md            #   【新】多 Agent 任务板
+│   └── ...
+│
+└── 🔧 scripts/                  # 运维脚本
+    ├── setup/                   #   初始化脚本
+    ├── deploy/                  #   部署脚本
+    ├── maintenance/             #   维护脚本
+    └── ...
+```
+
+### 🗂️ 旧目录说明（待迁移/删除）
+
+以下目录为**旧架构遗留**，已复制到新位置，后续将删除：
+
+| 旧目录 | 状态 | 新位置 | 说明 |
+|--------|------|--------|------|
+| `src/` | ⚠️ 旧 | `agent/src/` | 源代码已迁移 |
+| `skills/` | ⚠️ 旧 | `agent/skills/` | Skills 已迁移 |
+| `config/` | ⚠️ 旧 | `agent/config/` | 配置已迁移 |
+| `monitoring/` | ⚠️ 旧 | `platform/prometheus/` `platform/grafana/` | 监控组件已迁移 |
+| `Dockerfile` | ⚠️ 旧 | - | 将被 `agent/Dockerfile` 替代 |
+| `Dockerfile.gateway` | ⚠️ 旧 | `agent/src/gateway/` | 参考用 |
+| `docker-compose.yml` | ⚠️ 旧 | `agent/docker-compose.yml` `platform/docker-compose.yml` | 将拆分 |
+
+> 💡 **新开发请使用 `agent/` 和 `platform/` 目录**，旧目录仅保留用于对照和回退。
+
+---
+
+## 🚀 快速开始（新架构）
+
+### 构建 Agent（用户侧）
+
+```bash
+cd agent
+docker build -t opc-agent:latest .
+docker run -d \
+  --name opc-agent \
+  -v ~/.opc200:/data \
+  -e PLATFORM_URL=https://opc200.co \
+  -e CUSTOMER_ID=opc-001 \
+  opc-agent:latest
+```
+
+### 部署平台（云端）
+
+```bash
+cd platform
+docker-compose up -d
+```
+
+---
+
+## 📋 原项目结构（旧架构）
+
+> 以下内容为旧架构文档，仅供参考。新架构请参考 `agent/README.md` 和 `platform/README.md`。
+
+<details>
+<summary>点击展开旧架构说明（已废弃）</summary>
+
+```
+opc200/
+│
+├── skills/                      # OpenClaw Skills
+│   └── opc-journal-suite/       # OPC Journal Suite
+│       ├── SKILL.md
+│       ├── opc-journal-core/
+│       ├── opc-pattern-recognition/
+│       ├── opc-milestone-tracker/
+│       ├── opc-async-task-manager/
+│       └── opc-insight-generator/
 │
 ├── scripts/                     # 运维脚本
 │   ├── setup/                   # 初始化脚本
-│   │   └── customer-init.sh     # 客户初始化
 │   ├── deploy/                  # 部署脚本
-│   │   ├── deploy-onprem.sh     # 本地部署
-│   │   ├── deploy-cloud.sh      # 云端部署
-│   │   └── install-skills.sh    # Skills 安装
 │   ├── maintenance/             # 维护脚本
-│   │   ├── health-check.sh      # 健康检查
-│   │   └── backup-manager.sh    # 备份管理
 │   ├── support/                 # 支持脚本
-│   │   └── vpn-manager.sh       # VPN 管理
 │   └── recovery/                # 恢复脚本
-│       └── emergency-recovery.sh # 紧急恢复
 │
-├── docs/                        # 文档
-│   ├── SCRIPTS.md               # 脚本使用手册
-│   ├── DEPLOYMENT.md            # 部署指南
-│   ├── DEVELOPMENT.md           # 开发指南
-│   └── SECURITY.md              # 安全指南
-│
-├── docker-compose.yml           # 开发环境编排
-├── docker-compose.cloud.yml     # 云端多租户编排
-├── docker-compose.onprem.yml    # 本地简化编排
-└── Dockerfile.allinone          # 本地 All-in-One 镜像
-
-> 重构相关文档:
-> - [`CRITICAL_ANALYSIS_2026-04-10.md`](./CRITICAL_ANALYSIS_2026-04-10.md) — 现状批判分析
-> - [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) — 重构执行计划
+└── docker-compose.yml           # 服务编排
 ```
+
+</details>
 
 ---
 
@@ -126,18 +326,18 @@ opc200/
 # 1. 安装 OpenClaw（如果还没有）
 npm install -g openclaw
 
-# 2. 安装 OPC Journal
-clawhub install coidea/opc-journal
+# 2. 安装 OPC Journal Suite
+clawhub install coidea/opc-journal-suite
 
 # 3. 初始化你的 100 天旅程
-openclaw run "opc-journal init --day 1 --goals '完成产品原型,获得首个付费用户'"
+openclaw run "opc-journal-init --day 1 --goals '完成产品原型,获得首个付费用户'"
 
 # 4. 开始记录（自然语言即可）
 openclaw chat "今天完成了用户注册功能，但数据库选型有点纠结"
-# 系统自动：创建日志条目 + 标记情绪状态 + 检测里程碑
+# 系统自动：创建日志条目 + 关联技术讨论 + 标记情绪状态 + 创建后续任务
 
 # 5. 查看成长轨迹（第 7 天示例）
-openclaw run "opc-journal insights --day 7"
+openclaw run "opc-journal-weekly-report --day 7"
 # 输出：本周模式分析 + 里程碑检测 + 下周建议
 ```
 
@@ -157,10 +357,10 @@ cd OPC200
 # 3. 部署 Gateway
 ./scripts/deploy/deploy-onprem.sh -i OPC-001
 
-# 4. 安装 OPC Journal
+# 4. 安装 OPC Journal Suite
 ./scripts/deploy/install-skills.sh \
   --id OPC-001 \
-  --skill opc-journal
+  --skill opc-journal-suite
 
 # 5. 健康检查
 ./scripts/maintenance/health-check.sh -i OPC-001
@@ -181,7 +381,7 @@ cd OPC200
 # 3. 安装 Skills
 ./scripts/deploy/install-skills.sh \
   --id OPC-151 \
-  --skill opc-journal
+  --skill opc-journal-suite
 ```
 
 ---
@@ -241,35 +441,37 @@ OPC200 自动生成：
 
 ---
 
-## 📦 核心 Skill
+## 📦 核心 Skills
 
-### OPC Journal
+### OPC Journal Suite
 
-专为 OPC200 设计的单一 CLI 日志与成长追踪 Skill，包含：
+专为 OPC200 设计的用户日志与成长追踪技能套件。
 
-| 命令 | 功能 |
-|------|------|
-| `init` | 初始化日志与用户章程 |
-| `record` | 记录每日条目（含动态情绪分析） |
-| `search` | 搜索历史条目 |
-| `export` | 导出日志数据 |
-| `analyze` | 模式分析与解读层 |
-| `milestones` | 里程碑自动检测 |
-| `insights` | 个性化洞察与建议 |
-| `task` | 异步任务创建（Legacy） |
-| `status` | 查看日志状态 |
+| Skill | 功能 | 文档 |
+|-------|------|------|
+| `opc-journal-core` | 日志记录、检索、摘要生成 | [SKILL.md](./skills/opc-journal-suite/opc-journal-core/SKILL.md) |
+| `opc-pattern-recognition` | 行为模式分析与预测 | [SKILL.md](./skills/opc-journal-suite/opc-pattern-recognition/SKILL.md) |
+| `opc-milestone-tracker` | 里程碑自动检测与庆祝 | [SKILL.md](./skills/opc-journal-suite/opc-milestone-tracker/SKILL.md) |
+| `opc-async-task-manager` | 7×24 异步任务调度 | [SKILL.md](./skills/opc-journal-suite/opc-async-task-manager/SKILL.md) |
+| `opc-insight-generator` | 个性化洞察与建议 | [SKILL.md](./skills/opc-journal-suite/opc-insight-generator/SKILL.md) |
 
-文档: [SKILL.md](./skills/opc-journal/SKILL.md)
-
-### 安装
+### 安装单个 Skill
 
 ```bash
 ./scripts/deploy/install-skills.sh \
   --id OPC-001 \
-  --skill opc-journal
+  --skill opc-journal-core
 ```
 
+### 更新所有 Skills
 
+```bash
+./scripts/deploy/install-skills.sh \
+  --id OPC-001 \
+  --update
+```
+
+---
 
 ## 🔒 安全特性
 
@@ -377,6 +579,18 @@ tier_3_shareable:   # 可安全共享
 ---
 
 ## 📚 文档导航
+
+### 新架构文档
+
+| 文档 | 内容 |
+|------|------|
+| [agent/README.md](./agent/README.md) | **【新】** Agent 用户侧使用说明 |
+| [platform/README.md](./platform/README.md) | **【新】** Platform 平台侧部署说明 |
+| [docs/TASK_BOARD.md](./docs/TASK_BOARD.md) | **【新】** 多 Agent 协同任务板 |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | **【新】** Push 架构完整设计 |
+| [docs/architecture/DIRECTORY_MIGRATION.md](./docs/architecture/DIRECTORY_MIGRATION.md) | **【新】** 目录迁移详细说明 |
+
+### 原有文档（仍适用）
 
 | 文档 | 内容 |
 |------|------|

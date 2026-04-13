@@ -1,0 +1,78 @@
+# OPC200 Gateway 安全配置模板
+# 基于 OpenClaw 最佳实践的安全配置
+
+# Gateway 绑定配置
+# 安全原则：默认绑定到 loopback，避免直接暴露到公网
+gateway:
+  bind: "127.0.0.1:18789"  # 本地部署默认 loopback
+  # bind: "tailnet"        # 使用 Tailscale VPN 时
+  # bind: "0.0.0.0:18789"  # 云端部署时使用，但需配合反向代理
+  
+  # 认证配置
+  auth:
+    type: "token"  # token / oauth / none (不推荐)
+    token: "${OPC200_GATEWAY_TOKEN}"  # 从环境变量读取
+    rotate_interval_days: 90
+  
+  # TLS 配置（云端部署必需）
+  tls:
+    enabled: false  # 如果使用反向代理处理 TLS，设为 false
+    cert_path: "/etc/opc200/certs/server.crt"
+    key_path: "/etc/opc200/certs/server.key"
+  
+  # 安全选项
+  security:
+    allow_insecure_auth: false
+    dangerously_disable_device_auth: false
+    max_request_size_mb: 10
+    rate_limit:
+      enabled: true
+      requests_per_minute: 60
+  
+  # 多层记忆配置（OpenClaw v2.2+）
+  memory:
+    # Layer 1: Pre-compaction memory flush
+    compaction:
+      reserve_tokens_floor: 40000  # 预留 token 数量
+      memory_flush:
+        enabled: true
+        soft_threshold_tokens: 4000
+        system_prompt: "Session nearing compaction. Store durable memories now."
+        prompt: "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store."
+    
+    # Layer 2: Heartbeat-based checks
+    heartbeat_check:
+      enabled: true
+      check_interval_minutes: 30
+      reminder_prompt: "Check if important context needs to be persisted"
+  
+  # CORS 配置
+  cors:
+    allowed_origins:
+      - "https://opc200.coidea.ai"
+    allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+    allowed_headers: ["Authorization", "Content-Type"]
+
+# 日志配置
+logging:
+  level: "info"  # debug / info / warn / error
+  format: "json"  # json / text
+  file: "/var/log/opc200/gateway.log"
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+
+# 会话配置
+session:
+  timeout_minutes: 30
+  max_concurrent: 10
+  isolation: "strict"  # strict / shared
+
+# 审计配置
+audit:
+  enabled: true
+  log_file: "/var/log/opc200/audit.log"
+  log_commands: true
+  log_file_access: true
+  log_network: true
+  retention_days: 90

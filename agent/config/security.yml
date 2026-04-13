@@ -1,0 +1,277 @@
+# OPC200 安全配置
+# 安全策略、审计、合规配置
+
+# 数据分级保护
+data_classification:
+  # Tier 1: 绝不上云
+  tier_1_critical:
+    description: "原始客户数据、专有代码、财务记录"
+    storage: "local-only"
+    encryption: "required"
+    backup: "encrypted-local"
+    allowed_locations:
+      - "${OPC200_DATA_VAULT}/local-only"
+    
+  # Tier 2: 脱敏后可同步
+  tier_2_sensitive:
+    description: "使用模式、错误日志、性能指标"
+    storage: "encrypted"
+    encryption: "required"
+    backup: "encrypted-cloud"
+    allowed_locations:
+      - "${OPC200_DATA_VAULT}/encrypted"
+    sync_allowed: true
+    
+  # Tier 3: 可安全共享
+  tier_3_shareable:
+    description: "知识文章、最佳实践、公开文档"
+    storage: "normal"
+    encryption: "optional"
+    backup: "cloud"
+    allowed_locations:
+      - "${OPC200_DATA_VAULT}/normal"
+
+# Agent-Blind Credentials 配置
+agent_blind_credentials:
+  enabled: true
+  
+  # 数据保险箱配置
+  vault:
+    path: "${OPC200_DATA_VAULT}/credentials"
+    encryption: "aes-256-gcm"
+    key_rotation_days: 90
+  
+  # 凭证访问策略
+  access_policy:
+    # Agent 可以看到的凭证信息
+    agent_visible_fields:
+      - "name"
+      - "credential_type"
+      - "metadata"
+      - "expires_at"
+      - "rotation_hint"
+    
+    # 需要服务层授权才能访问
+    service_auth_required: true
+    service_auth_token: "${OPC200_VAULT_SERVICE_TOKEN}"
+  
+  # 支持的凭证类型
+  credential_types:
+    api_key:
+      rotation_reminder_days: 30
+      max_age_days: 365
+    password:
+      rotation_reminder_days: 90
+      max_age_days: 180
+    token:
+      rotation_reminder_days: 14
+      max_age_days: 90
+    certificate:
+      rotation_reminder_days: 30
+      max_age_days: 365
+
+# 审计配置
+audit:
+  enabled: true
+  
+  # 审计事件类型
+  events:
+    - credential_access
+    - credential_rotation
+    - data_access
+    - skill_install
+    - skill_execution
+    - gateway_config_change
+    - emergency_access
+  
+  # 审计日志存储
+  storage:
+    type: "file"  # file / database / remote
+    path: "${OPC200_DATA_VAULT}/audit"
+    rotation:
+      max_size_mb: 100
+      max_age_days: 365
+      compress: true
+  
+  # 实时告警
+  alerting:
+    enabled: true
+    
+    # 告警规则
+    rules:
+      - name: "unauthorized_credential_access"
+        condition: "event.type == 'credential_access' AND event.success == false"
+        severity: "high"
+        action: "notify"
+      
+      - name: "emergency_access_used"
+        condition: "event.type == 'emergency_access'"
+        severity: "critical"
+        action: "notify_immediate"
+      
+      - name: "suspicious_activity"
+        condition: "event.type == 'data_access' AND event.frequency > 100/hour"
+        severity: "medium"
+        action: "log_and_review"
+    
+    # 通知渠道
+    channels:
+      webhook: "${OPC200_SECURITY_WEBHOOK}"
+      email: "${OPC200_SECURITY_EMAIL}"
+
+# 合规配置
+compliance:
+  # 数据驻留
+  data_residency:
+    enabled: true
+    region: "${OPC200_DATA_REGION}"  # cn / eu / us
+    
+  # 保留策略
+  retention:
+    journal_entries: "365 days"
+    audit_logs: "2555 days"  # 7年
+    backups: "90 days"
+    temporary_files: "7 days"
+  
+  # 删除策略（GDPR/CCPA 合规）
+  deletion:
+    # 用户数据导出
+    data_export:
+      enabled: true
+      format: ["json", "csv", "pdf"]
+      max_wait_hours: 48
+    
+    # 用户数据删除
+    right_to_deletion:
+      enabled: true
+      grace_period_days: 30
+      verification_required: true
+
+# 网络安全
+network_security:
+  # 默认拒绝入站
+  default_deny_inbound: true
+  
+  # 允许的入站端口
+  allowed_inbound:
+    - port: 18789
+      protocol: "tcp"
+      from: "tailnet"  # 只允许来自 Tailscale 网络
+    
+    - port: 9100
+      protocol: "tcp"
+      from: "tag:monitor"
+  
+  # DDoS 防护
+  rate_limiting:
+    enabled: true
+    requests_per_second: 100
+    burst: 50
+  
+  # 连接限制
+  connection_limits:
+    max_connections_per_ip: 10
+    max_connections_total: 1000
+
+# 加密配置
+encryption:
+  # 传输加密
+  in_transit:
+    protocol: "tls1.3"
+    cipher_suites:
+      - "TLS_AES_256_GCM_SHA384"
+      - "TLS_CHACHA20_POLY1305_SHA256"
+  
+  # 静态加密
+  at_rest:
+    algorithm: "AES-256-GCM"
+    key_management: "internal"  # internal / kms / hsm
+    
+  # 密钥配置
+  keys:
+    master_key_path: "${OPC200_DATA_VAULT}/keys/master.key"
+    data_encryption_keys_path: "${OPC200_DATA_VAULT}/keys/dek/"
+    key_rotation_days: 90
+
+# 紧急访问（Break-glass）配置
+emergency_access:
+  enabled: true
+  
+  # 触发条件
+  triggers:
+    - condition: "system_unresponsive > 30min"
+      auto_notify: true
+    - condition: "data_loss_detected"
+      auto_notify: true
+    - condition: "customer_explicit_request"
+      auto_notify: false
+  
+  # 授权层级
+  authorization:
+    tier_1:
+      name: "customer_self_service"
+      description: "客户自助恢复"
+      approval_required: false
+    
+    tier_2:
+      name: "support_with_notice"
+      description: "通知后访问"
+      approval_required: true
+      notice_minutes: 5
+    
+    tier_3:
+      name: "break_glass"
+      description: "紧急破窗"
+      approval_required: true
+      requires_dual_auth: true
+  
+  # 访问限制
+  constraints:
+    max_duration_hours: 4
+    commands_allowlist:
+      - "journalctl"
+      - "systemctl status"
+      - "docker logs"
+      - "cat /var/log/*"
+    commands_blocklist:
+      - "rm -rf"
+      - "dd"
+      - "mkfs"
+  
+  # 审计要求
+  audit:
+    record_session: true
+    record_commands: true
+    customer_notification: "immediate"
+    post_access_report_hours: 1
+
+# 威胁检测
+threat_detection:
+  enabled: true
+  
+  # 检测规则
+  rules:
+    # 异常访问模式
+    - name: "unusual_access_hours"
+      description: "非工作时间访问"
+      condition: "access.hour NOT IN [6,23]"
+      severity: "low"
+    
+    # 数据外泄检测
+    - name: "data_exfiltration"
+      description: "大量数据导出"
+      condition: "data.export.size > 100MB"
+      severity: "high"
+    
+    # 凭证暴力破解
+    - name: "credential_bruteforce"
+      description: "凭证访问失败次数过多"
+      condition: "credential.access.failure > 5 IN 5min"
+      severity: "critical"
+  
+  # 响应动作
+  response_actions:
+    low: ["log"]
+    medium: ["log", "alert"]
+    high: ["log", "alert", "block_temporarily"]
+    critical: ["log", "alert", "block_permanently", "notify_admin"]

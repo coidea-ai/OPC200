@@ -1,0 +1,28 @@
+---
+description: Git 分支管理与提交规范
+alwaysApply: false
+---
+# Git 管理规范
+
+## 分支与合并安全
+
+- 禁止直接向 `main` / `master` / `release` 推送，必须走 PR。
+- 开发分支命名：`feature/*`、`fix/*`、`hotfix/*`、`chore/*`。
+- 合并前必须同步目标分支并解决冲突，保持分支可干净合并。
+- PR 合并前必须满足：CI 全绿、至少 1 个审批、所有 review 对话已解决。
+- 禁止 `git push --force` 到受保护分支；禁止覆盖他人历史。
+
+## 提交代码规范
+
+- 提交信息必须使用 Conventional Commits：`type(scope): subject`。
+- `type` 仅允许：`feat`、`fix`、`refactor`、`perf`、`docs`、`test`、`build`、`ci`、`chore`。
+- 单次提交只做一件事，禁止把无关改动混在同一个 commit。
+- 提交前必须通过本地检查（至少包含：构建、测试、lint 中项目要求的项）。
+- 禁止提交敏感信息（密钥、令牌、密码、私钥、生产配置）。
+
+## 提交信息示例
+
+- `feat(auth): add refresh token rotation`
+- `fix(api): handle null user profile response`
+- `refactor(core): split command dispatcher`
+- `feat(payment)!: remove legacy callback flow`

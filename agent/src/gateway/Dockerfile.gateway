@@ -1,0 +1,45 @@
+# OPC200 Gateway Docker 镜像
+# 基于 OpenClaw Gateway
+
+FROM ghcr.io/openclaw/openclaw:latest
+
+LABEL maintainer="coidea.ai"
+LABEL version="2.2.0"
+LABEL description="OPC200 Gateway with security hardening"
+
+# 安全：以非 root 用户运行
+RUN groupadd -r opc200 && useradd -r -g opc200 -s /bin/false opc200
+
+# 安装额外依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建目录结构
+RUN mkdir -p /data /var/log/opc200 /etc/opc200 && \
+    chown -R opc200:opc200 /data /var/log/opc200
+
+# 复制配置
+COPY --chown=opc200:opc200 config/gateway.yml /etc/opc200/gateway.yml
+
+# 安全加固
+# 1. 移除不必要的包
+# 2. 清理缓存
+# 3. 设置正确的权限
+RUN apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /tmp/* /var/tmp/*
+
+# 切换到非 root 用户
+USER opc200
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:18789/health || exit 1
+
+# 暴露端口
+EXPOSE 18789
+
+# 启动命令
+CMD ["openclaw", "gateway", "start", "--config", "/etc/opc200/gateway.yml"]

@@ -1,0 +1,25 @@
+# Remi Lite Configuration
+
+remi:
+  # Auto-record settings
+  auto_record: true
+  
+  # Recording signals (regex patterns)
+  record_signals:
+    - "(今天|刚才|早上|下午|晚上).*(做了|完成|遇到|解决|开始|结束)"
+    - "(完成|解决|做了|遇到).*(了|过)"
+    - "(开心|高兴|兴奋|焦虑|困惑|担心|累|爽).*(因为|做完|遇到)"
+    - "(决定|选择|放弃).*(用|做|不做)"
+  
+  # Data retention
+  retention_days: 365
+  
+  # File size limits
+  max_session_size_kb: 500
+  max_backup_count: 5
+  
+  # Maintenance schedule
+  maintenance:
+    weekly_digest: true      # Auto-generate weekly summary
+    cleanup_backups: true    # Auto-remove old backups
+    digest_day: "sunday"     # Day to generate weekly digest
