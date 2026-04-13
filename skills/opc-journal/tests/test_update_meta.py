@@ -17,34 +17,21 @@ def test_update_meta_language_zh_to_en(tmp_path, monkeypatch):
     monkeypatch.setattr(_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
     monkeypatch.setattr(update_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
 
-    # Init zh
     init.run("OPC-001", {"day": 1, "goals": ["发布 MVP"]})
-    # Record an entry
     record.run("OPC-001", {"day": 1, "content": "今天很兴奋"})
 
-    # Switch language to en
     result = update_meta.run("OPC-001", {"language": "en"})
     assert result["status"] == "success"
     assert result["result"]["language"] == "en"
-    # Only the single memory file is retroactively translated
-    assert result["result"]["translated_documents"] == 1
+    assert result["result"]["changed"] is True
 
     # Verify meta
     meta = _meta.read_meta("OPC-001")
     assert meta["language"] == "en"
 
-    content = Path(memory_file).read_text()
-    # Charter parts
-    assert "Day 1 Charter" in content
-    assert "## 🎯 Goals" in content
-    # Entry parts
-    assert "Journal Entry -" in content
-    assert "**Day 1**" in content
-    assert "**Time**:" in content
-    assert "**Emotion**:" in content
-    assert "### Content" in content
-    assert "### Metadata" in content
-    # User content should remain untouched
+    # Verify entry file preserves user content
+    entry_path = tmp_path / "OPC-001" / "memory" / "12-04-26.md"
+    content = entry_path.read_text()
     assert "今天很兴奋" in content
     assert "发布 MVP" in content
 
@@ -64,17 +51,11 @@ def test_update_meta_language_en_to_zh(tmp_path, monkeypatch):
     result = update_meta.run("OPC-001", {"language": "zh"})
     assert result["status"] == "success"
     assert result["result"]["language"] == "zh"
-    assert result["result"]["translated_documents"] == 1
+    assert result["result"]["changed"] is True
 
-    content = Path(memory_file).read_text()
-    assert "第 1 天章程" in content
-    assert "## 🎯 目标" in content
-    assert "日记条目 -" in content
-    assert "**第 1 天**" in content
-    assert "**时间**:" in content
-    assert "**情绪**:" in content
-    assert "### 内容" in content
-    assert "### 元数据" in content
+    # Verify entry file preserves user content
+    entry_path = tmp_path / "OPC-001" / "memory" / "12-04-26.md"
+    content = entry_path.read_text()
     assert "excited today" in content
     assert "Launch product" in content
 

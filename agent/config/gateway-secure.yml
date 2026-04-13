@@ -1,0 +1,238 @@
+# OPC200 Gateway 配置模板
+# 版本: 2026.1
+# 安全配置 - 基于 OpenClaw 2026 最佳实践
+
+gateway:
+  # 绑定设置 - 强烈推荐 tailnet 或 loopback
+  bind: "tailnet"  # 选项: loopback | tailnet | lan (严禁 0.0.0.0)
+  port: 18789
+  
+  # 认证设置
+  auth:
+    # 强 token - 使用: openssl rand -base64 32
+    token: "${OPC200_GATEWAY_TOKEN}"
+    token_rotation_days: 30
+    require_auth: true
+  
+  # TLS 设置（生产环境必需）
+  tls:
+    enabled: true
+    cert_file: "${OPC200_TLS_CERT}"
+    key_file: "${OPC200_TLS_KEY}"
+  
+  # 入站消息策略
+  dm_policy: "pairing"  # 选项: open | pairing | allowlist
+  
+  # 速率限制
+  rate_limit:
+    requests_per_minute: 60
+    burst: 10
+
+# Agent 配置
+agent:
+  # 安全模式
+  security_mode: "strict"  # yolo | balanced | strict | paranoid
+  
+  # Agent-Blind 凭据
+  credential_mode: "agent-blind"
+  credential_broker: "hashicorp_vault"  # 或 1password, aws_secrets_manager
+  
+  # 指令边界强制层 (IBEL)
+  instruction_boundary:
+    enabled: true
+    default_level: "strict"
+    external_content_isolation: "extractor_llm"
+  
+  # 沙箱设置
+  sandbox:
+    enabled: true
+    read_only_paths:
+      - "/workspace"
+      - "/data"
+    allowed_commands:
+      - "git"
+      - "npm"
+      - "python"
+      - "node"
+    max_execution_time: 300  # 秒
+    network_isolation: true
+  
+  # 模型配置
+  models:
+    orchestrator:
+      provider: "anthropic"
+      model: "claude-sonnet-4.5"
+      temperature: 0.7
+    
+    researcher:
+      provider: "moonshot"
+      model: "kimi-k2.5"
+      temperature: 0.5
+    
+    builder:
+      provider: "anthropic"
+      model: "claude-haiku"
+      temperature: 0.3
+
+# Skills 配置
+skills:
+  # 安全策略
+  security:
+    audit_before_install: true
+    allowed_sources:
+      - "clawhub.ai"
+      - "local"
+    auto_update: false
+    
+  # 必需 Skills
+  required:
+    - "coidea/opc-journal-suite"
+    - "TheSethRose/clawdbot-security-check"
+    - "xiaowenzhou/active-maintenance"
+    - "dennis-da-menace/agent-memory"
+    - "arminnaimi/agent-team-orchestration"
+  
+  # 权限清单
+  permissions:
+    file_access:
+      - "/workspace"
+      - "/tmp"
+      - "/data"
+    network_access:
+      - "api.openclaw.ai"
+      - "api.clawhub.ai"
+      - "api.github.com"
+    command_allowlist:
+      - "git"
+      - "npm"
+      - "python3"
+      - "node"
+
+# 记忆配置
+memory:
+  # 多层记忆架构
+  layers:
+    # 工作记忆（热）
+    working:
+      type: "file"
+      path: "~/.openclaw/opc200/memory/active-context.md"
+      max_size: "1MB"
+    
+    # 结构化事实（温）
+    structured:
+      type: "sqlite"
+      path: "~/.openclaw/opc200/memory/facts.db"
+      fts5: true
+    
+    # 语义记忆（冷）
+    semantic:
+      type: "vector"
+      backend: "ollama"
+      model: "nomic-embed-text"
+      path: "~/.openclaw/opc200/memory/vectors"
+    
+    # 元记忆
+    meta:
+      type: "file"
+      path: "~/.openclaw/opc200/memory/gating-policies.md"
+
+  # 同步设置
+  sync:
+    enabled: true
+    interval_minutes: 60
+    encryption: "aes-256-gcm"
+
+# 审计与日志
+audit:
+  level: "info"  # debug | info | warn | error
+  
+  # 日志文件
+  log_file: "~/.openclaw/opc200/logs/gateway.log"
+  max_size: "100MB"
+  max_files: 10
+  
+  # 敏感数据脱敏
+  redaction:
+    enabled: true
+    patterns:
+      - "api_key"
+      - "password"
+      - "token"
+      - "secret"
+  
+  # 夜间审计
+  nightly_audit:
+    enabled: true
+    cron: "0 2 * * *"  # 每天凌晨 2 点
+    report_path: "~/.openclaw/opc200/security-reports"
+    retention_days: 30
+
+# Tailscale 集成
+tailscale:
+  enabled: true
+  auth_key: "${TAILSCALE_AUTHKEY}"
+  hostname: "opc-${CUSTOMER_ID}"
+  tags:
+    - "tag:opc"
+  
+  # ACL 同步
+  acl_sync:
+    enabled: true
+    url: "https://hub.opc200.co/acl/tailscale"
+    interval_hours: 24
+
+# 监控与告警
+monitoring:
+  # Prometheus 导出
+  prometheus:
+    enabled: true
+    port: 9100
+    path: "/metrics"
+  
+  # 健康检查
+  health_check:
+    enabled: true
+    interval_seconds: 30
+    endpoint: "/health"
+  
+  # 告警
+  alerts:
+    channels:
+      - type: "webhook"
+        url: "${OPC200_ALERT_WEBHOOK}"
+    
+    rules:
+      - name: "high_memory"
+        condition: "memory_usage > 85%"
+        severity: "warning"
+      
+      - name: "gateway_down"
+        condition: "gateway_uptime < 1"
+        severity: "critical"
+      
+      - name: "security_audit_fail"
+        condition: "audit_failures > 0"
+        severity: "critical"
+
+# 支持中心集成
+support_hub:
+  enabled: true
+  url: "https://hub.opc200.co"
+  
+  # 注册信息
+  registration:
+    customer_id: "${OPC200_CUSTOMER_ID}"
+    token: "${OPC200_REGISTRATION_TOKEN}"
+  
+  # 遥测（可选）
+  telemetry:
+    enabled: true
+    interval_minutes: 60
+    anonymized: true
+  
+  # 紧急访问
+  emergency_access:
+    enabled: true
+    require_approval: true
+    max_duration_hours: 4
+    audit_commands: true

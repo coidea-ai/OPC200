@@ -1,0 +1,69 @@
+version: '3.8'
+
+# OPC200 平台侧监控栈
+# Push 架构：接收用户端推送的指标
+
+services:
+  # Pushgateway - 接收所有 Agent 推送的指标
+  pushgateway:
+    image: prom/pushgateway:v1.7.0
+    container_name: opc200-pushgateway
+    ports:
+      - "9091:9091"
+    command:
+      - --persistence.file=/data/metrics
+      - --persistence.interval=5m
+    volumes:
+      - pushgateway-data:/data
+    networks:
+      - opc200-platform
+    restart: unless-stopped
+
+  # Prometheus - 统一时序存储
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: opc200-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - opc200-platform
+    restart: unless-stopped
+    depends_on:
+      - pushgateway
+
+  # Grafana - 可视化仪表盘
+  grafana:
+    image: grafana/grafana:10.3.1
+    container_name: opc200-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=opc200admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - opc200-platform
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  pushgateway-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  opc200-platform:
+    driver: bridge

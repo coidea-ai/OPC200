@@ -1,0 +1,37 @@
+---
+description: OPC200 当前架构目标与目录迁移工作方向
+alwaysApply: true
+---
+
+# 项目工作目标（Push 架构 / 目录迁移）
+
+## 架构方向
+
+- 从私有化全容器部署转向 **Push 模式集中监控**。
+- **平台侧**（`platform/`）：云端集中监控、告警、版本管理。
+- **用户侧**（`agent/`）：单一 Agent 容器，含精简 Gateway、journal、exporter、selfhealer、updater、security、utils、tasks 等。
+
+## 目录约定（新结构为准）
+
+- `agent/`：用户侧代码与配置（`agent/src/`、`agent/config/`、`agent/skills/`）。
+- `platform/`：pushgateway、prometheus、grafana、alertmanager、version-control。
+- `shared/`：proto、共享 pkg、共享配置结构。
+- `docs/`、`scripts/`、`tests/`：按子目录职责使用（platform / agent / e2e）。
+
+## 旧结构（勿再扩展）
+
+以下仅为遗留，迁移完成后应删除；新功能放在 `agent/` / `platform/` / `shared/`：
+
+- 根目录 `src/`、`skills/`、`config/`、`monitoring/`
+- 根目录 `Dockerfile`、`Dockerfile.gateway`、`docker-compose.yml`（仅作参考）
+
+## 实施优先级（与迁移文档一致）
+
+1. 调整 `agent/src/` 内 import（`from src.xxx` → 包名如 `opc200`、或 Agent 内相对导入），并保证可测可构建。
+2. 补齐 `agent/Dockerfile` 单容器构建；补齐 `platform/docker-compose.yml`。
+3. 实现 `agent/src/exporter/`、`selfhealer/`、`updater/`（及精简 `gateway/`）能力。
+4. 验证通过后移除旧目录与旧编排文件。
+
+## 详细清单与路径映射
+
+以 `docs/architecture/DIRECTORY_MIGRATION.md` 为权威说明（迁移清单、import/Docker 示例、参考资料）。

@@ -1,0 +1,132 @@
+name: CI - Remi Lite
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'skills/opc-remi-lite/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'skills/opc-remi-lite/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: skills/opc-remi-lite
+    
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Lint with flake8
+        run: |
+          flake8 remi_lite tests --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 remi_lite tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+
+      - name: Type check with mypy
+        run: |
+          mypy remi_lite --ignore-missing-imports
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --cov=remi_lite --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: remi-lite
+          name: remi-lite-coverage
+          fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: skills/opc-remi-lite
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install bandit
+
+      - name: Run bandit security scan
+        run: |
+          bandit -r remi_lite -f json -o bandit-report.json || true
+          bandit -r remi_lite -ll || true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    defaults:
+      run:
+        working-directory: skills/opc-remi-lite
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: remi-lite-dist
+          path: skills/opc-remi-lite/dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: skills/opc-remi-lite
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: remi-lite-dist
+          path: dist/
+
+      - name: Publish to ClawHub
+        run: |
+          echo "Publishing to ClawHub..."
+          # clawhub publish . --slug opc-remi-lite --version $(cat VERSION)
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}

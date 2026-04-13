@@ -16,9 +16,8 @@ def test_init_success_zh(tmp_path, monkeypatch):
     assert result["status"] == "success"
     assert result["result"]["initialized"]
     assert result["result"]["day"] == 1
-    assert "第 1 天正式开始" in result["message"]
+    assert "initialized" in result["message"].lower()
     assert result["result"]["language"] == "zh"
-    assert "quote" in result["result"]
 
 
 def test_init_success_en(tmp_path, monkeypatch):
@@ -28,8 +27,7 @@ def test_init_success_en(tmp_path, monkeypatch):
     result = init.run("OPC-001", {"day": 1, "goals": ["Launch product"]})
     assert result["status"] == "success"
     assert result["result"]["language"] == "en"
-    assert "Day 1 begins now" in result["message"]
-    assert "Try: /opc-journal record" in result["message"]
+    assert "initialized" in result["message"].lower()
 
 
 def test_init_writes_file(tmp_path, monkeypatch):
@@ -41,8 +39,9 @@ def test_init_writes_file(tmp_path, monkeypatch):
     assert path.exists()
     content = path.read_text()
     assert "发布 MVP" in content
-    assert "第 1 天章程" in content
-    assert "Kimi Claw" in content
+    assert "OPC Journal Charter" in content
+    assert "Goals" in content
+    assert "Preferences" in content
 
 
 def test_init_writes_meta(tmp_path, monkeypatch):

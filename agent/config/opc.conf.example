@@ -1,0 +1,26 @@
+# OPC200 Configuration File
+# Copy this file to ~/.opcrc or /etc/opc/opcrc and customize
+
+# Base directories
+OPC_BASE_DIR="/opt/opc200"
+OPC_DATA_DIR="/data/opc200"
+OPC_LOG_DIR="/var/log/opc200"
+
+# Logging
+OPC_LOG_LEVEL="INFO"           # DEBUG, INFO, WARN, ERROR
+OPC_JSON_LOG="false"           # Set to "true" for JSON format logs
+
+# Health check settings
+OPC_MAX_PARALLEL_CHECKS="10"
+OPC_HEALTH_CHECK_TIMEOUT="30"
+
+# Backup settings
+OPC_BACKUP_RETENTION_DAYS="7"
+OPC_BACKUP_ENCRYPT="true"
+
+# Security
+OPC_KEY_DIR="${OPC_BASE_DIR}/keys"
+OPC_SECRET_MODE="file"         # file, env, vault
+
+# Feature flags
+OPC_DRY_RUN="false"
