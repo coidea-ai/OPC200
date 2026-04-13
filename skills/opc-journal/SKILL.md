@@ -67,13 +67,13 @@ opc-journal/
 
 ## Development Notes
 
-- `analyze` reads `dreams.md` and `memory/*.md` and returns **raw signals + context** for the caller (LLM) to interpret dynamically. No hardcoded emotional, decision, or work-rhythm interpretations are baked in.
-- `insights` returns **raw memory context and file metadata** for the caller (LLM) to generate recommendations dynamically.
+- `analyze` reads `dreams.md` and `memory/*.md` and returns **structural signals + keyword fragments** for the caller (LLM) to interpret dynamically. Structural signals are purely quantitative (punctuation counts, caps, etc.). Keyword fragments use minimal regex patterns for common action/challenge/achievement words, but no emotional interpretation is baked in.
+- `insights` returns **raw memory context and signal counts** for the caller (LLM) to generate recommendations dynamically. Includes keyword-based signal counts but defers semantic interpretation to the caller.
 - `milestones` returns a **raw candidate object** for the caller (LLM) to validate and classify. No keyword-based auto-detection.
 - `record` defers emotional interpretation to the caller. The `emotion` frontmatter field is only populated if the caller provides it in `metadata`.
 - `task` creates a single async task record; `batch-task` creates multiple tasks in one call.
-- `delete` removes an entry by `entry_id`, creates a `.bak` before modification, and updates the total count in meta.
-- `archive` copies all memory files and `journal_meta.json` to a timestamped `archive/` directory. Use `--clear` to reset the journal after archiving.
+- `delete` removes an entry by `entry_id`, creates a `.bak` before modification, and updates the total count in meta. **Requires `--force` flag for destructive operations.**
+- `archive` copies all memory files and `journal_meta.json` to a timestamped `archive/` directory. Use `--clear` to reset the journal after archiving. **Requires `--force` flag when using `--clear`.**
 - `update-meta` updates journal metadata (language, goals, preferences). Retroactive translation rules are kept minimal because templates are now English-only by design.
 - All data is stored locally under `~/.openclaw/customers/{customer_id}/`.
 - No external network calls are made.

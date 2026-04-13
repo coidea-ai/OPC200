@@ -23,7 +23,7 @@ def test_delete_entry_success(tmp_path, monkeypatch):
     rec_result = record.run("OPC-001", {"content": "First entry", "day": 1})
     entry_id = rec_result["result"]["entry_id"]
 
-    result = delete.run("OPC-001", {"entry_id": entry_id})
+    result = delete.run("OPC-001", {"entry_id": entry_id, "force": True})
     assert result["status"] == "success"
     assert result["result"]["entry_id"] == entry_id
     # Charter remains, so file is not removed
@@ -35,11 +35,20 @@ def test_delete_entry_success(tmp_path, monkeypatch):
     assert "type: charter" in content
 
 
+def test_delete_requires_force(tmp_path, monkeypatch):
+    """Delete without --force should be rejected."""
+    monkeypatch.setattr(delete, "build_customer_dir", lambda cid: str(tmp_path / cid))
+    
+    result = delete.run("OPC-001", {"entry_id": "JE-TEST-123456", "force": False})
+    assert result["status"] == "error"
+    assert "--force" in result["message"]
+
+
 def test_delete_entry_not_found(tmp_path, monkeypatch):
     monkeypatch.setattr(delete, "build_customer_dir", lambda cid: str(tmp_path / cid))
     (tmp_path / "OPC-001" / "memory").mkdir(parents=True)
 
-    result = delete.run("OPC-001", {"entry_id": "JE-NOTFOUND-000000"})
+    result = delete.run("OPC-001", {"entry_id": "JE-NOTFOUND-000000", "force": True})
     assert result["status"] == "error"
     assert "not found" in result["message"]
 
@@ -62,7 +71,7 @@ def test_delete_multi_entry_file(tmp_path, monkeypatch):
     eid1 = rec1["result"]["entry_id"]
     eid2 = rec2["result"]["entry_id"]
 
-    result = delete.run("OPC-001", {"entry_id": eid1})
+    result = delete.run("OPC-001", {"entry_id": eid1, "force": True})
     assert result["status"] == "success"
     assert result["result"]["file_removed"] is False
 

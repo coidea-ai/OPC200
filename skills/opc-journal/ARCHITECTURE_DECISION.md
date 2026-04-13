@@ -23,17 +23,17 @@
 | Command | Previous Behavior | v2.5.0 Behavior |
 |---------|------------------|-----------------|
 | `record` | Hardcoded emotion analysis via keywords | Returns raw content; emotion only if caller provides it |
-| `analyze` | Pre-baked emotional/work/decision interpretations | Returns structural signals (punctuation, caps, quotes) only |
-| `insights` | Fixed theme/recommendation pairs | Returns raw context + signal counts |
+| `analyze` | Pre-baked emotional/work/decision interpretations | Returns structural signals (punctuation, caps, quotes) plus minimal keyword fragments (action/challenge/achievement regex matches) |
+| `insights` | Fixed theme/recommendation pairs | Returns raw context + signal counts (structural + keyword-based) |
 | `milestones` | Keyword-based milestone detection | Returns raw candidate object |
 | `status` | Generated status messages | Returns raw statistics |
 
 ### Rationale
 
-1. **Language Agnostic**: Hardcoded English keywords failed for Chinese, Japanese, and other languages
-2. **Flexibility**: LLM can adapt interpretation based on full context, not just local patterns
-3. **Maintainability**: No need to update keyword lists as language evolves
-4. **Consistency**: Single source of truth (LLM) for all semantic analysis
+1. **Language Agnostic**: Hardcoded English interpretations failed for Chinese, Japanese, and other languages. Structural signals work everywhere.
+2. **Flexibility**: LLM can adapt interpretation based on full context, not just local patterns.
+3. **Maintainability**: No need to update complex interpretation logic as language evolves.
+4. **Honesty**: `analyze` and `insights` use minimal keyword regex patterns for quick context extraction. This is lightweight semantic extraction, not "zero semantic processing." Emotional and psychological interpretation is fully delegated to the caller.
 
 ### Consequences
 

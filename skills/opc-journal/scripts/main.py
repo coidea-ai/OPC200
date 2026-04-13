@@ -129,11 +129,13 @@ def _build_parser() -> _NoExitParser:
     p = subparsers.add_parser("delete", help="Delete a journal entry by entry_id")
     p.add_argument("--customer-id", default="OPC-001")
     p.add_argument("--entry-id", required=True, help="Entry ID to delete")
+    p.add_argument("--force", action="store_true", help="Confirm destructive deletion")
 
     # archive
     p = subparsers.add_parser("archive", help="Archive journal data")
     p.add_argument("--customer-id", default="OPC-001")
     p.add_argument("--clear", action="store_true", help="Clear memory files after archiving")
+    p.add_argument("--force", action="store_true", help="Confirm destructive clear")
 
     # update-meta
     p = subparsers.add_parser("update-meta", help="Update journal metadata")

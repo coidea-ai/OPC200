@@ -221,23 +221,26 @@ opc-journal analyze --days 14
 ```
 
 **What it does:**
-Instead of telling you "you seem stressed" (which is often wrong), `analyze` returns **language-agnostic signals** your LLM can interpret:
+Extracts **language-agnostic structural signals** and **minimal keyword fragments** for your LLM to interpret:
 
+**Structural signals** (purely quantitative):
 - `exclamation_marks`: Count of `!`
 - `question_marks`: Count of `?`
 - `all_caps_words`: Number of ALL CAPS words
 - `repeated_punctuation`: Patterns like `!!`, `??`, `...`
 - `quoted_phrases`: Text inside quotation marks
-- `action_signals`: Words implying action (started, shipped, launched)
-- `challenge_signals`: Words implying obstacles (stuck, blocked, failed)
-- `learning_signals`: Words implying growth (learned, realized, understood)
 
-**Returns:**
-- Per-entry signal counts
-- Aggregated totals
-- Recent entries as raw context
+**Keyword fragments** (light semantic extraction):
+- `action_fragments`: Sentences containing action words (decided, choose, switch, adopt, finalize)
+- `achievement_fragments`: Sentences containing completion words (completed, launched, shipped, sale, MVP, milestone)
+- `obstacle_fragments`: Sentences containing obstacle words (stuck, blocked, bottleneck, failed, error, bug, issue)
 
-**Why this is better:** Your LLM sees both the numbers and the actual text. It can interpret a high `exclamation_marks` count as excitement *or* frustration — depending on context.
+**Why this design:**
+- Structural signals work in any language (Chinese, English, Japanese)
+- Keyword fragments provide quick context without rigid emotional interpretation
+- Your LLM sees both the numbers and the actual text. It can interpret a high `exclamation_marks` count as excitement *or* frustration — depending on context.
+
+**Note:** This is "minimal semantic processing" — not "zero semantic processing." The skill extracts keyword patterns but defers emotional/psychological interpretation to the caller.
 
 ---
 
@@ -251,12 +254,16 @@ opc-journal insights --days 30
 Collects themes, signal summaries, and raw entry context into a single payload designed for LLM consumption.
 
 **Returns:**
-- `signal_summary`: Aggregated counts from `analyze`
+- `signal_summary`: Aggregated counts including:
+  - Structural signals (punctuation, caps, repeated punctuation)
+  - Keyword-based signal counts (action, challenge, learning, pivot — matched via minimal regex patterns)
 - `themes`: Extracted keywords and repeated topics
 - `recent_entries`: Full text of recent entries
 - `generated_at`: ISO timestamp
 
 **Use case:** Feed this directly into your LLM prompt for personalized coaching or reflection.
+
+**Note:** Like `analyze`, `insights` performs lightweight keyword counting but does **not** draw emotional conclusions. The LLM interprets the patterns.
 
 ---
 
@@ -342,7 +349,7 @@ opc-journal batch-task --descriptions \
 ### `delete` — Remove an Entry
 
 ```bash
-opc-journal delete --entry-id JE-20260413-A1B2C3
+opc-journal delete --entry-id JE-20260413-A1B2C3 --force
 ```
 
 **What happens:**
@@ -353,6 +360,7 @@ opc-journal delete --entry-id JE-20260413-A1B2C3
 - Updates `total_entries` in meta
 
 **Safety:**
+- **Requires `--force`** to confirm the destructive operation
 - Cannot delete without a valid `entry_id`
 - `.bak` files are always created before mutation
 
@@ -364,8 +372,8 @@ opc-journal delete --entry-id JE-20260413-A1B2C3
 # Copy entries to archive folder
 opc-journal archive
 
-# Copy and clear source files
-opc-journal archive --clear
+# Copy and clear source files (destructive)
+opc-journal archive --clear --force
 ```
 
 **What happens:**
@@ -375,6 +383,7 @@ opc-journal archive --clear
 
 **Safety:**
 - `archive --clear` will fail if any copy operation fails
+- `archive --clear` **requires `--force`** for confirmation
 - Backup files (`.bak`) remain in `memory/` even after `--clear` for safety
 
 ---

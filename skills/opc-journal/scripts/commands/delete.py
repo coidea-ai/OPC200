@@ -37,6 +37,13 @@ def run(customer_id: str, args: dict) -> dict:
     if not entry_id:
         return {"status": "error", "result": None, "message": "entry_id is required"}
 
+    if not args.get("force", False):
+        return {
+            "status": "error",
+            "result": None,
+            "message": "Deleting an entry is destructive. Re-run with --force to confirm.",
+        }
+
     base = os.path.expanduser(build_customer_dir(customer_id))
     file_path, content = _find_entry_file(base, entry_id)
     if file_path is None:

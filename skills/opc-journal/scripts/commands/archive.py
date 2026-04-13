@@ -51,6 +51,12 @@ def run(customer_id: str, args: dict) -> dict:
         }
 
     clear_after = bool(args.get("clear", False))
+    if clear_after and not args.get("force", False):
+        return {
+            "status": "error",
+            "result": None,
+            "message": "Clearing files after archive is destructive. Re-run with --force to confirm.",
+        }
     if clear_after:
         for f in glob.glob(os.path.join(memory_dir, "*.md")):
             os.remove(f)
