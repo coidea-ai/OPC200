@@ -12,7 +12,10 @@ Commands:
     milestones  Detect milestones
     insights    Generate insights
     task        Create async task (legacy)
+    batch-task  Create multiple async tasks at once
     status      Show journal status
+    delete      Delete a journal entry
+    archive     Archive journal data
     update-meta Update journal metadata
     help        Show this help
 """
@@ -25,7 +28,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.commands import init, record, search, export, analyze, milestones, insights, task, status, update_meta
+from scripts.commands import init, record, search, export, analyze, milestones, insights, task, status, update_meta, delete, archive, batch_task
 
 
 COMMANDS = {
@@ -37,8 +40,11 @@ COMMANDS = {
     "milestones": milestones,
     "insights": insights,
     "task": task,
+    "batch-task": batch_task,
     "status": status,
     "update-meta": update_meta,
+    "delete": delete,
+    "archive": archive,
 }
 
 
@@ -105,9 +111,26 @@ def _build_parser() -> _NoExitParser:
     p.add_argument("--description", default="")
     p.add_argument("--timeout-hours", type=int, default=8)
 
+    # batch-task
+    p = subparsers.add_parser("batch-task", help="Create multiple async tasks at once")
+    p.add_argument("--customer-id", default="OPC-001")
+    p.add_argument("--type", default="research")
+    p.add_argument("--descriptions", nargs="+", required=True, help="List of task descriptions")
+    p.add_argument("--timeout-hours", type=int, default=8)
+
     # status
     p = subparsers.add_parser("status", help="Show journal status")
     p.add_argument("--customer-id", default="OPC-001")
+
+    # delete
+    p = subparsers.add_parser("delete", help="Delete a journal entry by entry_id")
+    p.add_argument("--customer-id", default="OPC-001")
+    p.add_argument("--entry-id", required=True, help="Entry ID to delete")
+
+    # archive
+    p = subparsers.add_parser("archive", help="Archive journal data")
+    p.add_argument("--customer-id", default="OPC-001")
+    p.add_argument("--clear", action="store_true", help="Clear memory files after archiving")
 
     # update-meta
     p = subparsers.add_parser("update-meta", help="Update journal metadata")
