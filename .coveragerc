@@ -1,6 +1,9 @@
 [run]
-source = skills/opc-journal
-omit =  
+source = 
+    skills/opc-journal-suite
+    agent/src
+    src
+omit = 
     */tests/*
     */__pycache__/*
     */venv/*
