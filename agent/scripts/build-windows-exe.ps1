@@ -13,10 +13,9 @@ Set-Location $RepoRoot
 
 $env:PYTHONPATH = $RepoRoot
 
-if (-not (Get-Command pyinstaller -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing PyInstaller..." -ForegroundColor Cyan
-    python -m pip install pyinstaller
-}
+$ReqFile = Join-Path $PSScriptRoot "requirements-agent-binary.txt"
+Write-Host "Installing PyInstaller build deps from requirements-agent-binary.txt ..." -ForegroundColor Cyan
+python -m pip install -q -r $ReqFile
 
 $Entry = Join-Path $RepoRoot "agent\src\opc_agent\cli.py"
 $OutName = "opc-agent-windows-amd64"
@@ -28,6 +27,8 @@ pyinstaller --noconfirm --clean --onefile `
     --hidden-import agent.src.exporter.pusher `
     --hidden-import yaml `
     --collect-submodules agent.src `
+    --exclude-module agent.src.tests `
+    --exclude-module pytest `
     $Entry
 
 Write-Host "Done: dist\$OutName.exe" -ForegroundColor Green

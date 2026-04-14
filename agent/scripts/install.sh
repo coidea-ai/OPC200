@@ -32,6 +32,7 @@ SILENT=false
 OS_TYPE=""       # linux / darwin
 ARCH=""          # amd64 / arm64
 AGENT_BINARY=""
+LOCAL_BINARY=""
 ROLLBACK_ITEMS=()
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
@@ -186,6 +187,13 @@ step_get_config() {
 
 step_download() {
     info "3/7 下载 Agent"
+
+    if [[ -n "$LOCAL_BINARY" ]]; then
+        [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
+        TMP_BINARY="$LOCAL_BINARY"
+        ok "使用本地二进制: $LOCAL_BINARY"
+        return
+    fi
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -450,9 +458,11 @@ parse_args() {
             --api-key)       API_KEY="$2"; shift 2 ;;
             --install-dir)   INSTALL_DIR="$2"; shift 2 ;;
             --port)          PORT="$2"; shift 2 ;;
+            --local-binary)  LOCAL_BINARY="$2"; shift 2 ;;
             --silent)        SILENT=true; shift ;;
             -h|--help)
-                echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT] [--silent]"
+                echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT] [--local-binary PATH] [--silent]"
+                echo "说明: GitHub Release 无对应产物(404)时，先在仓库执行 agent/scripts/build-linux.sh 生成 dist/opc-agent-linux-* ，再传 --local-binary"
                 exit 0
                 ;;
             *) err "未知参数: $1"; exit 1 ;;

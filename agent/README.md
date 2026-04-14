@@ -119,7 +119,7 @@ curl "http://localhost:9090/api/v1/query?query=cpu_usage%7Bjob%3D%22win-e2e-001%
 
 **Grafana（可选）**：打开 `http://localhost:3000`（默认账号见 `platform/docker-compose.yml`，一般为 `admin` / `opc200admin`），在 `Dashboards` 看查看有没有启动服务时设置的 User。比如示例中的 `-CustomerId "win-e2e-001" `，则表明 User 叫 `win-e2e-001`。
 
-#### 测试结束后清理
+#### step4. 测试结束后清理
 
 ```powershell
 cd E:\projects\OPC200\agent\scripts
@@ -144,6 +144,51 @@ Get-Service OPC200-Agent -ErrorAction SilentlyContinue
 | 健康检查超时 | Agent 未监听或启动慢 | 查看 `agent.log`，确认二进制与配置一致 |
 | Pushgateway 无数据 | `platform.url` 错误 | 核对 `config.yml` 中 `platform.url` 为 `http://127.0.0.1:9091` |
 | Prometheus 无数据 | 抓取间隔未到 | 等待并检查 `platform/prometheus/prometheus.yml` |
+
+### Mac/Linux 部署
+
+#### step1. 构建可执行文件
+
+原因同 Windows 一样，见上。
+
+```bash
+cd /mnt/e/projects/OPC200   # 按真实项目路径改
+chmod +x agent/scripts/build-linux.sh
+./agent/scripts/build-linux.sh
+```
+
+#### step2. 安装 opc-agent 服务
+
+本地路径安装刚刚生成的二进制文件（已支持 `--local-binary`）：
+
+```bash
+sudo bash agent/scripts/install.sh --silent \
+  --local-binary "/mnt/e/projects/OPC200/dist/opc-agent-linux-amd64" \
+  --platform-url "http://127.0.0.1:9091" \
+  --customer-id "test-001" \
+  --api-key "dev"
+```
+
+交互安装时同样加上：`sudo bash ./install.sh --local-binary "/mnt/e/projects/OPC200/dist/opc-agent-linux-amd64"`，再按提示填平台地址等。
+
+若以后 Release 里已有同名文件：去掉 `--local-binary`，脚本会改回从 GitHub 下载。
+
+#### step3. 与本地 Docker 平台联调
+
+#### step4. 测试结束后清理
+
+```bash
+# agents/scripts 路径
+sudo bash ./uninstall.sh --install-dir "$HOME/.opc200"
+```
+
+按提示确认删除目录；若不要确认提示：
+
+```bash
+sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --silent
+```
+
+加 `--keep-data` 可只删二进制/配置而保留 `data/`。
 
 ## 用户安装（todo）
 
