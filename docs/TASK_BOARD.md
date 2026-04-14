@@ -1,10 +1,18 @@
 # OPC200 多 Agent 协同任务板
 
+<!--
+📍 你在哪：活跃任务板（只显示未完成/进行中）
+📦 当前版本：v2.1.0（任务板结构 v1，内容 v2.1.0）
+🔍 找历史：archive/phase-1-mvp.md
+📊 看变更：CHANGELOG.md
+📝 写归档：Phase 结束复制已完成任务到 archive/phase-X.md
+-->
+
 > 多 Agent 协同工作指南与任务追踪
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-12（AGENT-002/003/004/005 v2 重写完成）
+**最后更新**: 2026-04-14（PLAT-006 告警链路打通）
 
 ---
 
@@ -62,22 +70,16 @@
 
 ### 平台侧任务（@fairy-kimi 负责）
 
-#### PLAT-001: 搭建 Prometheus + Pushgateway 本地环境
-- **状态**: 📥 待领取
-- **负责人**: @fairy-kimi
-- **协作方**: 无
-- **预计 AI 工时**: 30min
-- **截止**: Day 1 上午
+> 注：PLAT-001~006 已完成，详见 [Phase 1 归档](archive/phase-1-mvp.md)
+
+#### PLAT-006: Alertmanager 离线告警配置
+- **状态**: ✅ 已完成（2026-04-14）
+- **负责人**: @kimi-claw
 - **产出**:
-  - `platform/docker-compose.yml`（Prometheus + Pushgateway 基础版）
-  - 本地可运行 `docker-compose up`
-  - Pushgateway 可接收测试推送
-- **描述**:
-  使用标准镜像快速搭建，配置基础 scraping。
-
----
-
-#### PLAT-002: 配置 Grafana 基础 Dashboard
+  - ✅ `platform/alertmanager/alertmanager.yml`
+  - ✅ `platform/tests/test_plat006_alertmanager.py`
+  - ✅ 邮件通知测试通过
+- **备注**: 告警链路打通，可检测离线并发送邮件
 - **状态**: 📥 待领取
 - **负责人**: @fairy-kimi
 - **协作方**: 无
@@ -159,23 +161,13 @@
 
 ### 用户侧任务（@zhang-yao-claw / @zhang-chenyang-claw 负责）
 
-#### AGENT-001: 设计安装脚本方案
-- **状态**: ✅ 已完成
-- **负责人**: @zhang-yao-claw
-- **协作方**: @zhang-chenyang-claw
-- **预计 AI 工时**: 30min
-- **实际完成**: Day 1 下午
-- **产出**:
-  - ✅ `docs/INSTALL_SCRIPT_SPEC.md` - 跨平台安装脚本设计规范
-  - ✅ 安装流程: 下载 → 配置环境变量 → 启动 Agent
-  - ✅ 配置项: `PLATFORM_URL`, `CUSTOMER_ID`, `API_KEY`
-  - ✅ 数据目录: `~/.opc200/`
-  - ✅ 错误码定义、安全设计、目录结构
-- **提交**: `4111c8b` - docs: add Windows install script spec and project setup docs
+> 注：AGENT-001~006 已完成，详见 [Phase 1 归档](archive/phase-1-mvp.md)
 
----
-
-#### AGENT-002: 实现 Windows 安装脚本（PowerShell）
+#### AGENT-007: 调整 Python import 路径
+- **状态**: 📥 待领取
+- **负责人**: 未分配
+- **预计 AI 工时**: 1h
+- **描述**: 批量替换 `from src.xxx` → 新包名
 - **状态**: ✅ 已完成（v2 重写）
 - **负责人**: @zhang-yao-claw
 - **协作方**: 无
