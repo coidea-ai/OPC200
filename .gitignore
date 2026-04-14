@@ -18,6 +18,7 @@ venv/
 env/
 ENV/
 .venv/
+.venv-opc-build/
 
 # IDE
 .vscode/
