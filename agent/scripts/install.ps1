@@ -59,6 +59,8 @@ $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
 $script:TASK_NAME       = "OPC200-Agent"
 $script:DEFAULT_URL     = "https://platform.opc200.co"
+$script:OPENCLAW_DEFAULT_INSTALL_URL = "https://openclaw.ai/install.ps1"
+$script:OPENCLAW_ALLOWED_HOSTS = @("openclaw.ai", "www.openclaw.ai")
 $script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
 $script:MIN_DISK_GB     = 1
 
@@ -166,7 +168,7 @@ function Test-Environment {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 function Get-InstallConfig {
-    Write-Step "2/7 获取配置"
+    Write-Step "2/8 获取配置"
 
     if ($Silent) {
         if (-not $PlatformUrl)  { $script:PlatformUrl = $script:DEFAULT_URL } else { $script:PlatformUrl = $PlatformUrl }
@@ -206,11 +208,46 @@ function Get-InstallConfig {
     Write-Ok "目录: $($script:InstallRoot)"
 }
 
-# ── Step 3: 下载 Agent ───────────────────────────────────────────
+# ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
+
+function Install-OpenClawOfficial {
+    Write-Step "3/8 官方渠道安装 OpenClaw latest"
+
+    # 允许通过环境变量覆写安装入口，但必须经过官方域名白名单校验。
+    $installUrl = if ($env:OPENCLAW_INSTALL_URL) { $env:OPENCLAW_INSTALL_URL } else { $script:OPENCLAW_DEFAULT_INSTALL_URL }
+    $channel = if ($env:OPENCLAW_CHANNEL) { $env:OPENCLAW_CHANNEL } else { "latest" }
+
+    try { $u = [Uri]$installUrl } catch { Fail $script:E002 "E002: OPENCLAW_INSTALL_URL 非法: $installUrl" }
+    if ($u.Scheme -ne "https") {
+        Fail $script:E002 "E002: OPENCLAW_INSTALL_URL 必须使用 https: $installUrl"
+    }
+    if ($script:OPENCLAW_ALLOWED_HOSTS -notcontains $u.Host.ToLowerInvariant()) {
+        Fail $script:E002 "E002: OPENCLAW_INSTALL_URL 非官方域名: $($u.Host)"
+    }
+    if ($channel -ne "latest") {
+        Write-Warn "OPENCLAW_CHANNEL=$channel；当前策略要求 latest，继续按 latest 执行"
+        $channel = "latest"
+    }
+
+    Write-Ok "OpenClaw 安装源: $installUrl"
+    Write-Ok "OpenClaw 渠道: $channel"
+
+    try {
+        $ProgressPreference = "SilentlyContinue"
+        $officialInstaller = Invoke-RestMethod -Uri $installUrl -UseBasicParsing
+        Invoke-Expression $officialInstaller
+    }
+    catch {
+        Fail $script:E002 "E002: OpenClaw 官方安装失败 - $_"
+    }
+    Write-Ok "OpenClaw 官方安装完成"
+}
+
+# ── Step 4: 下载 Agent ───────────────────────────────────────────
 
 function Get-AgentBinary {
     if ($LocalBinary) {
-        Write-Step "3/7 使用本地 Agent 二进制 (跳过下载)"
+        Write-Step "4/8 使用本地 Agent 二进制 (跳过下载)"
         if (-not (Test-Path -LiteralPath $LocalBinary)) {
             Fail $script:E002 "E002: 本地文件不存在: $LocalBinary"
         }
@@ -221,11 +258,11 @@ function Get-AgentBinary {
 
     if ($script:UsePythonMode) {
         if ($FullRuntimeDeps) {
-            Write-Step "3/7 Python 运行环境 (venv + pip，完整依赖，较慢)"
+            Write-Step "4/8 Python 运行环境 (venv + pip，完整依赖，较慢)"
             $reqName = "requirements-agent-runtime-full.txt"
         }
         else {
-            Write-Step "3/7 Python 运行环境 (venv + pip，精简依赖)"
+            Write-Step "4/8 Python 运行环境 (venv + pip，精简依赖)"
             $reqName = "requirements-agent-runtime.txt"
         }
         $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
@@ -256,7 +293,7 @@ function Get-AgentBinary {
         return
     }
 
-    Write-Step "3/7 下载 Agent"
+    Write-Step "4/8 下载 Agent"
 
     $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
     $shaUrl  = "$($script:DOWNLOAD_BASE)/$($script:CHECKSUM_FILE)"
@@ -298,10 +335,10 @@ function Get-AgentBinary {
     $script:TmpBinary = $binDest
 }
 
-# ── Step 4: 安装部署 ─────────────────────────────────────────────
+# ── Step 5: 安装部署 ─────────────────────────────────────────────
 
 function Install-Agent {
-    Write-Step "4/7 安装部署"
+    Write-Step "5/8 安装部署"
 
     $root = $script:InstallRoot
 
@@ -398,10 +435,10 @@ logging:
     $script:ConfigYml = $configPath
 }
 
-# ── Step 5: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
+# ── Step 6: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
 
 function Register-Service {
-    Write-Step "5/7 注册计划任务(登录时启动)"
+    Write-Step "6/8 注册计划任务(登录时启动)"
 
     $legacy = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
     if ($legacy) {
@@ -445,10 +482,10 @@ function Register-Service {
     Write-Ok "计划任务 $($script:TASK_NAME) 已注册 (当前用户登录后自动运行)"
 }
 
-# ── Step 6: 启动验证 ─────────────────────────────────────────────
+# ── Step 7: 启动验证 ─────────────────────────────────────────────
 
 function Start-AndVerify {
-    Write-Step "6/7 启动验证"
+    Write-Step "7/8 启动验证"
 
     try {
         Start-ScheduledTask -TaskName $script:TASK_NAME -ErrorAction Stop
@@ -479,10 +516,10 @@ function Start-AndVerify {
     }
 }
 
-# ── Step 7: 完成输出 ─────────────────────────────────────────────
+# ── Step 8: 完成输出 ─────────────────────────────────────────────
 
 function Show-Summary {
-    Write-Step "7/7 安装完成"
+    Write-Step "8/8 安装完成"
 
     $root = $script:InstallRoot
     Write-Host ""
@@ -520,6 +557,7 @@ function Main {
 
     Test-Environment
     Get-InstallConfig
+    Install-OpenClawOfficial
     Get-AgentBinary
     Install-Agent
     Register-Service

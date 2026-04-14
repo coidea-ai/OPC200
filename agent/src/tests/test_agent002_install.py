@@ -58,6 +58,7 @@ class TestInstallSteps:
     STEP_FUNCTIONS = [
         "Test-Environment",
         "Get-InstallConfig",
+        "Install-OpenClawOfficial",
         "Get-AgentBinary",
         "Install-Agent",
         "Register-Service",
@@ -146,6 +147,19 @@ class TestChecksum:
         assert "SHA256SUMS" in install_ps1
 
 
+class TestOpenClawOfficialInstall:
+    def test_official_install_url_configurable(self, install_ps1):
+        assert "OPENCLAW_INSTALL_URL" in install_ps1
+
+    def test_official_channel_defaults_latest(self, install_ps1):
+        assert "OPENCLAW_CHANNEL" in install_ps1
+        assert '"latest"' in install_ps1
+
+    def test_official_host_whitelist(self, install_ps1):
+        assert "OPENCLAW_ALLOWED_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+
+
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
 
 class TestRollback:
@@ -163,10 +177,10 @@ class TestServiceRegistration:
         assert "OPC200-Agent" in install_ps1
 
     def test_sc_create(self, install_ps1):
-        assert "sc.exe create" in install_ps1
+        assert "Register-ScheduledTask" in install_ps1
 
     def test_auto_start(self, install_ps1):
-        assert "start= auto" in install_ps1
+        assert "New-ScheduledTaskTrigger -AtLogOn" in install_ps1
 
 
 # ── uninstall.ps1 ────────────────────────────────────────────────
