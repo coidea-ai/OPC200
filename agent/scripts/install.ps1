@@ -61,6 +61,9 @@ $script:TASK_NAME       = "OPC200-Agent"
 $script:DEFAULT_URL     = "https://platform.opc200.co"
 $script:OPENCLAW_DEFAULT_INSTALL_URL = "https://openclaw.ai/install.ps1"
 $script:OPENCLAW_ALLOWED_HOSTS = @("openclaw.ai", "www.openclaw.ai")
+$script:OPENCLAW_DEFAULT_PROFILE_DIR = Join-Path $HOME ".openclaw"
+$script:OPENCLAW_DEFAULT_SKILLS = ""
+$script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD = "openclaw skill install"
 $script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
 $script:MIN_DISK_GB     = 1
 
@@ -168,7 +171,7 @@ function Test-Environment {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 function Get-InstallConfig {
-    Write-Step "2/8 获取配置"
+    Write-Step "2/9 获取配置"
 
     if ($Silent) {
         if (-not $PlatformUrl)  { $script:PlatformUrl = $script:DEFAULT_URL } else { $script:PlatformUrl = $PlatformUrl }
@@ -211,7 +214,7 @@ function Get-InstallConfig {
 # ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 function Install-OpenClawOfficial {
-    Write-Step "3/8 官方渠道安装 OpenClaw latest"
+    Write-Step "3/9 官方渠道安装 OpenClaw latest"
 
     # 允许通过环境变量覆写安装入口，但必须经过官方域名白名单校验。
     $installUrl = if ($env:OPENCLAW_INSTALL_URL) { $env:OPENCLAW_INSTALL_URL } else { $script:OPENCLAW_DEFAULT_INSTALL_URL }
@@ -243,11 +246,80 @@ function Install-OpenClawOfficial {
     Write-Ok "OpenClaw 官方安装完成"
 }
 
-# ── Step 4: 下载 Agent ───────────────────────────────────────────
+# ── Step 4: 轻预装层（skills + 文档）────────────────────────────
+
+function Write-DocTemplate {
+    param([string]$TargetPath, [string]$Content)
+    if (Test-Path -LiteralPath $TargetPath) {
+        [System.IO.File]::WriteAllText("$TargetPath.new", $Content + "`n", [System.Text.UTF8Encoding]::new($false))
+        Write-Warn "已存在，写入增量文件: $TargetPath.new"
+    }
+    else {
+        [System.IO.File]::WriteAllText($TargetPath, $Content + "`n", [System.Text.UTF8Encoding]::new($false))
+        Write-Ok "已写入模板: $TargetPath"
+    }
+}
+
+function Install-OpenClawPreload {
+    Write-Step "4/9 轻预装层（skills + 文档）"
+
+    $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { $script:OPENCLAW_DEFAULT_PROFILE_DIR }
+    $skillsCsv = if ($env:OPENCLAW_PREINSTALL_SKILLS) { $env:OPENCLAW_PREINSTALL_SKILLS } else { $script:OPENCLAW_DEFAULT_SKILLS }
+    $skillInstallCmd = if ($env:OPENCLAW_SKILL_INSTALL_CMD) { $env:OPENCLAW_SKILL_INSTALL_CMD } else { $script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD }
+    $templatesDir = Join-Path $PSScriptRoot "openclaw-templates"
+    $skillFailed = $false
+
+    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    Write-Ok "OpenClaw 配置目录: $profileDir"
+
+    # skills 安装失败按策略仅告警，不中断安装流程。
+    if ($skillsCsv) {
+        foreach ($raw in ($skillsCsv -split ",")) {
+            $skill = $raw.Trim()
+            if (-not $skill) { continue }
+            try {
+                Invoke-Expression "$skillInstallCmd `"$skill`""
+                Write-Ok "skills 已安装: $skill"
+            }
+            catch {
+                Write-Warn "skills 安装失败（已忽略）: $skill"
+                $skillFailed = $true
+            }
+        }
+    }
+    else {
+        Write-Warn "未配置 OPENCLAW_PREINSTALL_SKILLS，跳过 skills 安装"
+    }
+
+    Write-DocTemplateFromFile -SourcePath (Join-Path $templatesDir "SOUL.md") -TargetPath (Join-Path $profileDir "SOUL.md")
+    Write-DocTemplateFromFile -SourcePath (Join-Path $templatesDir "IDENTITY.md") -TargetPath (Join-Path $profileDir "IDENTITY.md")
+    Write-DocTemplateFromFile -SourcePath (Join-Path $templatesDir "AGENTS.md") -TargetPath (Join-Path $profileDir "AGENTS.md")
+
+    if ($skillFailed) {
+        Write-Warn "部分 skills 安装失败，已按策略继续安装"
+    }
+}
+
+function Write-DocTemplateFromFile {
+    param([string]$SourcePath, [string]$TargetPath)
+    if (-not (Test-Path -LiteralPath $SourcePath)) {
+        Fail $script:E001 "E001: 模板文件不存在: $SourcePath"
+    }
+    if (Test-Path -LiteralPath $TargetPath) {
+        Copy-Item -LiteralPath $SourcePath -Destination "$TargetPath.new" -Force
+        Write-Warn "已存在，写入增量文件: $TargetPath.new"
+    }
+    else {
+        Copy-Item -LiteralPath $SourcePath -Destination $TargetPath -Force
+        Write-Ok "已写入模板: $TargetPath"
+    }
+}
+
+# ── Step 5: 下载 Agent ───────────────────────────────────────────
 
 function Get-AgentBinary {
     if ($LocalBinary) {
-        Write-Step "4/8 使用本地 Agent 二进制 (跳过下载)"
+        Write-Step "5/9 使用本地 Agent 二进制 (跳过下载)"
         if (-not (Test-Path -LiteralPath $LocalBinary)) {
             Fail $script:E002 "E002: 本地文件不存在: $LocalBinary"
         }
@@ -258,11 +330,11 @@ function Get-AgentBinary {
 
     if ($script:UsePythonMode) {
         if ($FullRuntimeDeps) {
-            Write-Step "4/8 Python 运行环境 (venv + pip，完整依赖，较慢)"
+            Write-Step "5/9 Python 运行环境 (venv + pip，完整依赖，较慢)"
             $reqName = "requirements-agent-runtime-full.txt"
         }
         else {
-            Write-Step "4/8 Python 运行环境 (venv + pip，精简依赖)"
+            Write-Step "5/9 Python 运行环境 (venv + pip，精简依赖)"
             $reqName = "requirements-agent-runtime.txt"
         }
         $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
@@ -293,7 +365,7 @@ function Get-AgentBinary {
         return
     }
 
-    Write-Step "4/8 下载 Agent"
+    Write-Step "5/9 下载 Agent"
 
     $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
     $shaUrl  = "$($script:DOWNLOAD_BASE)/$($script:CHECKSUM_FILE)"
@@ -335,10 +407,10 @@ function Get-AgentBinary {
     $script:TmpBinary = $binDest
 }
 
-# ── Step 5: 安装部署 ─────────────────────────────────────────────
+# ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 function Install-Agent {
-    Write-Step "5/8 安装部署"
+    Write-Step "6/9 安装部署"
 
     $root = $script:InstallRoot
 
@@ -436,10 +508,10 @@ logging:
     $script:ConfigYml = $configPath
 }
 
-# ── Step 6: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
+# ── Step 7: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
 
 function Register-Service {
-    Write-Step "6/8 注册计划任务(登录时启动)"
+    Write-Step "7/9 注册计划任务(登录时启动)"
 
     $legacy = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
     if ($legacy) {
@@ -483,10 +555,10 @@ function Register-Service {
     Write-Ok "计划任务 $($script:TASK_NAME) 已注册 (当前用户登录后自动运行)"
 }
 
-# ── Step 7: 启动验证 ─────────────────────────────────────────────
+# ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 function Start-AndVerify {
-    Write-Step "7/8 启动验证"
+    Write-Step "8/9 启动验证"
 
     try {
         Start-ScheduledTask -TaskName $script:TASK_NAME -ErrorAction Stop
@@ -517,10 +589,10 @@ function Start-AndVerify {
     }
 }
 
-# ── Step 8: 完成输出 ─────────────────────────────────────────────
+# ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 function Show-Summary {
-    Write-Step "8/8 安装完成"
+    Write-Step "9/9 安装完成"
 
     $root = $script:InstallRoot
     Write-Host ""
@@ -559,6 +631,7 @@ function Main {
     Test-Environment
     Get-InstallConfig
     Install-OpenClawOfficial
+    Install-OpenClawPreload
     Get-AgentBinary
     Install-Agent
     Register-Service

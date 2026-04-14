@@ -12,6 +12,9 @@ DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VE
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="https://platform.opc200.co"
 OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
+OPENCLAW_DEFAULT_PROFILE_DIR="$HOME/.openclaw"
+OPENCLAW_DEFAULT_SKILLS=""
+OPENCLAW_DEFAULT_SKILL_INSTALL_CMD="openclaw skill install"
 DEFAULT_PORT=8080
 MIN_DISK_MB=1024
 
@@ -174,7 +177,7 @@ step_check_env() {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 step_get_config() {
-    info "2/8 获取配置"
+    info "2/9 获取配置"
 
     if $SILENT; then
         [[ -z "$PLATFORM_URL" ]] && PLATFORM_URL="$DEFAULT_URL"
@@ -207,7 +210,7 @@ step_get_config() {
 # ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 step_install_openclaw_official() {
-    info "3/8 官方渠道安装 OpenClaw latest"
+    info "3/9 官方渠道安装 OpenClaw latest"
 
     # 允许环境变量覆写安装入口，但仅允许官方域名，避免被导向私有或恶意源。
     local install_url="${OPENCLAW_INSTALL_URL:-$OPENCLAW_DEFAULT_INSTALL_URL}"
@@ -231,11 +234,65 @@ step_install_openclaw_official() {
     ok "OpenClaw 官方安装完成"
 }
 
-# ── Step 4: 下载 Agent ───────────────────────────────────────────
+# ── Step 4: 轻预装层（skills + 文档）────────────────────────────
+
+step_preinstall_openclaw_assets() {
+    info "4/9 轻预装层（skills + 文档）"
+
+    local profile_dir="${OPENCLAW_PROFILE_DIR:-$OPENCLAW_DEFAULT_PROFILE_DIR}"
+    local skills_csv="${OPENCLAW_PREINSTALL_SKILLS:-$OPENCLAW_DEFAULT_SKILLS}"
+    local skill_install_cmd="${OPENCLAW_SKILL_INSTALL_CMD:-$OPENCLAW_DEFAULT_SKILL_INSTALL_CMD}"
+    local failed=0
+    local templates_dir="$SCRIPT_DIR/openclaw-templates"
+
+    mkdir -p "$profile_dir"
+    ok "OpenClaw 配置目录: $profile_dir"
+
+    # skills 安装失败按策略仅告警，不中断安装流程。
+    if [[ -n "$skills_csv" ]]; then
+        IFS=',' read -r -a skills <<< "$skills_csv"
+        for skill in "${skills[@]}"; do
+            skill="$(printf '%s' "$skill" | xargs)"
+            [[ -z "$skill" ]] && continue
+            if eval "$skill_install_cmd \"$skill\""; then
+                ok "skills 已安装: $skill"
+            else
+                warn "skills 安装失败（已忽略）: $skill"
+                failed=1
+            fi
+        done
+    else
+        warn "未配置 OPENCLAW_PREINSTALL_SKILLS，跳过 skills 安装"
+    fi
+
+    # 模板文件采用“存在则写 .new”的策略，避免覆盖用户自定义内容。
+    _write_doc_template_from_file "$templates_dir/SOUL.md" "$profile_dir/SOUL.md"
+    _write_doc_template_from_file "$templates_dir/IDENTITY.md" "$profile_dir/IDENTITY.md"
+    _write_doc_template_from_file "$templates_dir/AGENTS.md" "$profile_dir/AGENTS.md"
+
+    if [[ "$failed" -eq 1 ]]; then
+        warn "部分 skills 安装失败，已按策略继续安装"
+    fi
+}
+
+_write_doc_template_from_file() {
+    local source="$1"
+    local target="$2"
+    [[ -f "$source" ]] || fail $E001 "E001: 模板文件不存在: $source"
+    if [[ -f "$target" ]]; then
+        cp "$source" "${target}.new"
+        warn "已存在，写入增量文件: ${target}.new"
+    else
+        cp "$source" "$target"
+        ok "已写入模板: $target"
+    fi
+}
+
+# ── Step 5: 下载 Agent ───────────────────────────────────────────
 
 step_download() {
     if [[ -n "$LOCAL_BINARY" ]]; then
-        info "4/8 使用本地二进制"
+        info "5/9 使用本地二进制"
         [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
         TMP_BINARY="$LOCAL_BINARY"
         ok "使用本地二进制: $LOCAL_BINARY"
@@ -246,9 +303,9 @@ step_download() {
         local reqfile="requirements-agent-runtime.txt"
         if $FULL_RUNTIME_DEPS; then
             reqfile="requirements-agent-runtime-full.txt"
-            info "4/8 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
+            info "5/9 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
         else
-            info "4/8 Python 运行环境 (venv + pip，精简依赖)"
+            info "5/9 Python 运行环境 (venv + pip，精简依赖)"
         fi
         [[ -f "$REPO_ROOT/agent/scripts/$reqfile" ]] || fail $E001 "E001: 缺少 $reqfile（$REPO_ROOT）"
         local pyexe=python3
@@ -266,7 +323,7 @@ step_download() {
         return
     fi
 
-    info "4/8 下载 Agent"
+    info "5/9 下载 Agent"
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -326,10 +383,10 @@ step_download() {
     TMP_BINARY="$bin_dest"
 }
 
-# ── Step 5: 安装部署 ─────────────────────────────────────────────
+# ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 step_install() {
-    info "5/8 安装部署"
+    info "6/9 安装部署"
 
     local root="$INSTALL_DIR"
     local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/journal" "$root/data/exporter" "$root/logs")
@@ -396,10 +453,10 @@ YAML
     ok ".env 已写入（权限 600）"
 }
 
-# ── Step 6: 注册系统服务 ─────────────────────────────────────────
+# ── Step 7: 注册系统服务 ─────────────────────────────────────────
 
 step_register_service() {
-    info "6/8 注册系统服务"
+    info "7/9 注册系统服务"
 
     local agent_bin="${INSTALL_DIR}/bin/opc-agent"
     local config_yml="${INSTALL_DIR}/config/config.yml"
@@ -477,10 +534,10 @@ PLIST
     ok "launchd plist 已写入（${plist_path}）"
 }
 
-# ── Step 7: 启动验证 ─────────────────────────────────────────────
+# ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 step_start_verify() {
-    info "7/8 启动验证"
+    info "8/9 启动验证"
 
     if [[ "$OS_TYPE" == "linux" ]]; then
         systemctl start "$SERVICE_NAME" || fail $E005 "E005: 服务启动失败"
@@ -514,10 +571,10 @@ step_start_verify() {
     fi
 }
 
-# ── Step 8: 完成输出 ─────────────────────────────────────────────
+# ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 step_summary() {
-    info "8/8 安装完成"
+    info "9/9 安装完成"
 
     echo ""
     echo "  安装目录 : $INSTALL_DIR"
@@ -578,6 +635,7 @@ main() {
     step_check_env
     step_get_config
     step_install_openclaw_official
+    step_preinstall_openclaw_assets
     step_download
     step_install
     step_register_service

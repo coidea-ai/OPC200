@@ -69,6 +69,7 @@ class TestInstallSteps:
         "step_check_env",
         "step_get_config",
         "step_install_openclaw_official",
+        "step_preinstall_openclaw_assets",
         "step_download",
         "step_install",
         "step_register_service",
@@ -168,6 +169,18 @@ class TestOpenClawOfficialInstall:
 
     def test_official_host_whitelist(self, install_sh):
         assert "openclaw.ai" in install_sh
+
+
+class TestOpenClawPreload:
+    def test_preload_doc_templates(self, install_sh):
+        assert "SOUL.md" in install_sh
+        assert "IDENTITY.md" in install_sh
+        assert "AGENTS.md" in install_sh
+        assert "openclaw-templates" in install_sh
+
+    def test_preload_skill_fail_non_blocking(self, install_sh):
+        assert "skills 安装失败（已忽略）" in install_sh
+        assert "warn" in install_sh
 
 
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
