@@ -1,0 +1,4 @@
+# Default: minimal deps for opc-agent CLI (/health + metrics push via exporter only). Fast install.
+pyyaml>=6.0
+requests>=2.31.0
+psutil>=5.9.0

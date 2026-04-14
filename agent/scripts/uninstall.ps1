@@ -68,36 +68,42 @@ try {
     # Step 2: 确认删除
     Write-Step "2/3 清理文件"
     if (-not (Test-Path $InstallDir)) {
-        Write-Warn "目录 $InstallDir 不存在"
-        exit 0
-    }
-
-    if (-not $Silent) {
-        $confirm = Read-Host "确认删除 $InstallDir ? (Y/N)"
-        if ($confirm -ne "Y" -and $confirm -ne "y") {
-            Write-Warn "已取消"
-            exit 0
-        }
-    }
-
-    if ($KeepData) {
-        $toRemove = @("bin", "config", "logs", ".env")
-        foreach ($item in $toRemove) {
-            $p = Join-Path $InstallDir $item
-            if (Test-Path $p) {
-                Remove-Item $p -Recurse -Force
-                Write-Ok "已删除 $item"
-            }
-        }
-        Write-Ok "data/ 已保留"
+        Write-Warn "目录 $InstallDir 不存在（可能已手动删除），跳过文件清理"
     }
     else {
-        Remove-Item $InstallDir -Recurse -Force
-        Write-Ok "目录已删除"
+        if (-not $Silent) {
+            $confirm = Read-Host "确认删除 $InstallDir ? (Y/N)"
+            if ($confirm -ne "Y" -and $confirm -ne "y") {
+                Write-Warn "已取消"
+                exit 0
+            }
+        }
+
+        if ($KeepData) {
+            $toRemove = @("bin", "config", "logs", "venv", ".env")
+            foreach ($item in $toRemove) {
+                $p = Join-Path $InstallDir $item
+                if (Test-Path $p) {
+                    Remove-Item $p -Recurse -Force
+                    Write-Ok "已删除 $item"
+                }
+            }
+            $ra = Join-Path $InstallDir "run-agent.ps1"
+            if (Test-Path -LiteralPath $ra) {
+                Remove-Item -LiteralPath $ra -Force
+                Write-Ok "已删除 run-agent.ps1"
+            }
+            Write-Ok "data/ 已保留"
+        }
+        else {
+            Remove-Item $InstallDir -Recurse -Force
+            Write-Ok "目录已删除"
+        }
     }
 
     # Step 3: 完成
     Write-Step "3/3 卸载完成"
+    Write-Host "  自动启动已处理；安装目录已清空或本就不存在。卸载结束。" -ForegroundColor Green
     Write-Host ""
     exit 0
 }

@@ -81,31 +81,30 @@ fi
 
 # Step 2: 删除文件
 if [[ ! -d "$INSTALL_DIR" ]]; then
-    warn "安装目录不存在: $INSTALL_DIR"
+    warn "安装目录不存在: $INSTALL_DIR（可能已手动删除），跳过文件清理"
     if [[ "$OS_TYPE" == "linux" ]]; then
         for c in "/root/.opc200" "/home/${SUDO_USER:-}/.opc200"; do
             [[ -d "$c" ]] && warn "若曾用 sudo 安装，可尝试: sudo $0 --install-dir '$c'"
         done
     fi
-    exit 0
-fi
-
-if ! $SILENT; then
-    read -rp "确认删除 ${INSTALL_DIR}？[y/N] " ans
-    [[ "$ans" =~ ^[Yy] ]] || { info "已取消"; exit 0; }
-fi
-
-if $KEEP_DATA; then
-    info "保留 data/ 目录"
-    for d in bin config logs; do
-        rm -rf "${INSTALL_DIR:?}/$d"
-    done
-    rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/config/config.yml"
-    ok "已删除（保留 data/）"
 else
-    rm -rf "${INSTALL_DIR:?}"
-    ok "已完全删除 $INSTALL_DIR"
+    if ! $SILENT; then
+        read -rp "确认删除 ${INSTALL_DIR}？[y/N] " ans
+        [[ "$ans" =~ ^[Yy] ]] || { info "已取消"; exit 0; }
+    fi
+
+    if $KEEP_DATA; then
+        info "保留 data/ 目录"
+        for d in bin config logs venv; do
+            rm -rf "${INSTALL_DIR:?}/$d"
+        done
+        rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/config/config.yml" "${INSTALL_DIR}/runtime.env"
+        ok "已删除（保留 data/）"
+    else
+        rm -rf "${INSTALL_DIR:?}"
+        ok "已完全删除 $INSTALL_DIR"
+    fi
 fi
 
 echo ""
-ok "OPC200 Agent 已卸载"
+ok "OPC200 Agent 已卸载（自动启动已移除；目录已清空或本就不存在）"

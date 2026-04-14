@@ -38,157 +38,161 @@ docker run -d \
 
 ## 开发
 
-### Windows 部署
+开发模式下，脚本默认使用 `Python venv + 仓库源码` 运行 `opc-agent`（无需先构建可执行文件）。  
+如需二进制模式，可显式传 `--binary` / `-UseBinary` 或 `--local-binary` / `-LocalBinary`。
 
-#### step1. 构建 exe 可执行文件
+---
 
-目前 GitHub Release 未提供 `opc-agent-windows-amd64.exe` 时，可在仓库内先执行 `build-windows-exe.ps1` 本地构建，再配合 `install.ps1 -LocalBinary` 联调。
+### Windows
 
-**命令**（在仓库根目录中执行）：
+#### 安装
+
+在 **管理员 PowerShell** 中进入 `agent/scripts` 执行。
+
+`install.ps1` 参数说明：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-PlatformUrl` | `https://platform.opc200.co` | 平台地址（Pushgateway 根地址） |
+| `-CustomerId` | 无 | 租户标识，必填（静默模式） |
+| `-ApiKey` | 无 | API Key，必填（静默模式） |
+| `-InstallDir` | `$HOME\.opc200` | 安装目录 |
+| `-Port` | `8080` | 本地健康检查端口 |
+| `-Silent` | `False` | 静默安装（不交互） |
+| `-LocalBinary` | 空 | 使用本地 exe，跳过下载/源码模式 |
+| `-UseBinary` | `False` | 强制使用 Release 二进制模式 |
+| `-RepoRoot` | 脚本目录 `..\..` | OPC200 仓库根目录 |
+| `-FullRuntimeDeps` | `False` | 安装完整依赖（含重包，耗时长） |
+
+安装示例：
 
 ```powershell
-# 先执行 build-windows-exe.ps1，构建安装包
-.\agent\scripts\build-windows-exe.ps1
-```
-
-**产物**：`dist`目录下会生成 `opc-agent-windows-amd64.exe`
-
-#### step2. 安装 opc-agent 服务
-
-脚本默认从 GitHub Release 拉取：
-
-`https://github.com/coidea-ai/OPC200/releases/download/v2.3.0/opc-agent-windows-amd64.exe`
-
-但由于目前 Release 上尚无该 exe，安装会在「下载 Agent」步骤失败。所以通过 `-LocalBinary` 来启动刚刚本地生成的 exe 文件（也就是表格中的方式 A）。
-
-| 方式                          | 说明                                                         |
-| ----------------------------- | ------------------------------------------------------------ |
-| **A. 本地二进制（推荐联调）** | 执行 `.\agent\scripts\build-windows-exe.ps1` 生成 `dist\opc-agent-windows-amd64.exe`，再用 `install.ps1 -LocalBinary` |
-| **B. 先发布 Release**         | 打 `v2.3.0` tag，上传 `opc-agent-windows-amd64.exe` 与 `SHA256SUMS` 后再用默认下载流程 |
-
-具体命令如下：
-
-```bash
-# 以管理员打开 PowerShell，进入脚本目录（路径按本机修改）
+# 交互安装（默认：源码 + 精简依赖）
 cd E:\projects\OPC200\agent\scripts
+.\install.ps1
 
-# 方式A：本地 exe
-.\install.ps1 -Silent `
-  -LocalBinary "D:\path\to\opc-agent-windows-amd64.exe" `
-  -PlatformUrl "http://127.0.0.1:9091" `
-  -CustomerId "win-e2e-001" `
-  -ApiKey "dev-local-test"
-
-# 方式B：如果 Release 已有 exe，执行以下命令
+# 静默安装（默认：源码 + 精简依赖）
 .\install.ps1 -Silent `
   -PlatformUrl "http://127.0.0.1:9091" `
   -CustomerId "win-e2e-001" `
   -ApiKey "dev-local-test"
+
+# 静默 + 完整依赖
+.\install.ps1 -Silent -FullRuntimeDeps `
+  -PlatformUrl "http://127.0.0.1:9091" `
+  -CustomerId "win-e2e-001" `
+  -ApiKey "dev-local-test"
+
+# 使用本地 exe 安装（前提：需要先执行 build-windows-exe.ps1 生成 exe 文件）
+.\install.ps1 -Silent `
+  -LocalBinary "E:\projects\OPC200\dist\opc-agent-windows-amd64.exe" `
+  -PlatformUrl "http://127.0.0.1:9091" `
+  -CustomerId "win-e2e-001" `
+  -ApiKey "dev-local-test"
 ```
 
-说明：
+#### 卸载
 
-- `CustomerId` 在 Pushgateway 中对应路径 `/metrics/job/<id>`；
-- 本机 Pushgateway 一般**不校验** Bearer，`ApiKey` 填任意非空测试字符串即可。
-- 交互模式安装时，「平台地址」可输入 `http://127.0.0.1:9091`。
+`uninstall.ps1` 参数说明：
 
-- 成功时脚本应完成启动验证；健康检查 URL 为 `http://127.0.0.1:<Port>/health`（与 `-Port` 一致），默认 8080。
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-InstallDir` | `$HOME\.opc200` | 安装目录 |
+| `-KeepData` | `False` | 保留 `data/` |
+| `-Silent` | `False` | 静默卸载（不交互确认） |
 
-- 若 **8080** 已被占用，则更改端口，比如换成 `-Port 18080`。
-- 参数说明见 `agent/scripts/install.ps1` 文件头注释。
-
-#### step3. Windows 安装脚本与本机 Docker 平台联调
-
-**前置条件**：本地 Docker 已经跑起 platform 平台服务。
-
-**Pushgateway 是否收到该租户**：
-
-打开 `http://localhost:9091`，能看到 `job="win-e2e-001"`。或者执行以下命令
-
-```powershell
-(Invoke-WebRequest -Uri "http://localhost:9091/metrics" -UseBasicParsing).Content | Select-String "win-e2e-001"
-```
-
-**Prometheus 是否已抓取**（等待约 15～30 秒）：
-
-```powershell
-curl "http://localhost:9090/api/v1/query?query=cpu_usage%7Bjob%3D%22win-e2e-001%22%7D"
-```
-
-`data.result` 非空即表示链路已通。
-
-**Grafana（可选）**：打开 `http://localhost:3000`（默认账号见 `platform/docker-compose.yml`，一般为 `admin` / `opc200admin`），在 `Dashboards` 看查看有没有启动服务时设置的 User。比如示例中的 `-CustomerId "win-e2e-001" `，则表明 User 叫 `win-e2e-001`。
-
-#### step4. 测试结束后清理
+卸载示例：
 
 ```powershell
 cd E:\projects\OPC200\agent\scripts
-.\uninstall.ps1 -Silent -InstallDir "$env:USERPROFILE\.opc200"
+
+# 交互卸载
+.\uninstall.ps1
+
+# 指定目录静默卸载
+.\uninstall.ps1 -InstallDir "$env:USERPROFILE\.opc200" -Silent
+
+# 保留 data
+.\uninstall.ps1 -InstallDir "$env:USERPROFILE\.opc200" -KeepData
 ```
 
-确认计划任务/旧服务已移除：
+---
 
-```powershell
-Get-ScheduledTask -TaskName OPC200-Agent -ErrorAction SilentlyContinue
-Get-Service OPC200-Agent -ErrorAction SilentlyContinue
-```
+### Mac/Linux（含 WSL）
 
-#### FAQ 常见问题
+#### 安装
 
-| 现象 | 可能原因 | 处理 |
-|------|----------|------|
-| E001 非管理员 | 未提升权限 | 管理员 PowerShell 重试 |
-| E002 下载失败 | Release 无文件或网络问题 | 检查 Release、代理，或使用 `-LocalBinary` |
-| E003 端口占用 | 8080 被占 | `-Port` 换端口 |
-| E005 计划任务失败 | 策略或权限 | 查看报错详情，确认以管理员执行 |
-| 健康检查超时 | Agent 未监听或启动慢 | 查看 `agent.log`，确认二进制与配置一致 |
-| Pushgateway 无数据 | `platform.url` 错误 | 核对 `config.yml` 中 `platform.url` 为 `http://127.0.0.1:9091` |
-| Prometheus 无数据 | 抓取间隔未到 | 等待并检查 `platform/prometheus/prometheus.yml` |
+在 `agent/scripts` 目录中使用 `sudo` 执行。
 
-### Mac/Linux 部署
+`install.sh` 参数说明：
 
-#### step1. 构建可执行文件
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--platform-url` | `https://platform.opc200.co` | 平台地址（Pushgateway 根地址） |
+| `--customer-id` | 无 | 租户标识，必填（静默模式） |
+| `--api-key` | 无 | API Key，必填（静默模式） |
+| `--install-dir` | `$HOME/.opc200` | 安装目录 |
+| `--port` | `8080` | 本地健康检查端口 |
+| `--local-binary` | 空 | 使用本地二进制路径 |
+| `--repo-root` | 脚本目录 `../..` | OPC200 仓库根目录 |
+| `--binary` | `False` | 强制二进制下载模式 |
+| `--full-runtime-deps` | `False` | 安装完整依赖（含重包，耗时长） |
+| `--silent` | `False` | 静默安装（不交互） |
 
-原因同 Windows 一样，见上。
+安装示例：
 
 ```bash
-cd /mnt/e/projects/OPC200   # 按真实项目路径改
-chmod +x agent/scripts/build-linux.sh
-./agent/scripts/build-linux.sh
-```
+# 交互安装（默认：源码 + 精简依赖）
+cd /mnt/e/projects/OPC200/agent/scripts
+sudo bash ./install.sh
 
-#### step2. 安装 opc-agent 服务
+# 静默安装（默认：源码 + 精简依赖）
+sudo bash ./install.sh --silent \
+  --platform-url "http://127.0.0.1:9091" \
+  --customer-id "linux-e2e-001" \
+  --api-key "dev-local-test"
 
-本地路径安装刚刚生成的二进制文件（已支持 `--local-binary`）：
+# 静默 + 完整依赖
+sudo bash ./install.sh --silent --full-runtime-deps \
+  --platform-url "http://127.0.0.1:9091" \
+  --customer-id "linux-e2e-001" \
+  --api-key "dev-local-test"
 
-```bash
-sudo bash agent/scripts/install.sh --silent \
+# 使用本地二进制安装（前提：需要先执行 build-linux.sj 生成可执行文件）
+sudo bash ./install.sh --silent \
   --local-binary "/mnt/e/projects/OPC200/dist/opc-agent-linux-amd64" \
   --platform-url "http://127.0.0.1:9091" \
-  --customer-id "test-001" \
-  --api-key "dev"
+  --customer-id "linux-e2e-001" \
+  --api-key "dev-local-test"
 ```
 
-交互安装时同样加上：`sudo bash ./install.sh --local-binary "/mnt/e/projects/OPC200/dist/opc-agent-linux-amd64"`，再按提示填平台地址等。
+#### 卸载
 
-若以后 Release 里已有同名文件：去掉 `--local-binary`，脚本会改回从 GitHub 下载。
+`uninstall.sh` 参数说明：
 
-#### step3. 与本地 Docker 平台联调
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--install-dir` | `$HOME/.opc200` | 安装目录 |
+| `--keep-data` | `False` | 保留 `data/` |
+| `--silent` | `False` | 静默卸载（不交互确认） |
 
-#### step4. 测试结束后清理
-
-```bash
-# agents/scripts 路径
-sudo bash ./uninstall.sh --install-dir "$HOME/.opc200"
-```
-
-按提示确认删除目录；若不要确认提示：
+卸载示例：
 
 ```bash
+cd /mnt/e/projects/OPC200/agent/scripts
+
+# 交互卸载
+sudo bash ./uninstall.sh
+
+# 指定目录静默卸载
 sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --silent
-```
 
-加 `--keep-data` 可只删二进制/配置而保留 `data/`。
+# 通过 sudo 安装在 root 目录时
+sudo bash ./uninstall.sh --install-dir "/root/.opc200"
+
+# 保留 data
+sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --keep-data
+```
 
 ## 用户安装（todo）
 

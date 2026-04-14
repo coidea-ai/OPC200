@@ -51,6 +51,7 @@ class TestInstallParams:
     REQUIRED_PARAMS = [
         "--platform-url", "--customer-id", "--api-key",
         "--install-dir", "--port", "--silent",
+        "--local-binary", "--repo-root", "--binary", "--full-runtime-deps",
     ]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)

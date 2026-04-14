@@ -33,6 +33,10 @@ OS_TYPE=""       # linux / darwin
 ARCH=""          # amd64 / arm64
 AGENT_BINARY=""
 LOCAL_BINARY=""
+USE_PYTHON=true
+REPO_ROOT=""
+SCRIPT_DIR=""
+FULL_RUNTIME_DEPS=false
 ROLLBACK_ITEMS=()
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
@@ -121,7 +125,23 @@ step_check_env() {
     esac
     ok "架构: $ARCH"
 
-    AGENT_BINARY="opc-agent-${OS_TYPE}-${ARCH}"
+    if ! $USE_PYTHON || [[ -n "$LOCAL_BINARY" ]]; then
+        AGENT_BINARY="opc-agent-${OS_TYPE}-${ARCH}"
+    fi
+
+    if $USE_PYTHON && [[ -z "$LOCAL_BINARY" ]]; then
+        [[ -f "$REPO_ROOT/agent/src/opc_agent/cli.py" ]] || fail $E001 "E001: 非 OPC200 仓库根目录: $REPO_ROOT（请使用 --repo-root 或在克隆仓库内执行本脚本）"
+        local pyexe=python3
+        command -v "$pyexe" &>/dev/null || pyexe=python
+        command -v "$pyexe" &>/dev/null || fail $E001 "E001: 未找到 python3/python"
+        local pmaj pmin
+        pmaj="$("$pyexe" -c 'import sys; print(sys.version_info[0])')"
+        pmin="$("$pyexe" -c 'import sys; print(sys.version_info[1])')"
+        if [[ "$pmaj" -lt 3 ]] || { [[ "$pmaj" -eq 3 ]] && [[ "$pmin" -lt 10 ]]; }; then
+            fail $E001 "E001: 需要 Python 3.10+（当前 $("$pyexe" -V 2>&1)）"
+        fi
+        ok "Python: $("$pyexe" -V 2>&1)；源码: $REPO_ROOT"
+    fi
 
     # 磁盘
     local free_mb
@@ -186,14 +206,39 @@ step_get_config() {
 # ── Step 3: 下载 Agent ───────────────────────────────────────────
 
 step_download() {
-    info "3/7 下载 Agent"
-
     if [[ -n "$LOCAL_BINARY" ]]; then
+        info "3/7 使用本地二进制"
         [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
         TMP_BINARY="$LOCAL_BINARY"
         ok "使用本地二进制: $LOCAL_BINARY"
         return
     fi
+
+    if $USE_PYTHON; then
+        local reqfile="requirements-agent-runtime.txt"
+        if $FULL_RUNTIME_DEPS; then
+            reqfile="requirements-agent-runtime-full.txt"
+            info "3/7 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
+        else
+            info "3/7 Python 运行环境 (venv + pip，精简依赖)"
+        fi
+        [[ -f "$REPO_ROOT/agent/scripts/$reqfile" ]] || fail $E001 "E001: 缺少 $reqfile（$REPO_ROOT）"
+        local pyexe=python3
+        command -v "$pyexe" &>/dev/null || pyexe=python
+        mkdir -p "$INSTALL_DIR"
+        local venv="$INSTALL_DIR/venv"
+        "$pyexe" -m venv "$venv" || fail $E001 "E001: 无法创建 venv"
+        "$venv/bin/pip" install -q -U pip || fail $E002 "E002: pip 升级失败"
+        "$venv/bin/pip" install -q -r "$REPO_ROOT/agent/scripts/$reqfile" || {
+            rm -rf "$INSTALL_DIR"
+            fail $E002 "E002: pip 安装依赖失败"
+        }
+        ok "已安装运行时依赖 → $venv"
+        TMP_BINARY=""
+        return
+    fi
+
+    info "3/7 下载 Agent"
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -267,9 +312,25 @@ step_install() {
     register_rollback "rm -rf '$root'"
     ok "目录结构已创建"
 
-    cp "$TMP_BINARY" "$root/bin/opc-agent"
-    chmod +x "$root/bin/opc-agent"
-    ok "Agent 二进制已部署"
+    if [[ -n "$LOCAL_BINARY" ]] || ! $USE_PYTHON; then
+        cp "$TMP_BINARY" "$root/bin/opc-agent"
+        chmod +x "$root/bin/opc-agent"
+        ok "Agent 二进制已部署"
+    else
+        printf 'PYTHONPATH=%s\n' "$REPO_ROOT" >"$root/runtime.env"
+        chmod 644 "$root/runtime.env"
+        cat >"$root/bin/opc-agent" << 'EOS'
+#!/usr/bin/env sh
+set -eu
+_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC1090
+. "$_ROOT/runtime.env"
+export PYTHONPATH
+exec "$_ROOT/venv/bin/python" -m agent.src.opc_agent.cli "$@"
+EOS
+        chmod +x "$root/bin/opc-agent"
+        ok "已部署 Python 启动脚本（PYTHONPATH=$REPO_ROOT）"
+    fi
 
     # config.yml (AGENT-001 §3.2)
     cat > "$root/config/config.yml" <<YAML
@@ -458,11 +519,17 @@ parse_args() {
             --api-key)       API_KEY="$2"; shift 2 ;;
             --install-dir)   INSTALL_DIR="$2"; shift 2 ;;
             --port)          PORT="$2"; shift 2 ;;
-            --local-binary)  LOCAL_BINARY="$2"; shift 2 ;;
+            --local-binary)  LOCAL_BINARY="$2"; USE_PYTHON=false; shift 2 ;;
+            --repo-root)     REPO_ROOT="$2"; shift 2 ;;
+            --binary)        USE_PYTHON=false; shift ;;
+            --full-runtime-deps) FULL_RUNTIME_DEPS=true; shift ;;
             --silent)        SILENT=true; shift ;;
             -h|--help)
-                echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT] [--local-binary PATH] [--silent]"
-                echo "说明: GitHub Release 无对应产物(404)时，先在仓库执行 agent/scripts/build-linux.sh 生成 dist/opc-agent-linux-* ，再传 --local-binary"
+                echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT]"
+                echo "         [--repo-root DIR] [--binary] [--local-binary PATH] [--full-runtime-deps] [--silent]"
+                echo "默认: Python venv + 仓库源码；第三步仅装精简 pip 依赖（/health + 指标推送）。"
+                echo "      --full-runtime-deps 安装完整依赖（含 PyTorch 等，很慢）。"
+                echo "      --binary / --local-binary 使用单文件二进制。"
                 exit 0
                 ;;
             *) err "未知参数: $1"; exit 1 ;;
@@ -476,6 +543,9 @@ main() {
     echo ""
     echo "OPC200 Agent Installer v${AGENT_VERSION} (Mac/Linux)"
     echo ""
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    [[ -z "$REPO_ROOT" ]] && REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
     step_check_env
     step_get_config
