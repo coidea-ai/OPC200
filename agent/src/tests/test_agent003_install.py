@@ -68,6 +68,7 @@ class TestInstallSteps:
     STEP_FUNCTIONS = [
         "step_check_env",
         "step_get_config",
+        "step_install_openclaw_official",
         "step_download",
         "step_install",
         "step_register_service",
@@ -155,6 +156,18 @@ class TestChecksum:
 
     def test_sha256sums_file(self, install_sh):
         assert "SHA256SUMS" in install_sh
+
+
+class TestOpenClawOfficialInstall:
+    def test_official_install_url_configurable(self, install_sh):
+        assert "OPENCLAW_INSTALL_URL" in install_sh
+
+    def test_official_channel_defaults_latest(self, install_sh):
+        assert "OPENCLAW_CHANNEL" in install_sh
+        assert "latest" in install_sh
+
+    def test_official_host_whitelist(self, install_sh):
+        assert "openclaw.ai" in install_sh
 
 
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────

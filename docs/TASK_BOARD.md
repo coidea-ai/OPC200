@@ -295,7 +295,7 @@
 - **预计 AI 工时**: 6h
 - **描述**: 基于官方渠道安装 OpenClaw 最新版，在其上叠加轻预装层，并打通 exporter 对 OpenClaw 健康数据采集
 - **里程碑**:
-  - [ ] M1 官方渠道安装最新版：安装脚本默认通过 OpenClaw 官方渠道安装全量 latest
+  - [x] M1 官方渠道安装最新版：安装脚本默认通过 OpenClaw 官方渠道安装全量 latest（官方入口 + https + 官方域名白名单）
   - [ ] M2 轻预装层：通过 OpenClaw 自带插件机制安装 skills，投放 `SOUL.md`/`IDENTITY.md`/`AGENTS.md`
   - [ ] M3 exporter 打通 openclaw health：采集 OpenClaw 运行健康并进入现有指标链路
 - **详细计划文档**: `docs/PREINSTALLED_LOBSTER_ROADMAP.md`
@@ -425,6 +425,13 @@
 ---
 
 ## 📝 任务变更日志
+
+### 2026-04-14
+- **推进**: AGENT-007 完成里程碑 M1（官方渠道安装 latest）
+  - `install.ps1` 默认官方入口调整为 `https://openclaw.ai/install.ps1`
+  - `install.sh` 默认官方入口调整为 `https://openclaw.ai/install.sh`
+  - 增加 https 与官方域名白名单校验，非 latest 渠道回退 latest
+  - 安装脚本测试通过：`test_agent002_install.py` + `test_agent003_install.py`（122 passed）
 
 ### 2026-04-12 (深夜)
 

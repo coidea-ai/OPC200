@@ -11,6 +11,7 @@ AGENT_VERSION="2.3.0"
 DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VERSION}"
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="https://platform.opc200.co"
+OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
 DEFAULT_PORT=8080
 MIN_DISK_MB=1024
 
@@ -173,7 +174,7 @@ step_check_env() {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 step_get_config() {
-    info "2/7 获取配置"
+    info "2/8 获取配置"
 
     if $SILENT; then
         [[ -z "$PLATFORM_URL" ]] && PLATFORM_URL="$DEFAULT_URL"
@@ -203,11 +204,38 @@ step_get_config() {
     ok "目录: $INSTALL_DIR"
 }
 
-# ── Step 3: 下载 Agent ───────────────────────────────────────────
+# ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
+
+step_install_openclaw_official() {
+    info "3/8 官方渠道安装 OpenClaw latest"
+
+    # 允许环境变量覆写安装入口，但仅允许官方域名，避免被导向私有或恶意源。
+    local install_url="${OPENCLAW_INSTALL_URL:-$OPENCLAW_DEFAULT_INSTALL_URL}"
+    local channel="${OPENCLAW_CHANNEL:-latest}"
+    local host
+    host="$(printf '%s' "$install_url" | sed -E 's#^https?://([^/]+).*$#\1#' | tr '[:upper:]' '[:lower:]')"
+
+    [[ "$install_url" == https://* ]] || fail $E002 "E002: OPENCLAW_INSTALL_URL 必须使用 https: $install_url"
+    case "$host" in
+        openclaw.ai|www.openclaw.ai) ;;
+        *) fail $E002 "E002: OPENCLAW_INSTALL_URL 非官方域名: $host" ;;
+    esac
+    if [[ "$channel" != "latest" ]]; then
+        warn "OPENCLAW_CHANNEL=$channel；当前策略要求 latest，继续按 latest 执行"
+        channel="latest"
+    fi
+
+    ok "OpenClaw 安装源: $install_url"
+    ok "OpenClaw 渠道: $channel"
+    curl -fsSL "$install_url" | bash || fail $E002 "E002: OpenClaw 官方安装失败"
+    ok "OpenClaw 官方安装完成"
+}
+
+# ── Step 4: 下载 Agent ───────────────────────────────────────────
 
 step_download() {
     if [[ -n "$LOCAL_BINARY" ]]; then
-        info "3/7 使用本地二进制"
+        info "4/8 使用本地二进制"
         [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
         TMP_BINARY="$LOCAL_BINARY"
         ok "使用本地二进制: $LOCAL_BINARY"
@@ -218,9 +246,9 @@ step_download() {
         local reqfile="requirements-agent-runtime.txt"
         if $FULL_RUNTIME_DEPS; then
             reqfile="requirements-agent-runtime-full.txt"
-            info "3/7 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
+            info "4/8 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
         else
-            info "3/7 Python 运行环境 (venv + pip，精简依赖)"
+            info "4/8 Python 运行环境 (venv + pip，精简依赖)"
         fi
         [[ -f "$REPO_ROOT/agent/scripts/$reqfile" ]] || fail $E001 "E001: 缺少 $reqfile（$REPO_ROOT）"
         local pyexe=python3
@@ -238,7 +266,7 @@ step_download() {
         return
     fi
 
-    info "3/7 下载 Agent"
+    info "4/8 下载 Agent"
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -298,10 +326,10 @@ step_download() {
     TMP_BINARY="$bin_dest"
 }
 
-# ── Step 4: 安装部署 ─────────────────────────────────────────────
+# ── Step 5: 安装部署 ─────────────────────────────────────────────
 
 step_install() {
-    info "4/7 安装部署"
+    info "5/8 安装部署"
 
     local root="$INSTALL_DIR"
     local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/journal" "$root/data/exporter" "$root/logs")
@@ -368,10 +396,10 @@ YAML
     ok ".env 已写入（权限 600）"
 }
 
-# ── Step 5: 注册系统服务 ─────────────────────────────────────────
+# ── Step 6: 注册系统服务 ─────────────────────────────────────────
 
 step_register_service() {
-    info "5/7 注册系统服务"
+    info "6/8 注册系统服务"
 
     local agent_bin="${INSTALL_DIR}/bin/opc-agent"
     local config_yml="${INSTALL_DIR}/config/config.yml"
@@ -449,10 +477,10 @@ PLIST
     ok "launchd plist 已写入（${plist_path}）"
 }
 
-# ── Step 6: 启动验证 ─────────────────────────────────────────────
+# ── Step 7: 启动验证 ─────────────────────────────────────────────
 
 step_start_verify() {
-    info "6/7 启动验证"
+    info "7/8 启动验证"
 
     if [[ "$OS_TYPE" == "linux" ]]; then
         systemctl start "$SERVICE_NAME" || fail $E005 "E005: 服务启动失败"
@@ -486,10 +514,10 @@ step_start_verify() {
     fi
 }
 
-# ── Step 7: 完成输出 ─────────────────────────────────────────────
+# ── Step 8: 完成输出 ─────────────────────────────────────────────
 
 step_summary() {
-    info "7/7 安装完成"
+    info "8/8 安装完成"
 
     echo ""
     echo "  安装目录 : $INSTALL_DIR"
@@ -549,6 +577,7 @@ main() {
 
     step_check_env
     step_get_config
+    step_install_openclaw_official
     step_download
     step_install
     step_register_service
