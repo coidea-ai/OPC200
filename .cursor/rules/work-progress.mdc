@@ -28,10 +28,10 @@ alwaysApply: true
 - 更新内容至少包括：对应条目的 **状态**（如 ✅ 已完成）、**最后更新**日期（文件顶部）、必要时 **任务变更日志** 一条、**任务统计** 表数字、**最近完成任务** 列表。
 - 若任务 **阻塞**：将状态改为阻塞、在「阻塞问题」表补充或更新行，并写明依赖（例如等待 PLAT-003）。
 
-## 维护 `docs/PREINSTALLED_LOBSTER_ROADMAP.md`（强制）
+## 维护 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`（强制）
 
-- AGENT-007 相关工作必须同步维护 `docs/PREINSTALLED_LOBSTER_ROADMAP.md`。
-- `docs/PREINSTALLED_LOBSTER_ROADMAP.md` 记录 **AGENT-007 的具体执行信息与细粒度检查项**（分期内 checklist、约束、判定规则）。
+- AGENT-007 相关工作必须同步维护 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`。
+- `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` 记录 **AGENT-007 的具体执行信息与细粒度检查项**（分期内 checklist、约束、判定规则）。
 - `docs/TASK_BOARD.md` 记录 **AGENT-007 的里程碑与节点状态**（状态流转、负责人、重要节点、统计与最近完成）。
 - 两者不得混用：Roadmap 管细节，Task Board 管里程碑与全局进度。
 
