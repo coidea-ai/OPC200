@@ -1,0 +1,94 @@
+# OPC200 Prometheus 告警规则
+# 定义 Agent 离线和其他关键指标的告警
+
+groups:
+  - name: opc200-alerts
+    interval: 15s
+    rules:
+      # ==================== P0: 严重告警 ====================
+      
+      # Agent 离线超过 5 分钟（P0）
+      - alert: AgentOfflineP0
+        expr: time() - push_time_seconds > 300
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Agent {{ $labels.job }} 离线超过5分钟"
+          description: |
+            用户 {{ $labels.job }} 的 Agent 已离线超过 5 分钟。
+      
+      # Agent 健康状态异常（P0）
+      - alert: AgentHealthCritical
+        expr: agent_health == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Agent {{ $labels.tenant_id }} 健康状态异常"
+          description: "Agent 报告自身健康状态为不健康（agent_health=0）"
+      
+      # ==================== P1: 警告告警 ====================
+      
+      # Agent 离线超过 1 分钟（P1）
+      - alert: AgentOfflineP1
+        expr: time() - push_time_seconds > 60
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Agent {{ $labels.job }} 离线超过1分钟"
+          description: "用户 {{ $labels.job }} 的 Agent 已离线 1-5 分钟，请关注"
+      
+      # CPU 使用率过高（P1）
+      - alert: HighCPUUsage
+        expr: cpu_usage > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "用户 {{ $labels.tenant_id }} CPU 使用率过高"
+          description: "CPU 使用率: {{ $value }}%"
+      
+      # 内存使用率过高（P1）
+      - alert: HighMemoryUsage
+        expr: memory_usage > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "用户 {{ $labels.tenant_id }} 内存使用率过高"
+          description: "内存使用率: {{ $value }}%"
+      
+      # ==================== P2: 信息告警 ====================
+      
+      # 磁盘使用率过高（P2）
+      - alert: HighDiskUsage
+        expr: disk_usage > 80
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "用户 {{ $labels.tenant_id }} 磁盘使用率较高"
+          description: "磁盘使用率: {{ $value }}%，建议清理"
+
+  # ==================== 模拟数据测试规则 ====================
+  - name: opc200-test-alerts
+    interval: 15s
+    rules:
+      # 用于测试的简化规则（触发更快）
+      - alert: AgentOfflineTest
+        expr: time() - push_time_seconds{job=~"test-.*"} > 30
+        for: 10s
+        labels:
+          severity: critical
+          team: test
+        annotations:
+          summary: "[TEST] Agent {{ $labels.job }} 离线（测试数据）"
+          description: "这是测试告警，用于验证告警链路"
