@@ -19,6 +19,12 @@
     静默安装模式
 .PARAMETER LocalBinary
     本地 opc-agent 可执行文件路径；指定时跳过从 GitHub Release 下载（适用于 Release 尚未发布或离线安装）
+.PARAMETER UseBinary
+    从 GitHub Release 下载单文件 exe；默认不使用二进制，而用本机 Python venv + 仓库源码运行
+.PARAMETER RepoRoot
+    OPC200 仓库根目录（含 agent/、src/）；默认为本脚本所在位置的 ..\..
+.PARAMETER FullRuntimeDeps
+    安装完整 pip 依赖（含 sentence-transformers/PyTorch，很慢）；默认仅装精简依赖（/health + 指标推送）
 .EXAMPLE
     .\install.ps1
 .EXAMPLE
@@ -34,7 +40,10 @@ param(
     [string]$InstallDir = "",
     [int]$Port          = 8080,
     [switch]$Silent,
-    [string]$LocalBinary = ""
+    [string]$LocalBinary = "",
+    [switch]$UseBinary,
+    [string]$RepoRoot   = "",
+    [switch]$FullRuntimeDeps
 )
 
 Set-StrictMode -Version Latest
@@ -59,6 +68,10 @@ $script:E002 = 2   # 网络连接失败
 $script:E003 = 3   # 端口占用
 $script:E004 = 4   # 校验失败
 $script:E005 = 5   # 服务注册失败
+
+$script:RepoRootResolved = ""
+$script:UsePythonMode   = $true
+$script:RunAgentScript  = ""
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
 
@@ -132,6 +145,22 @@ function Test-Environment {
         Fail $script:E003 "E003: 端口 $Port 被占用"
     }
     Write-Ok "端口 $Port 可用"
+
+    if ($script:UsePythonMode) {
+        $cli = Join-Path $script:RepoRootResolved "agent\src\opc_agent\cli.py"
+        if (-not (Test-Path -LiteralPath $cli)) {
+            Fail $script:E001 "E001: 非 OPC200 仓库根目录: $($script:RepoRootResolved)（请用 -RepoRoot 或在克隆仓库内执行）"
+        }
+        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
+        if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python/python3" }
+        $ver = & $pyCmd.Name -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
+        $parts = $ver -split '\.'
+        if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 10)) {
+            Fail $script:E001 "E001: 需要 Python 3.10+（当前 $ver）"
+        }
+        Write-Ok "Python 与源码: $($pyCmd.Source)；$($script:RepoRootResolved)"
+    }
 }
 
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
@@ -187,6 +216,43 @@ function Get-AgentBinary {
         }
         $script:TmpBinary = (Resolve-Path -LiteralPath $LocalBinary).Path
         Write-Ok "本地二进制: $($script:TmpBinary)"
+        return
+    }
+
+    if ($script:UsePythonMode) {
+        if ($FullRuntimeDeps) {
+            Write-Step "3/7 Python 运行环境 (venv + pip，完整依赖，较慢)"
+            $reqName = "requirements-agent-runtime-full.txt"
+        }
+        else {
+            Write-Step "3/7 Python 运行环境 (venv + pip，精简依赖)"
+            $reqName = "requirements-agent-runtime.txt"
+        }
+        $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
+        if (-not (Test-Path -LiteralPath $req)) {
+            Fail $script:E001 "E001: 缺少 $reqName"
+        }
+        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
+        if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python" }
+        $root = $script:InstallRoot
+        if (-not (Test-Path -LiteralPath $root)) {
+            New-Item -ItemType Directory -Path $root -Force | Out-Null
+        }
+        $venv = Join-Path $root "venv"
+        try {
+            & $pyCmd.Name -m venv $venv
+            $venvPy = Join-Path $venv "Scripts\python.exe"
+            & $venvPy -m pip install -q -U pip
+            $env:PYTHONUTF8 = "1"
+            & $venvPy -m pip install -q -r $req
+        }
+        catch {
+            if (Test-Path $venv) { Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue }
+            Fail $script:E002 "E002: venv/pip 失败 - $_"
+        }
+        Write-Ok "已安装运行时依赖 → $venv"
+        $script:TmpBinary = ""
         return
     }
 
@@ -264,10 +330,24 @@ function Install-Agent {
 
     Write-Ok "目录结构已创建"
 
-    # 复制二进制
-    $agentDest = Join-Path $root "bin\opc-agent.exe"
-    Copy-Item -Path $script:TmpBinary -Destination $agentDest -Force
-    Write-Ok "Agent 二进制已部署"
+    if ($script:UsePythonMode -and -not $LocalBinary) {
+        $rp = $script:RepoRootResolved -replace "'", "''"
+        $pyw = Join-Path $root "venv\Scripts\python.exe"
+        $cfgPath = Join-Path $root "config\config.yml"
+        $script:RunAgentScript = Join-Path $root "run-agent.ps1"
+        $raContent = @"
+`$env:PYTHONPATH = '$rp'
+& '$($pyw -replace "'", "''")' -m agent.src.opc_agent.cli --config '$($cfgPath -replace "'", "''")' run
+"@
+        [System.IO.File]::WriteAllText($script:RunAgentScript, $raContent.TrimEnd() + "`n", [System.Text.UTF8Encoding]::new($true))
+        Write-Ok "已写入 $($script:RunAgentScript)"
+    }
+    else {
+        $agentDest = Join-Path $root "bin\opc-agent.exe"
+        Copy-Item -Path $script:TmpBinary -Destination $agentDest -Force
+        Write-Ok "Agent 二进制已部署"
+        $script:AgentExe = $agentDest
+    }
 
     # config.yml (AGENT-001 §3.2)
     $configYml = @"
@@ -315,7 +395,6 @@ logging:
     Set-Acl -Path $envPath -AclObject $acl
     Write-Ok ".env 已写入 (权限受限)"
 
-    $script:AgentExe  = $agentDest
     $script:ConfigYml = $configPath
 }
 
@@ -334,13 +413,20 @@ function Register-Service {
 
     Unregister-ScheduledTask -TaskName $script:TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
 
-    $exe = $script:AgentExe
-    $cfg = $script:ConfigYml
-    $arg = "--config `"$cfg`" run"
-    $workDir = Split-Path -Parent $exe
-
     try {
-        $action = New-ScheduledTaskAction -Execute $exe -Argument $arg -WorkingDirectory $workDir
+        if ($script:UsePythonMode -and -not $LocalBinary) {
+            $ra = $script:RunAgentScript
+            $wdir = Split-Path -Parent $ra
+            $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ra`"" -WorkingDirectory $wdir
+        }
+        else {
+            $exe = $script:AgentExe
+            $cfg = $script:ConfigYml
+            $arg = "--config `"$cfg`" run"
+            $wdir = Split-Path -Parent $exe
+            $action = New-ScheduledTaskAction -Execute $exe -Argument $arg -WorkingDirectory $wdir
+        }
         $userId = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
         $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
@@ -405,6 +491,9 @@ function Show-Summary {
     Write-Host "  日志文件 : $root\logs\agent.log" -ForegroundColor Cyan
     Write-Host "  计划任务 : $($script:TASK_NAME) (登录时运行)" -ForegroundColor Cyan
     Write-Host "  健康检查 : http://127.0.0.1:$Port/health" -ForegroundColor Cyan
+    if ($script:UsePythonMode -and -not $LocalBinary) {
+        Write-Host "  运行方式 : Python venv + 仓库 $($script:RepoRootResolved)" -ForegroundColor Cyan
+    }
     Write-Host ""
     Write-Host "  查看任务 : Get-ScheduledTask -TaskName $($script:TASK_NAME)" -ForegroundColor Gray
     Write-Host ('  查看日志 : Get-Content {0}\logs\agent.log -Tail 50' -f $root) -ForegroundColor Gray
@@ -418,6 +507,16 @@ function Main {
     Write-Host ""
     Write-Host ('OPC200 Agent Installer v' + $script:AGENT_VERSION + ' (Windows)') -ForegroundColor Cyan
     Write-Host ""
+
+    if ($RepoRoot) {
+        $script:RepoRootResolved = (Resolve-Path -LiteralPath $RepoRoot).Path
+    }
+    else {
+        $script:RepoRootResolved = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    }
+    $script:UsePythonMode = $true
+    if ($UseBinary) { $script:UsePythonMode = $false }
+    if ($LocalBinary) { $script:UsePythonMode = $false }
 
     Test-Environment
     Get-InstallConfig
