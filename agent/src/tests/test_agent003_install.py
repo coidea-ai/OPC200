@@ -298,6 +298,15 @@ class TestUninstall:
     def test_openclaw_official_uninstall_invoked(self, uninstall_sh):
         assert "openclaw uninstall --all --yes --non-interactive" in uninstall_sh
 
+    def test_openclaw_interactive_confirm(self, uninstall_sh):
+        assert "是否同时卸载 OpenClaw？[y/N]" in uninstall_sh
+        assert "SHOULD_PURGE_OPENCLAW" in uninstall_sh
+
+    def test_openclaw_progress_messages(self, uninstall_sh):
+        assert "进度 1/3：检查 openclaw 命令" in uninstall_sh
+        assert "进度 2/3：执行 openclaw uninstall --all --yes --non-interactive" in uninstall_sh
+        assert "进度 3/3：OpenClaw 官方卸载命令已执行" in uninstall_sh
+
 
 # ── 包管理器检测 ─────────────────────────────────────────────────
 

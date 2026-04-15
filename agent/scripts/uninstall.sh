@@ -6,6 +6,8 @@ INSTALL_DIR="${HOME}/.opc200"
 SERVICE_NAME="opc200-agent"
 KEEP_DATA=false
 SILENT=false
+PURGE_OPENCLAW=false
+SHOULD_PURGE_OPENCLAW=false
 OS_TYPE=""
 EXPLICIT_INSTALL_DIR=false
 
@@ -19,8 +21,10 @@ while [[ $# -gt 0 ]]; do
         --install-dir) INSTALL_DIR="$2"; EXPLICIT_INSTALL_DIR=true; shift 2 ;;
         --keep-data)   KEEP_DATA=true; shift ;;
         --silent)      SILENT=true; shift ;;
+        --purge-openclaw) PURGE_OPENCLAW=true; shift ;;
         -h|--help)
-            echo "用法: $0 [--install-dir DIR] [--keep-data] [--silent]"
+            echo "用法: $0 [--install-dir DIR] [--keep-data] [--silent] [--purge-openclaw]"
+            echo "  --purge-openclaw  勾选时才执行 OpenClaw 官方卸载: openclaw uninstall --all --yes --non-interactive"
             exit 0
             ;;
         *) err "未知参数: $1"; exit 1 ;;
@@ -60,6 +64,18 @@ if [[ "$OS_TYPE" == "linux" ]] && [[ -f "$UNIT_PATH" ]] && ! $EXPLICIT_INSTALL_D
 fi
 
 info "OPC200 Agent 卸载"
+
+# 交互式：询问是否同时卸载 OpenClaw；静默模式仅由 --purge-openclaw 决定
+if $SILENT; then
+    SHOULD_PURGE_OPENCLAW=$PURGE_OPENCLAW
+else
+    if $PURGE_OPENCLAW; then
+        SHOULD_PURGE_OPENCLAW=true
+    else
+        read -rp "是否同时卸载 OpenClaw？[y/N] " oc_ans
+        [[ "$oc_ans" =~ ^[Yy]$ ]] && SHOULD_PURGE_OPENCLAW=true
+    fi
+fi
 
 # Step 1: 停止服务
 info "停止服务..."
@@ -103,6 +119,20 @@ else
     else
         rm -rf "${INSTALL_DIR:?}"
         ok "已完全删除 $INSTALL_DIR"
+    fi
+fi
+
+# 可选：交互确认或 --purge-openclaw 时执行官方文档推荐命令（https://docs.openclaw.ai/cli/uninstall）
+if $SHOULD_PURGE_OPENCLAW; then
+    info "卸载 OpenClaw（官方 openclaw uninstall）..."
+    ok "进度 1/3：检查 openclaw 命令"
+    if command -v openclaw &>/dev/null; then
+        ok "进度 2/3：执行 openclaw uninstall --all --yes --non-interactive"
+        openclaw uninstall --all --yes --non-interactive || warn "OpenClaw 卸载命令失败（已忽略，OPC200 已清理）"
+        ok "进度 3/3：OpenClaw 官方卸载命令已执行"
+        ok "已执行: openclaw uninstall --all --yes --non-interactive（CLI 全局包需自行 npm/pnpm 移除）"
+    else
+        warn "未找到 openclaw 命令（PATH），跳过 OpenClaw 卸载"
     fi
 fi
 
