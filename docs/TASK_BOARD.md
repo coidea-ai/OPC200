@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-15（AGENT-007 M3：`agent_health` 对齐 OpenClaw 网关探测）
+**最后更新**: 2026-04-15（P1 新增 AGENT-008：OpenClaw 开箱即用配置自动化）
 
 ---
 
@@ -73,16 +73,25 @@
 ### 平台侧任务（@fairy-kimi 负责）
 
 > 注：PLAT-001~006 已完成，详见 [Phase 1 归档](archive/phase-1-mvp.md)
+>
+#### PLAT-001: 搭建 Prometheus + Pushgateway 本地环境
 
-#### PLAT-006: Alertmanager 离线告警配置
-
-- **状态**: ✅ 已完成（2026-04-14）
-- **负责人**: @kimi-claw
+- **状态**: 📥 待领取
+- **负责人**: @fairy-kimi
+- **协作方**: 无
+- **预计 AI 工时**: 30min
+- **截止**: Day 1 上午
 - **产出**:
-  - ✅ `platform/alertmanager/alertmanager.yml`
-  - ✅ `platform/tests/test_plat006_alertmanager.py`
-  - ✅ 邮件通知测试通过
-- **备注**: 告警链路打通，可检测离线并发送邮件
+  - `platform/docker-compose.yml`（Prometheus + Pushgateway 基础版）
+  - 本地可运行 `docker-compose up`
+  - Pushgateway 可接收测试推送
+- **描述**:
+  使用标准镜像快速搭建，配置基础 scraping。
+
+---
+
+#### PLAT-002: 配置 Grafana 基础 Dashboard
+
 - **状态**: 📥 待领取
 - **负责人**: @fairy-kimi
 - **协作方**: 无
@@ -153,29 +162,35 @@
 
 #### PLAT-006: Alertmanager 离线告警配置
 
-- **状态**: 📥 待领取
-- **负责人**: @fairy-kimi
-- **协作方**: 无
-- **预计 AI 工时**: 1.5h
-- **截止**: Day 3 上午
+- **状态**: ✅ 已完成（2026-04-14）
+- **负责人**: @kimi-claw
 - **产出**:
-  - `platform/alertmanager/alertmanager.yml`
-  - 告警规则: 用户离线超过 5 分钟触发
-  - 通知渠道: 飞书 webhook（后续可扩展邮件/短信）
-- **依赖**: PLAT-001
+  - ✅ `platform/alertmanager/alertmanager.yml`
+  - ✅ `platform/tests/test_plat006_alertmanager.py`
+  - ✅ 邮件通知测试通过
+- **备注**: 告警链路打通，可检测离线并发送邮件
 
 ---
 
 ### 用户侧任务（@zhang-yao-claw / @zhang-chenyang-claw 负责）
 
-> 注：AGENT-001~006 已完成，详见 [Phase 1 归档](archive/phase-1-mvp.md)
+#### AGENT-001: 设计安装脚本方案
 
-#### AGENT-007: 调整 Python import 路径
+- **状态**: ✅ 已完成
+- **负责人**: @zhang-yao-claw
+- **协作方**: @zhang-chenyang-claw
+- **预计 AI 工时**: 30min
+- **实际完成**: Day 1 下午
+- **产出**:
+  - ✅ `docs/INSTALL_SCRIPT_SPEC.md` - 跨平台安装脚本设计规范
+  - ✅ 安装流程: 下载 → 配置环境变量 → 启动 Agent
+  - ✅ 配置项: `PLATFORM_URL`, `CUSTOMER_ID`, `API_KEY`
+  - ✅ 数据目录: `~/.opc200/`
+  - ✅ 错误码定义、安全设计、目录结构
+- **提交**: `4111c8b` - docs: add Windows install script spec and project setup docs
 
-- **状态**: 📥 待领取
-- **负责人**: 未分配
-- **预计 AI 工时**: 1h
-- **描述**: 批量替换 `from src.xxx` → 新包名
+#### AGENT-002: 实现 Windows 安装脚本（PowerShell）
+
 - **状态**: ✅ 已完成（v2 重写）
 - **负责人**: @zhang-yao-claw
 - **协作方**: 无
@@ -300,28 +315,41 @@
   - [x] M3 exporter 打通 openclaw health：`agent_health` 默认探测 `http://127.0.0.1:18789/health` + 本进程存活；详见 `docs/METRICS_PROTOCOL.md`（端到端联调见 Roadmap §2.7 末项）
 - **详细计划文档**: `docs/PREINSTALLED_LOBSTER_ROADMAP.md`
 
-#### AGENT-008: 调整 Python import 路径
+#### AGENT-008: OpenClaw 开箱即用配置自动化（免手动 setup）
+
+- **状态**: 🏃 进行中 (In Progress)
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 4h
+- **描述**: 安装脚本自动完成 OpenClaw 最小可用配置（模型提供商/模型/API Key 等），支持交互问答与静默参数输入，完成后可直接可用。
+- **里程碑**:
+  - [ ] M1 明确最小可用配置集（provider / model / api key / 可选 base url）
+  - [ ] M2 安装阶段交互采集 + 静默参数输入（Windows + Linux）
+  - [ ] M3 非引导式配置落地（优先官方 CLI，失败 fallback 配置文件）
+  - [ ] M4 完成安装后可用性验证（gateway/dashboard health）与错误兜底提示
+- **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
+
+#### AGENT-009: 调整 Python import 路径
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 1h
 - **描述**: 批量替换 `from src.xxx` → 新包名
 
-#### AGENT-009: 实现 selfhealer/l1_local_fix.py
+#### AGENT-010: 实现 selfhealer/l1_local_fix.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 3h
 - **描述**: L1 本地自动修复机制
 
-#### AGENT-010: 实现 updater/update_client.py
+#### AGENT-011: 实现 updater/update_client.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 4h
 - **描述**: 版本更新客户端
 
-#### AGENT-011: 创建 platform/docker-compose.yml 完整版
+#### AGENT-012: 创建 platform/docker-compose.yml 完整版
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -332,19 +360,19 @@
 
 ## 🟢 P2 - 中优先级任务（Phase 3）
 
-#### AGENT-012: 创建 shared/proto/ 通信协议
+#### AGENT-013: 创建 shared/proto/ 通信协议
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 2h
 
-#### AGENT-013: 实现 version-control 版本管理服务
+#### AGENT-014: 实现 version-control 版本管理服务
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 6h
 
-#### AGENT-014: 迁移测试文件到 tests/agent/ 和 tests/platform/
+#### AGENT-015: 迁移测试文件到 tests/agent/ 和 tests/platform/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -354,13 +382,13 @@
 
 ## ⚪ P3 - 低优先级任务（Backlog）
 
-#### AGENT-015: 删除旧目录 src/, skills/, config/
+#### AGENT-016: 删除旧目录 src/, skills/, config/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 30min
 
-#### AGENT-016: 完善 CI/CD 脚本适配新结构
+#### AGENT-017: 完善 CI/CD 脚本适配新结构
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -428,9 +456,15 @@
 
 ### 2026-04-15
 
+- **规划**: 将“OpenClaw 开箱即用配置自动化”纳入 P1，落位为 AGENT-008，并顺延后续任务编号（AGENT-009~017）
+  - 目标：安装阶段完成 OpenClaw 最小可用配置采集与落地，避免用户手动 `openclaw dashboard/setup`
+  - 方案：交互问答 + 静默参数；优先官方 CLI 非引导式配置，失败 fallback 到配置文件写入；完成后做可用性验证
 - **推进**: AGENT-007 完成里程碑 M3（`agent_health` 语义对齐 OpenClaw 网关）
   - `agent/src/exporter/collector.py`：`agent_health` 默认 HTTP GET `OPENCLAW_GATEWAY_HEALTH_URL`（默认 `http://127.0.0.1:18789/health`），支持 `OPENCLAW_GATEWAY_HEALTH_PROBE=0` 跳过网关探测
   - `docs/METRICS_PROTOCOL.md`、`docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` §2.7 已同步；`test_agent004_exporter.py` 已扩展并通过
+- **同步**: AGENT-007 卸载脚本体验对齐（Windows + Linux）
+  - 交互式卸载新增“是否同时卸载 OpenClaw”确认；保留 `-PurgeOpenClaw` 非交互行为
+  - OpenClaw 卸载阶段增加进度提示，并保留“CLI 全局包需自行 npm/pnpm 移除”提醒
 - **推进**: AGENT-007 预装小龙虾路线图第一期 §1.1「核心演示流程」已走通并完成勾选（见 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`）
 - **修复**: AGENT-007 Linux 安装路径补齐 OpenClaw 的 Node v22+ 前置保障
   - `install.sh` 新增 `step_prepare_node_runtime`，在调用 OpenClaw 官方安装器前检测 `node -v`
@@ -552,7 +586,7 @@
 
 | 状态 | Phase 1 | Phase 2 | Phase 3 | Backlog |
 |------|---------|---------|---------|---------|
-| 📥 待领取 | 0 | 4 | 3 | 2 |
+| 📥 待领取 | 0 | 5 | 3 | 2 |
 | 🏃 进行中 | 0 | 0 | 0 | 0 |
 | 👀 审核中 | 0 | 0 | 0 | 0 |
 | ✅ 已完成 | 12 | 1 | 0 | 0 |
