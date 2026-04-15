@@ -1,20 +1,35 @@
 """Unified storage utilities for OPC Journal."""
 
 import os
+import re
 import shutil
-from datetime import datetime
 from typing import Dict, List, Any, Optional
+
+from utils.timezone import now_tz
+
+
+def _sanitize_customer_id(customer_id: str) -> str:
+    """Sanitize customer_id to prevent path traversal."""
+    # Remove any path separators and parent directory references
+    sanitized = re.sub(r'[\\/]', '', customer_id)
+    sanitized = sanitized.replace('..', '')
+    # Ensure it's not empty after sanitization
+    if not sanitized:
+        sanitized = "default"
+    return sanitized
 
 
 def build_memory_path(customer_id: str, date: str = None) -> str:
     """Build standard memory file path using dd-mm-yy format."""
+    customer_id = _sanitize_customer_id(customer_id)
     if date is None:
-        date = datetime.now().strftime("%d-%m-%y")
+        date = now_tz().strftime("%d-%m-%y")
     return f"~/.openclaw/customers/{customer_id}/memory/{date}.md"
 
 
 def build_customer_dir(customer_id: str) -> str:
     """Build customer base directory path."""
+    customer_id = _sanitize_customer_id(customer_id)
     return f"~/.openclaw/customers/{customer_id}"
 
 

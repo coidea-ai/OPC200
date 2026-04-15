@@ -8,45 +8,9 @@ from utils.storage import build_customer_dir
 from scripts.commands._meta import get_language, read_meta, write_meta
 
 
-_ZH_TO_EN_REGEX = [
-    (r'^# 🚀 OPC Journal \| 第 (\d+) 天章程$', r'# 🚀 OPC Journal | Day \1 Charter'),
-    (r'^\*\*用户\*\*:(.*)$', r'**Customer**:\1'),
-    (r'^\*\*版本\*\*:(.*)$', r'**Version**:\1'),
-    (r'^## 🎯 目标$', r'## 🎯 Goals'),
-    (r'^## ⚙️ 偏好设置$', r'## ⚙️ Preferences'),
-    (r'^## 📝 首日仪式$', r'## 📝 Day 1 Ritual'),
-    (r'^1\. 完成一件小事（哪怕只是把想法写出来）$', r'1. Do one small thing (even just write down an idea)'),
-    (r'^2\. 用 `/opc-journal record "\.\.\."` 告诉我$', r'2. Run `/opc-journal record "..."`'),
-    (r'^3\. 明天回来看看状态$', r'3. Check back tomorrow with status'),
-    (r'^\*这不是日记本，这是你创业的飞行器黑匣子。\*$', r"*This is not a diary — it's the black box of your startup journey.*"),
-    (r'^\*"放心吧，哪怕世界忘了，我也替你记着。" —— Kimi Claw\*$', r'*"Don\'t worry, even if the world forgets, I\'ll remember it for you." — Kimi Claw*'),
-    (r'^## 日记条目 - (.+)$', r'## Journal Entry - \1'),
-    (r'^\*\*第 (\d+) 天\*\*(.*)$', r'**Day \1**\2'),
-    (r'^\*\*时间\*\*:(.*)$', r'**Time**:\1'),
-    (r'^\*\*情绪\*\*:(.*)$', r'**Emotion**:\1'),
-    (r'^### 内容$', r'### Content'),
-    (r'^### 元数据$', r'### Metadata'),
-]
-
-_EN_TO_ZH_REGEX = [
-    (r'^# 🚀 OPC Journal \| Day (\d+) Charter$', r'# 🚀 OPC Journal | 第 \1 天章程'),
-    (r'^\*\*Customer\*\*:(.*)$', r'**用户**:\1'),
-    (r'^\*\*Version\*\*:(.*)$', r'**版本**:\1'),
-    (r'^## 🎯 Goals$', r'## 🎯 目标'),
-    (r'^## ⚙️ Preferences$', r'## ⚙️ 偏好设置'),
-    (r'^## 📝 Day 1 Ritual$', r'## 📝 首日仪式'),
-    (r'^1\. Do one small thing \(even just write down an idea\)$', r'1. 完成一件小事（哪怕只是把想法写出来）'),
-    (r'^2\. Run `/opc-journal record "\.\.\."`$', r'2. 用 `/opc-journal record "..."` 告诉我'),
-    (r'^3\. Check back tomorrow with status$', r'3. 明天回来看看状态'),
-    (r'^\*This is not a diary — it\'s the black box of your startup journey\.\*$', r'*这不是日记本，这是你创业的飞行器黑匣子。*'),
-    (r'^\*"Don\'t worry, even if the world forgets, I\'ll remember it for you\." — Kimi Claw\*$', r'*"放心吧，哪怕世界忘了，我也替你记着。" —— Kimi Claw*'),
-    (r'^## Journal Entry - (.+)$', r'## 日记条目 - \1'),
-    (r'^\*\*Day (\d+)\*\*(.*)$', r'**第 \1 天**\2'),
-    (r'^\*\*Time\*\*:(.*)$', r'**时间**:\1'),
-    (r'^\*\*Emotion\*\*:(.*)$', r'**情绪**:\1'),
-    (r'^### Content$', r'### 内容'),
-    (r'^### Metadata$', r'### 元数据'),
-]
+# Translation rules are intentionally minimal: the skill now generates English-only templates.
+_ZH_TO_EN_REGEX = []
+_EN_TO_ZH_REGEX = []
 
 
 def _translate_file(path: str, old_lang: str, new_lang: str) -> bool:
@@ -115,9 +79,7 @@ def run(customer_id: str, args: dict) -> dict:
         updated = True
 
     if not updated:
-        lang = old_lang
-        msg = "Nothing to update." if lang == "en" else "没有需要更新的内容。"
-        return {"status": "success", "result": {"changed": False}, "message": msg}
+        return {"status": "success", "result": {"changed": False}, "message": "Nothing to update."}
 
     write_meta(customer_id, meta)
 
@@ -129,15 +91,9 @@ def run(customer_id: str, args: dict) -> dict:
                 if _translate_file(f, old_lang, new_lang):
                     translated_count += 1
 
-    lang = new_lang
-    if lang == "en":
-        msg = f"Meta updated for {customer_id}. Language: {new_lang}."
-        if translated_count:
-            msg += f" Retroactively translated {translated_count} document(s)."
-    else:
-        msg = f"已更新 {customer_id} 的元信息。语言：{new_lang}。"
-        if translated_count:
-            msg += f" 已回溯翻译 {translated_count} 个文档。"
+    msg = f"Meta updated for {customer_id}. Language: {new_lang}."
+    if translated_count:
+        msg += f" Retroactively translated {translated_count} document(s)."
 
     return {
         "status": "success",

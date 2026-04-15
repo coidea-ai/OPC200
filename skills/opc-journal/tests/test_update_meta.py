@@ -8,7 +8,7 @@ from scripts.commands import update_meta, init, record
 from scripts.commands import _meta
 
 
-def test_update_meta_language_zh_to_en(tmp_path, monkeypatch):
+def test_update_meta_language_switch(tmp_path, monkeypatch):
     memory_file = str(tmp_path / "OPC-001" / "memory" / "12-04-26.md")
     monkeypatch.setattr(init, "build_memory_path", lambda cid: memory_file)
     monkeypatch.setattr(record, "build_memory_path", lambda cid: memory_file)
@@ -17,26 +17,26 @@ def test_update_meta_language_zh_to_en(tmp_path, monkeypatch):
     monkeypatch.setattr(_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
     monkeypatch.setattr(update_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
 
-    init.run("OPC-001", {"day": 1, "goals": ["发布 MVP"]})
-    record.run("OPC-001", {"day": 1, "content": "今天很兴奋"})
+    init.run("OPC-001", {"day": 1, "goals": ["Launch MVP"]})
+    record.run("OPC-001", {"day": 1, "content": "Very excited today"})
 
-    result = update_meta.run("OPC-001", {"language": "en"})
+    result = update_meta.run("OPC-001", {"language": "fr"})
     assert result["status"] == "success"
-    assert result["result"]["language"] == "en"
+    assert result["result"]["language"] == "fr"
     assert result["result"]["changed"] is True
 
     # Verify meta
     meta = _meta.read_meta("OPC-001")
-    assert meta["language"] == "en"
+    assert meta["language"] == "fr"
 
     # Verify entry file preserves user content
     entry_path = tmp_path / "OPC-001" / "memory" / "12-04-26.md"
     content = entry_path.read_text()
-    assert "今天很兴奋" in content
-    assert "发布 MVP" in content
+    assert "Very excited today" in content
+    assert "Launch MVP" in content
 
 
-def test_update_meta_language_en_to_zh(tmp_path, monkeypatch):
+def test_update_meta_language_another_switch(tmp_path, monkeypatch):
     memory_file = str(tmp_path / "OPC-001" / "memory" / "12-04-26.md")
     monkeypatch.setattr(init, "build_memory_path", lambda cid: memory_file)
     monkeypatch.setattr(record, "build_memory_path", lambda cid: memory_file)
@@ -48,9 +48,9 @@ def test_update_meta_language_en_to_zh(tmp_path, monkeypatch):
     init.run("OPC-001", {"day": 1, "goals": ["Launch product"]})
     record.run("OPC-001", {"day": 1, "content": "excited today"})
 
-    result = update_meta.run("OPC-001", {"language": "zh"})
+    result = update_meta.run("OPC-001", {"language": "de"})
     assert result["status"] == "success"
-    assert result["result"]["language"] == "zh"
+    assert result["result"]["language"] == "de"
     assert result["result"]["changed"] is True
 
     # Verify entry file preserves user content
@@ -66,7 +66,7 @@ def test_update_meta_no_change(tmp_path, monkeypatch):
     monkeypatch.setattr(_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
     monkeypatch.setattr(update_meta, "build_customer_dir", lambda cid: str(tmp_path / cid))
 
-    init.run("OPC-001", {"day": 1, "goals": ["测试"]})
+    init.run("OPC-001", {"day": 1, "goals": ["Test Goal"]})
     result = update_meta.run("OPC-001", {})
     assert result["status"] == "success"
     assert result["result"]["changed"] is False

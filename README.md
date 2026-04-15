@@ -294,13 +294,13 @@ docker-compose up -d
 opc200/
 │
 ├── skills/                      # OpenClaw Skills
-│   └── opc-journal-suite/       # OPC Journal Suite
+│   └── opc-journal/             # OPC Journal (single unified skill)
 │       ├── SKILL.md
-│       ├── opc-journal-core/
-│       ├── opc-pattern-recognition/
-│       ├── opc-milestone-tracker/
-│       ├── opc-async-task-manager/
-│       └── opc-insight-generator/
+│       ├── GUIDE.md
+│       ├── CHANGELOG.md
+│       ├── scripts/
+│       ├── utils/
+│       └── tests/
 │
 ├── scripts/                     # 运维脚本
 │   ├── setup/                   # 初始化脚本
@@ -326,18 +326,18 @@ opc200/
 # 1. 安装 OpenClaw（如果还没有）
 npm install -g openclaw
 
-# 2. 安装 OPC Journal Suite
-clawhub install coidea/opc-journal-suite
+# 2. 安装 OPC Journal
+clawhub install coidea/opc-journal
 
 # 3. 初始化你的 100 天旅程
-openclaw run "opc-journal-init --day 1 --goals '完成产品原型,获得首个付费用户'"
+openclaw run "/opc-journal init --day 1 --goals '完成产品原型,获得首个付费用户'"
 
 # 4. 开始记录（自然语言即可）
 openclaw chat "今天完成了用户注册功能，但数据库选型有点纠结"
-# 系统自动：创建日志条目 + 关联技术讨论 + 标记情绪状态 + 创建后续任务
+# 系统自动：创建日志条目 + 标记情绪状态 + 创建后续任务
 
 # 5. 查看成长轨迹（第 7 天示例）
-openclaw run "opc-journal-weekly-report --day 7"
+openclaw run "/opc-journal insights --day 7"
 # 输出：本周模式分析 + 里程碑检测 + 下周建议
 ```
 
@@ -357,10 +357,10 @@ cd OPC200
 # 3. 部署 Gateway
 ./scripts/deploy/deploy-onprem.sh -i OPC-001
 
-# 4. 安装 OPC Journal Suite
+# 4. 安装 OPC Journal
 ./scripts/deploy/install-skills.sh \
   --id OPC-001 \
-  --skill opc-journal-suite
+  --skill opc-journal
 
 # 5. 健康检查
 ./scripts/maintenance/health-check.sh -i OPC-001
@@ -381,7 +381,7 @@ cd OPC200
 # 3. 安装 Skills
 ./scripts/deploy/install-skills.sh \
   --id OPC-151 \
-  --skill opc-journal-suite
+  --skill opc-journal
 ```
 
 ---
@@ -443,24 +443,29 @@ OPC200 自动生成：
 
 ## 📦 核心 Skills
 
-### OPC Journal Suite
+### opc-journal
 
-专为 OPC200 设计的用户日志与成长追踪技能套件。
+专为 OPC200 设计的用户日志与成长追踪技能。v2.5.2 版本采用 interpretation-first 架构，所有数据本地存储。
 
-| Skill | 功能 | 文档 |
-|-------|------|------|
-| `opc-journal-core` | 日志记录、检索、摘要生成 | [SKILL.md](./skills/opc-journal-suite/opc-journal-core/SKILL.md) |
-| `opc-pattern-recognition` | 行为模式分析与预测 | [SKILL.md](./skills/opc-journal-suite/opc-pattern-recognition/SKILL.md) |
-| `opc-milestone-tracker` | 里程碑自动检测与庆祝 | [SKILL.md](./skills/opc-journal-suite/opc-milestone-tracker/SKILL.md) |
-| `opc-async-task-manager` | 7×24 异步任务调度 | [SKILL.md](./skills/opc-journal-suite/opc-async-task-manager/SKILL.md) |
-| `opc-insight-generator` | 个性化洞察与建议 | [SKILL.md](./skills/opc-journal-suite/opc-insight-generator/SKILL.md) |
+| 功能模块 | 说明 | 命令示例 |
+|---------|------|---------|
+| 日志记录 | 追加式条目记录 | `/opc-journal record "今日进展"` |
+| 全文搜索 | 本地文件搜索 | `/opc-journal search --query "关键词"` |
+| 导出 | Markdown/JSON 导出 | `/opc-journal export --format markdown` |
+| 模式分析 | 结构化信号提取 | `/opc-journal analyze --days 7` |
+| 里程碑 | 里程碑检测 | `/opc-journal milestones` |
+| 洞察生成 | 上下文聚合与信号统计 | `/opc-journal insights --days 30` |
+| 任务管理 | 持久化异步任务 | `/opc-journal task --description "调研"` |
+| 归档 | 备份与清理 | `/opc-journal archive --clear` |
 
-### 安装单个 Skill
+**完整文档**: [GUIDE.md](./skills/opc-journal/GUIDE.md) | [CHANGELOG.md](./skills/opc-journal/CHANGELOG.md)
+
+### 安装 opc-journal
 
 ```bash
 ./scripts/deploy/install-skills.sh \
   --id OPC-001 \
-  --skill opc-journal-core
+  --skill opc-journal
 ```
 
 ### 更新所有 Skills

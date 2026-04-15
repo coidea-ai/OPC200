@@ -33,8 +33,9 @@ def run(customer_id: str, args: dict) -> dict:
                 date_str = _parse_md_date(os.path.basename(f))
                 if latest is None:
                     latest = date_str
-                if first_entry_date is None:
-                    first_entry_date = date_str
+                # Since files are sorted reverse (newest first), keep updating first_entry_date
+                # until we reach the oldest file with an entry.
+                first_entry_date = date_str
 
     meta = read_meta(customer_id) or {}
     started_day = meta.get("started_day", 1)

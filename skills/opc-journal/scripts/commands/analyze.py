@@ -1,4 +1,4 @@
-"""Journal command: analyze (raw signal extraction for LLM interpretation)."""
+"""Journal command: analyze (raw signal extraction)."""
 import glob
 import os
 import re
@@ -31,7 +31,7 @@ def _find_sources(customer_id: str):
 
 
 def run(customer_id: str, args: dict) -> dict:
-    """Return structured raw signals and context for the caller (LLM) to interpret dynamically."""
+    """Return structured raw signals and context for interpretation."""
     days = args.get("days", 7)
     lang = get_language(customer_id)
     sources = _find_sources(customer_id)
@@ -67,16 +67,21 @@ def run(customer_id: str, args: dict) -> dict:
     raw_text = "\n".join(texts)
     lines = [l.strip() for l in raw_text.split("\n") if l.strip() and not l.strip().startswith("#")]
 
-    # Return lightweight structural signals only — NO hardcoded labels or interpretations.
+    # Language-agnostic structural signals only — NO hardcoded semantic labels or interpretations.
     signal_summary = {
         "total_lines": len(lines),
         "days_span": days,
         "sources_count": len(files_meta),
-        "emotion_mentions": _extract_tokens(raw_text, r"(开心|焦虑|困惑|沮丧|兴奋|疲惫|满足|担心|紧张|放松|失落|激动|happy|anxious|confused|frustrated|excited|tired|relaxed|sad|nervous)"),
-        "decision_fragments": _extract_fragments(raw_text, r"(决定|选择|放弃|切换|采用|改用|定下来|拍板|纠结|犹豫|decided|choose|switch|adopt|finalize|hesitate)(.*?)(?:。|；|;|\n|\.)"),
-        "milestone_fragments": _extract_fragments(raw_text, r"(完成|发布|上线|销售|签约|收款|MVP|原型|第一笔|第一个|突破|里程碑|completed|launched|shipped|sale|signed|revenue|MVP|prototype|milestone|breakthrough)(.*?)(?:。|；|;|\n|\.)"),
-        "blocker_fragments": _extract_fragments(raw_text, r"(卡|卡住|阻塞|瓶颈|搞不定|没思路|失败|报错|bug|问题|stuck|blocked|bottleneck|failed|error|bug|issue)(.*?)(?:。|；|;|\n|\.)"),
-        "help_seeking_count": len(re.findall(r"(问|请教|讨论|委托|让.*帮忙|找.*解决|求助|ask|discuss|delegate|help)", raw_text, re.IGNORECASE)),
+        "structural_signals": {
+            "exclamation_marks": raw_text.count("!"),
+            "question_marks": raw_text.count("?"),
+            "all_caps_words": len(re.findall(r"\b[A-Z]{2,}\b", raw_text)),
+            "repeated_punctuation": len(re.findall(r"([!?.,])\1+", raw_text)),
+            "quoted_phrases": len(re.findall(r'"([^"]{3,120})"', raw_text)),
+        },
+        "action_fragments": _extract_fragments(raw_text, r"\b(decided|choose|switch|adopt|finalize|hesitate)\b"),
+        "achievement_fragments": _extract_fragments(raw_text, r"\b(completed|launched|shipped|sale|signed|revenue|MVP|prototype|milestone|breakthrough)\b"),
+        "obstacle_fragments": _extract_fragments(raw_text, r"\b(stuck|blocked|bottleneck|failed|error|bug|issue)\b"),
     }
 
     return {
@@ -89,24 +94,18 @@ def run(customer_id: str, args: dict) -> dict:
             "raw_text": raw_text,
             "signal_summary": signal_summary,
         },
-        "message": f"Pattern analysis context prepared for {customer_id}",
+        "message": f"Pattern analysis prepared for {customer_id}",
     }
 
 
-def _extract_tokens(text: str, pattern: str) -> dict:
-    found = re.findall(pattern, text, re.IGNORECASE)
-    counts = {}
-    for token in found:
-        key = token.lower() if isinstance(token, str) else token[0].lower()
-        counts[key] = counts.get(key, 0) + 1
-    return counts
-
-
 def _extract_fragments(text: str, pattern: str, max_len: int = 120) -> list:
-    matches = re.finditer(pattern, text, re.IGNORECASE)
+    """Extract short sentence fragments containing a keyword. Works best with English text."""
+    # Split text into sentences/segments to avoid regex crossing sentence boundaries
+    segments = re.split(r"[;\.\n]", text)
     fragments = []
-    for m in matches:
-        frag = m.group(0).strip().replace("\n", " ")
-        if len(frag) > 3:
-            fragments.append(frag[:max_len])
+    for seg in segments:
+        if re.search(pattern, seg, re.IGNORECASE):
+            frag = seg.strip().replace("\n", " ")
+            if len(frag) > 3:
+                fragments.append(frag[:max_len])
     return fragments[:10]
