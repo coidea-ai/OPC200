@@ -251,7 +251,7 @@ step_install() {
     info "4/7 安装部署"
 
     local root="$INSTALL_DIR"
-    local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/journal" "$root/data/exporter" "$root/logs")
+    local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/exporter" "$root/logs")
 
     for d in "${dirs[@]}"; do
         mkdir -p "$d"
@@ -281,9 +281,6 @@ gateway:
   host: "127.0.0.1"
   port: ${PORT}
 
-journal:
-  storage_path: "${root}/data/journal"
-  max_size: "1GB"
 
 logging:
   level: "info"

@@ -25,32 +25,6 @@ class OPC200Error(Exception):
         self.details = details or {}
 
 
-# Journal Exceptions
-class JournalError(OPC200Error):
-    """Base exception for journal-related errors."""
-    pass
-
-
-class EntryNotFoundError(JournalError):
-    """Raised when a requested journal entry is not found."""
-    pass
-
-
-class EntryValidationError(JournalError):
-    """Raised when journal entry validation fails."""
-    pass
-
-
-class StorageError(JournalError):
-    """Raised when storage operations fail."""
-    pass
-
-
-class VectorStoreError(JournalError):
-    """Raised when vector store operations fail."""
-    pass
-
-
 # Security Exceptions
 class SecurityError(OPC200Error):
     """Base exception for security-related errors."""
@@ -85,22 +59,6 @@ class PatternError(OPC200Error):
 
 class InsufficientDataError(PatternError):
     """Raised when there's not enough data for analysis."""
-    pass
-
-
-# Task Scheduler Exceptions
-class SchedulerError(OPC200Error):
-    """Base exception for scheduler errors."""
-    pass
-
-
-class CronParseError(SchedulerError):
-    """Raised when cron expression parsing fails."""
-    pass
-
-
-class TaskExecutionError(SchedulerError):
-    """Raised when task execution fails."""
     pass
 
 

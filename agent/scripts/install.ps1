@@ -229,7 +229,6 @@ function Install-Agent {
         (Join-Path $root "bin"),
         (Join-Path $root "config"),
         (Join-Path $root "data"),
-        (Join-Path $root "data\journal"),
         (Join-Path $root "data\exporter"),
         (Join-Path $root "logs")
     )
