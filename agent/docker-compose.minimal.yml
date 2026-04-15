@@ -1,78 +1,60 @@
-# OPC200 最小化部署配置
-# 仅核心服务：Gateway + Journal + Qdrant
-# 用于单实例验证测试
+# OPC200 用户侧最小化部署配置
+# 核心服务：Gateway + Exporter（Journal 和 Qdrant 已移除，由平台侧提供）
+# 用于 4/24 老板试用部署
 
 version: "3.8"
 
-# 明确指定 env 文件，避免继承宿主机环境
 env_file:
   - .env.minimal
 
 services:
-  # OpenClaw Gateway（端口改为 18889 避免冲突）
+  # OpenClaw Gateway（用户侧核心）
   gateway:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: opc200-gateway
+      context: ../..
+      dockerfile: agent/src/gateway/Dockerfile.gateway
+    container_name: opc200-gateway-${INSTANCE_ID:-001}
     restart: unless-stopped
     ports:
-      - "18889:8000"  # 改为 18889，映射到容器内 8000
+      - "${GATEWAY_PORT:-18789}:18789"
     volumes:
       - gateway-data:/data
       - ./config/gateway.yml:/etc/opc200/gateway.yml:ro
+      - ./skills:/app/skills:ro
     environment:
-      # 明确指定环境变量，不继承宿主机
-      OPC200_GATEWAY_TOKEN: ${OPC200_GATEPOINT_TOKEN:-opc200-test-token}
+      OPC200_GATEWAY_TOKEN: ${OPC200_GATEWAY_TOKEN:-opc200-test-token}
       OPC200_DATA_DIR: /data
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      INSTANCE_ID: ${INSTANCE_ID:-opc-001}
     networks:
       - opc200-internal
     healthcheck:
-      test: ["CMD", "python", "-c", "print('OK')"]
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # Journal 服务
-  journal:
+  # Exporter（指标推送到平台）
+  exporter:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: opc200-journal
+      context: ../..
+      dockerfile: agent/Dockerfile.exporter
+    container_name: opc200-exporter-${INSTANCE_ID:-001}
     restart: unless-stopped
     volumes:
-      - journal-data:/data/journal
-      - ./config/skills.yml:/app/config/skills.yml:ro
+      - exporter-data:/data/exporter
     environment:
-      # 明确指定环境变量
-      OPC200_DATA_DIR: /data
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      # OpenAI 使用测试模式（空值）
-      OPENAI_API_KEY: ""
-      ENABLE_OPENAI: "false"
+      PLATFORM_URL: ${PLATFORM_URL:-https://platform.opc200.co}
+      TENANT_ID: ${TENANT_ID:-opc-001}
+      API_KEY: ${API_KEY:-}
+      PUSH_INTERVAL: "60"
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
     networks:
       - opc200-internal
     depends_on:
-      - qdrant
+      - gateway
 
-  # 向量数据库 (Qdrant)
-  qdrant:
-    image: qdrant/qdrant:v1.7.4
-    container_name: opc200-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"  # Qdrant HTTP API
-    volumes:
-      - qdrant-data:/qdrant/storage
-    networks:
-      - opc200-internal
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-
-# 网络配置
 networks:
   opc200-internal:
     driver: bridge
@@ -80,11 +62,8 @@ networks:
       config:
         - subnet: 172.20.0.0/16
 
-# 存储卷
 volumes:
   gateway-data:
     driver: local
-  journal-data:
-    driver: local
-  qdrant-data:
+  exporter-data:
     driver: local
