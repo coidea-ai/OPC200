@@ -59,11 +59,16 @@ $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
 $script:TASK_NAME       = "OPC200-Agent"
 $script:DEFAULT_URL     = "https://platform.opc200.co"
-$script:OPENCLAW_DEFAULT_INSTALL_URL = "https://openclaw.ai/install.ps1"
-$script:OPENCLAW_ALLOWED_HOSTS = @("openclaw.ai", "www.openclaw.ai")
+$script:OPENCLAW_DEFAULT_INSTALL_URL    = "https://openclaw.ai/install.ps1"
+$script:OPENCLAW_MIN_NODE_MAJOR         = 22
+$script:NODEJS_DIST_INDEX               = "https://nodejs.org/dist/index.json"
+$script:OPENCLAW_ALLOWED_HOSTS          = @("openclaw.ai", "www.openclaw.ai")
+$script:OPENCLAW_DEFAULT_NPM_REGISTRY   = "https://registry.npmmirror.com/"
+$script:OPENCLAW_INSTALL_TIMEOUT_SEC    = 900   # 15 分钟
+$script:OPENCLAW_NET_CHECK_HOSTS        = @("openclaw.ai", "registry.npmmirror.com", "github.com")
 $script:OPENCLAW_DEFAULT_PROFILE_DIR = Join-Path $HOME ".openclaw"
 $script:OPENCLAW_DEFAULT_SKILLS = "skill-vetter"
-$script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD = "openclaw skill install"
+$script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD = "openclaw skills install"
 $script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
 $script:MIN_DISK_GB     = 1
 
@@ -109,10 +114,128 @@ function Invoke-Rollback {
     }
 }
 
+function Sync-SessionPathFromRegistry {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $parts = @()
+    if ($machinePath) { $parts += $machinePath }
+    if ($userPath) { $parts += $userPath }
+    if ($parts.Count -gt 0) {
+        $env:Path = ($parts -join ";")
+    }
+}
+
+function Get-NodeJsMajorVersion {
+    $exeList = [System.Collections.Generic.List[string]]::new()
+    $cmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($cmd) { [void]$exeList.Add($cmd.Source) }
+    $pf = Join-Path $env:ProgramFiles "nodejs\node.exe"
+    if (Test-Path -LiteralPath $pf) { [void]$exeList.Add($pf) }
+    $pfx86 = ${env:ProgramFiles(x86)}
+    if ($pfx86) {
+        $pf86 = Join-Path $pfx86 "nodejs\node.exe"
+        if (Test-Path -LiteralPath $pf86) { [void]$exeList.Add($pf86) }
+    }
+    foreach ($exe in ($exeList | Select-Object -Unique)) {
+        try {
+            $verLine = & $exe -v 2>&1 | Select-Object -First 1
+            if (-not $verLine) { continue }
+            $verStr = "$verLine".Trim()
+            $m = [regex]::Match($verStr, '^v(\d+)')
+            if ($m.Success) {
+                return [int]$m.Groups[1].Value
+            }
+        }
+        catch { }
+    }
+    return 0
+}
+
+function Install-NodeJsWinMsiFromDist {
+    $ProgressPreference = "SilentlyContinue"
+    $index = Invoke-RestMethod -Uri $script:NODEJS_DIST_INDEX -UseBasicParsing
+    $best = $null
+    $bestVer = $null
+    foreach ($entry in $index) {
+        if ($entry.files -notcontains "win-x64-msi") { continue }
+        if ($entry.version -notmatch '^v(\d+)\.(\d+)\.(\d+)$') { continue }
+        $major = [int]$Matches[1]
+        if ($major -lt $script:OPENCLAW_MIN_NODE_MAJOR) { continue }
+        $verObj = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        if ($null -eq $bestVer -or $verObj -gt $bestVer) {
+            $bestVer = $verObj
+            $best = $entry
+        }
+    }
+    if (-not $best) {
+        Fail $script:E002 "E002: nodejs.org 索引中未找到 Node $($script:OPENCLAW_MIN_NODE_MAJOR)+ 的 win-x64 MSI"
+    }
+    $v = $best.version
+    $msiUrl = "https://nodejs.org/dist/$v/node-$v-x64.msi"
+    $msi = Join-Path $env:TEMP ("opc200-node-" + [Guid]::NewGuid().ToString("N") + ".msi")
+    Write-Ok "下载 Node MSI: $msiUrl"
+    Invoke-WebRequest -Uri $msiUrl -OutFile $msi -UseBasicParsing
+    Write-Ok "msiexec 静默安装 Node（可能需要数十秒）..."
+    $p = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $msi, "/qn", "/norestart") -Wait -PassThru
+    Remove-Item -LiteralPath $msi -Force -ErrorAction SilentlyContinue
+    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+        Fail $script:E002 "E002: Node MSI 安装失败 (msiexec 退出码 $($p.ExitCode))"
+    }
+}
+
+function Ensure-OpenClawNodeRuntime {
+    Write-Step "3/10 准备 Node.js（OpenClaw 需要 v$($script:OPENCLAW_MIN_NODE_MAJOR)+）"
+
+    Sync-SessionPathFromRegistry
+    $maj = Get-NodeJsMajorVersion
+    if ($maj -ge $script:OPENCLAW_MIN_NODE_MAJOR) {
+        Write-Ok "Node.js 主版本 $maj 已满足要求"
+        return
+    }
+
+    if ($maj -gt 0) {
+        Write-Warn "当前 Node 主版本为 $maj，需要 $($script:OPENCLAW_MIN_NODE_MAJOR)+；将尝试升级"
+    }
+    else {
+        Write-Warn "未在 PATH 或默认目录检测到 Node.js，将尝试安装"
+    }
+
+    $wg = Get-Command winget -ErrorAction SilentlyContinue
+    if ($wg) {
+        Write-Ok "尝试 winget (OpenJS.NodeJS)..."
+        try {
+            $wingetArgs = @("install", "-e", "--id", "OpenJS.NodeJS", "--accept-package-agreements", "--accept-source-agreements", "--silent")
+            if ($maj -gt 0) {
+                $wingetArgs = @("upgrade", "-e", "--id", "OpenJS.NodeJS", "--accept-package-agreements", "--accept-source-agreements", "--silent")
+            }
+            Start-Process -FilePath "winget.exe" -ArgumentList $wingetArgs -Wait -NoNewWindow
+        }
+        catch { }
+    }
+
+    Sync-SessionPathFromRegistry
+    $maj = Get-NodeJsMajorVersion
+    if ($maj -ge $script:OPENCLAW_MIN_NODE_MAJOR) {
+        Write-Ok "Node.js 已通过 winget 就绪（主版本 $maj）"
+        return
+    }
+
+    Write-Warn "winget 未能提供 Node $($script:OPENCLAW_MIN_NODE_MAJOR)+，改从 nodejs.org 安装 MSI"
+    Install-NodeJsWinMsiFromDist
+    Sync-SessionPathFromRegistry
+    $maj = Get-NodeJsMajorVersion
+    if ($maj -ge $script:OPENCLAW_MIN_NODE_MAJOR) {
+        Write-Ok "Node.js MSI 安装完成（主版本 $maj）"
+        return
+    }
+
+    Fail $script:E002 "E002: 无法使 Node.js 达到 v$($script:OPENCLAW_MIN_NODE_MAJOR)+。请从 https://nodejs.org 安装后关闭并重新打开 PowerShell，再运行本安装程序。"
+}
+
 # ── Step 1: 环境检查 ─────────────────────────────────────────────
 
 function Test-Environment {
-    Write-Step "1/7 环境检查"
+    Write-Step "1/10 环境检查"
 
     # 管理员权限
     $principal = New-Object Security.Principal.WindowsPrincipal(
@@ -171,7 +294,7 @@ function Test-Environment {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 function Get-InstallConfig {
-    Write-Step "2/9 获取配置"
+    Write-Step "2/10 获取配置"
 
     if ($Silent) {
         if (-not $PlatformUrl)  { $script:PlatformUrl = $script:DEFAULT_URL } else { $script:PlatformUrl = $PlatformUrl }
@@ -211,10 +334,36 @@ function Get-InstallConfig {
     Write-Ok "目录: $($script:InstallRoot)"
 }
 
+# ── 网络预检 ─────────────────────────────────────────────────────
+
+function Test-OpenClawNetworkReady {
+    Write-Step "3.5/10 网络连通性预检"
+    $allOk = $true
+    foreach ($netHost in $script:OPENCLAW_NET_CHECK_HOSTS) {
+        try {
+            $result = Test-NetConnection -ComputerName $netHost -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            if ($result) {
+                Write-Ok "可达: $netHost"
+            }
+            else {
+                Write-Warn "不可达: $netHost（安装可能变慢或失败）"
+                $allOk = $false
+            }
+        }
+        catch {
+            Write-Warn "检测失败: $netHost - $_"
+            $allOk = $false
+        }
+    }
+    if (-not $allOk) {
+        Write-Warn "部分主机不可达；若安装超时，可设置 OPENCLAW_NPM_REGISTRY 指向可用镜像后重试"
+    }
+}
+
 # ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 function Install-OpenClawOfficial {
-    Write-Step "3/9 官方渠道安装 OpenClaw latest"
+    Write-Step "4/10 官方渠道安装 OpenClaw latest"
 
     # 允许通过环境变量覆写安装入口，但必须经过官方域名白名单校验。
     $installUrl = if ($env:OPENCLAW_INSTALL_URL) { $env:OPENCLAW_INSTALL_URL } else { $script:OPENCLAW_DEFAULT_INSTALL_URL }
@@ -232,16 +381,155 @@ function Install-OpenClawOfficial {
         $channel = "latest"
     }
 
+    # npm registry：优先使用环境变量，默认淘宝镜像加速
+    $npmRegistry = if ($env:OPENCLAW_NPM_REGISTRY) { $env:OPENCLAW_NPM_REGISTRY } else { $script:OPENCLAW_DEFAULT_NPM_REGISTRY }
+    $prevRegistry          = $env:NPM_CONFIG_REGISTRY
+    $prevFetchRetries      = $env:NPM_CONFIG_FETCH_RETRIES
+    $prevFetchRetryTimeout = $env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT
+    $prevFetchTimeout      = $env:NPM_CONFIG_FETCH_TIMEOUT
+    $env:NPM_CONFIG_REGISTRY              = $npmRegistry
+    $env:NPM_CONFIG_FETCH_RETRIES         = "3"
+    $env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = "10000"
+    $env:NPM_CONFIG_FETCH_TIMEOUT         = "60000"
+
     Write-Ok "OpenClaw 安装源: $installUrl"
     Write-Ok "OpenClaw 渠道: $channel"
+    Write-Ok "npm registry: $npmRegistry"
 
+    # 实时日志落文件，超时 $OPENCLAW_INSTALL_TIMEOUT_SEC 秒后强制失败
+    $logFile = Join-Path $env:TEMP ("opc200-openclaw-install-" + [Guid]::NewGuid().ToString("N") + ".log")
+    Write-Ok "安装日志: $logFile"
+
+    # 在父进程设好 npm 加速环境变量，子进程自动继承
+    $env:NPM_CONFIG_REGISTRY               = $npmRegistry
+    $env:NPM_CONFIG_FETCH_RETRIES          = "3"
+    $env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = "10000"
+    $env:NPM_CONFIG_FETCH_TIMEOUT          = "60000"
+    $env:NODE_LLAMA_CPP_SKIP_DOWNLOAD      = "1"
+    $env:OPENCLAW_NO_ONBOARD               = "1"
+
+    $tmpScript = $null
     try {
         $ProgressPreference = "SilentlyContinue"
         $officialInstaller = Invoke-RestMethod -Uri $installUrl -UseBasicParsing
-        Invoke-Expression $officialInstaller
+
+        $tmpScript = Join-Path $env:TEMP ("opc200-openclaw-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+        # 官方脚本可能以 param() 块开头，PowerShell 要求 param() 必须是第一条语句。
+        # 将 param() 块原样保留在最前，环境变量注入紧随其后。
+        $envInject = @"
+
+`$env:NPM_CONFIG_REGISTRY               = '$npmRegistry'
+`$env:NPM_CONFIG_FETCH_RETRIES          = '3'
+`$env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = '10000'
+`$env:NPM_CONFIG_FETCH_TIMEOUT          = '60000'
+`$env:NODE_LLAMA_CPP_SKIP_DOWNLOAD      = '1'
+`$env:OPENCLAW_NO_ONBOARD               = '1'
+
+"@
+        # 找到 param 块结束位置（匹配最外层括号）
+        $paramEnd = -1
+        $depth = 0
+        $inParam = $false
+        for ($ci = 0; $ci -lt $officialInstaller.Length; $ci++) {
+            $ch = $officialInstaller[$ci]
+            if (-not $inParam) {
+                $stripped = $officialInstaller.Substring($ci).TrimStart()
+                if ($stripped -match '(?i)^param\s*\(') {
+                    $ci = $officialInstaller.Length - $stripped.Length + $stripped.IndexOf('(')
+                    $inParam = $true; $depth = 1
+                    continue
+                }
+                elseif ($ch -eq '#') {
+                    while ($ci -lt $officialInstaller.Length -and $officialInstaller[$ci] -ne "`n") { $ci++ }
+                    continue
+                }
+                elseif ($ch -match '\S') { break }
+            }
+            else {
+                if ($ch -eq '(') { $depth++ }
+                elseif ($ch -eq ')') {
+                    $depth--
+                    if ($depth -eq 0) { $paramEnd = $ci; break }
+                }
+            }
+        }
+        if ($paramEnd -ge 0) {
+            $paramBlock  = $officialInstaller.Substring(0, $paramEnd + 1)
+            $scriptBody  = $officialInstaller.Substring($paramEnd + 1)
+            $patchedScript = $paramBlock + $envInject + $scriptBody
+        }
+        else {
+            $patchedScript = $envInject + $officialInstaller
+        }
+        [System.IO.File]::WriteAllText($tmpScript, $patchedScript, [System.Text.UTF8Encoding]::new($false))
+
+        # Start-Process 继承父进程全部环境变量；stdout/stderr 重定向到日志文件
+        $proc = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $tmpScript, "-NoOnboard") `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError  ($logFile + ".err") `
+            -PassThru -NoNewWindow
+
+        # 实时跟踪日志输出
+        $lastSize = 0
+        $deadline = [DateTime]::UtcNow.AddSeconds($script:OPENCLAW_INSTALL_TIMEOUT_SEC)
+        while (-not $proc.HasExited) {
+            if ([DateTime]::UtcNow -gt $deadline) {
+                try { $proc.Kill() } catch { }
+                Fail $script:E002 ("E002: OpenClaw 官方安装超时（>{0}s）。日志: {1}" -f $script:OPENCLAW_INSTALL_TIMEOUT_SEC, $logFile)
+            }
+            Start-Sleep -Milliseconds 500
+            if (Test-Path -LiteralPath $logFile) {
+                $content = Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content.Length -gt $lastSize) {
+                    $newLines = $content.Substring($lastSize) -split "`n"
+                    foreach ($line in $newLines) {
+                        $trimmed = $line.TrimEnd("`r")
+                        if ($trimmed -ne "") { Write-Host "  [openclaw] $trimmed" }
+                    }
+                    $lastSize = $content.Length
+                }
+            }
+        }
+
+        # 打印剩余未输出内容
+        if (Test-Path -LiteralPath $logFile) {
+            $content = Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue
+            if ($content -and $content.Length -gt $lastSize) {
+                $newLines = $content.Substring($lastSize) -split "`n"
+                foreach ($line in $newLines) {
+                    $trimmed = $line.TrimEnd("`r")
+                    if ($trimmed -ne "") { Write-Host "  [openclaw] $trimmed" }
+                }
+            }
+        }
+        if (Test-Path -LiteralPath ($logFile + ".err")) {
+            $errContent = Get-Content -LiteralPath ($logFile + ".err") -Raw -ErrorAction SilentlyContinue
+            if ($errContent -and $errContent.Trim() -ne "") {
+                foreach ($line in ($errContent -split "`n")) {
+                    $trimmed = $line.TrimEnd("`r")
+                    if ($trimmed -ne "") { Write-Host "  [openclaw:err] $trimmed" -ForegroundColor Yellow }
+                }
+            }
+        }
+
+        $exitCode = if ($null -ne $proc.ExitCode) { $proc.ExitCode } else { 0 }
+        if ($exitCode -ne 0) {
+            Fail $script:E002 ("E002: OpenClaw 官方安装失败（退出码 {0}）。日志: {1}" -f $exitCode, $logFile)
+        }
     }
     catch {
+        if ($_.Exception.Message -match "E002:") { throw }
         Fail $script:E002 "E002: OpenClaw 官方安装失败 - $_"
+    }
+    finally {
+        if ($tmpScript) { Remove-Item -LiteralPath $tmpScript -Force -ErrorAction SilentlyContinue }
+        $env:NPM_CONFIG_REGISTRY               = $prevRegistry
+        $env:NPM_CONFIG_FETCH_RETRIES          = $prevFetchRetries
+        $env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = $prevFetchRetryTimeout
+        $env:NPM_CONFIG_FETCH_TIMEOUT          = $prevFetchTimeout
+        $env:NODE_LLAMA_CPP_SKIP_DOWNLOAD      = $null
+        $env:OPENCLAW_NO_ONBOARD               = $null
     }
     Write-Ok "OpenClaw 官方安装完成"
 }
@@ -261,7 +549,7 @@ function Write-DocTemplate {
 }
 
 function Install-OpenClawPreload {
-    Write-Step "4/9 轻预装层（skills + 文档）"
+    Write-Step "5/10 轻预装层（skills + 文档）"
 
     $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { $script:OPENCLAW_DEFAULT_PROFILE_DIR }
     $skillsCsv = if ($env:OPENCLAW_PREINSTALL_SKILLS) { $env:OPENCLAW_PREINSTALL_SKILLS } else { $script:OPENCLAW_DEFAULT_SKILLS }
@@ -319,7 +607,7 @@ function Write-DocTemplateFromFile {
 
 function Get-AgentBinary {
     if ($LocalBinary) {
-        Write-Step "5/9 使用本地 Agent 二进制 (跳过下载)"
+        Write-Step "6/10 使用本地 Agent 二进制 (跳过下载)"
         if (-not (Test-Path -LiteralPath $LocalBinary)) {
             Fail $script:E002 "E002: 本地文件不存在: $LocalBinary"
         }
@@ -330,11 +618,11 @@ function Get-AgentBinary {
 
     if ($script:UsePythonMode) {
         if ($FullRuntimeDeps) {
-            Write-Step "5/9 Python 运行环境 (venv + pip，完整依赖，较慢)"
+            Write-Step "6/10 Python 运行环境 (venv + pip，完整依赖，较慢)"
             $reqName = "requirements-agent-runtime-full.txt"
         }
         else {
-            Write-Step "5/9 Python 运行环境 (venv + pip，精简依赖)"
+            Write-Step "6/10 Python 运行环境 (venv + pip，精简依赖)"
             $reqName = "requirements-agent-runtime.txt"
         }
         $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
@@ -365,7 +653,7 @@ function Get-AgentBinary {
         return
     }
 
-    Write-Step "5/9 下载 Agent"
+    Write-Step "6/10 下载 Agent"
 
     $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
     $shaUrl  = "$($script:DOWNLOAD_BASE)/$($script:CHECKSUM_FILE)"
@@ -410,7 +698,7 @@ function Get-AgentBinary {
 # ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 function Install-Agent {
-    Write-Step "6/9 安装部署"
+    Write-Step "7/10 安装部署"
 
     $root = $script:InstallRoot
 
@@ -510,7 +798,7 @@ logging:
 # ── Step 7: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
 
 function Register-Service {
-    Write-Step "7/9 注册计划任务(登录时启动)"
+    Write-Step "8/10 注册计划任务(登录时启动)"
 
     $legacy = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
     if ($legacy) {
@@ -557,7 +845,7 @@ function Register-Service {
 # ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 function Start-AndVerify {
-    Write-Step "8/9 启动验证"
+    Write-Step "9/10 启动验证"
 
     try {
         Start-ScheduledTask -TaskName $script:TASK_NAME -ErrorAction Stop
@@ -591,7 +879,7 @@ function Start-AndVerify {
 # ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 function Show-Summary {
-    Write-Step "9/9 安装完成"
+    Write-Step "10/10 安装完成"
 
     $root = $script:InstallRoot
     Write-Host ""
@@ -629,6 +917,8 @@ function Main {
 
     Test-Environment
     Get-InstallConfig
+    Ensure-OpenClawNodeRuntime
+    Test-OpenClawNetworkReady
     Install-OpenClawOfficial
     Install-OpenClawPreload
     Get-AgentBinary

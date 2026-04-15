@@ -100,6 +100,7 @@ cd E:\projects\OPC200\agent\scripts
 | `-InstallDir` | `$HOME\.opc200` | 安装目录 |
 | `-KeepData` | `False` | 保留 `data/` |
 | `-Silent` | `False` | 静默卸载（不交互确认） |
+| `-PurgeOpenClaw` | `False` | 勾选时才执行 OpenClaw 官方卸载：`openclaw uninstall --all --yes --non-interactive`（未装 `openclaw` 或命令失败仅告警；CLI 全局包可能仍需自行 `npm`/`pnpm` 移除） |
 
 卸载示例：
 
@@ -114,6 +115,9 @@ cd E:\projects\OPC200\agent\scripts
 
 # 保留 data
 .\uninstall.ps1 -InstallDir "$env:USERPROFILE\.opc200" -KeepData
+
+# 同时按官方推荐卸载 OpenClaw（服务/状态/工作区等，见 https://docs.openclaw.ai/cli/uninstall ）
+.\uninstall.ps1 -InstallDir "$env:USERPROFILE\.opc200" -Silent -PurgeOpenClaw
 ```
 
 ---
@@ -175,6 +179,7 @@ sudo bash ./install.sh --silent \
 | `--install-dir` | `$HOME/.opc200` | 安装目录 |
 | `--keep-data` | `False` | 保留 `data/` |
 | `--silent` | `False` | 静默卸载（不交互确认） |
+| `--purge-openclaw` | `False` | 勾选时才执行 OpenClaw 官方卸载：`openclaw uninstall --all --yes --non-interactive`（未装 `openclaw` 或命令失败仅告警；CLI 全局包可能仍需自行 `npm`/`pnpm` 移除） |
 
 卸载示例：
 
@@ -192,6 +197,9 @@ sudo bash ./uninstall.sh --install-dir "/root/.opc200"
 
 # 保留 data
 sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --keep-data
+
+# 同时按官方推荐卸载 OpenClaw（见 https://docs.openclaw.ai/cli/uninstall ）
+sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --silent --purge-openclaw
 ```
 
 ## 用户安装（todo）

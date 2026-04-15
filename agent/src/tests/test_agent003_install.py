@@ -44,6 +44,10 @@ class TestFilesExist:
     def test_uninstall_has_shebang(self, uninstall_sh):
         assert uninstall_sh.startswith("#!/usr/bin/env bash")
 
+    def test_install_script_unix_line_endings(self):
+        raw = (SCRIPTS_DIR / "install.sh").read_bytes()
+        assert b"\r" not in raw, "install.sh must be LF-only for bash/WSL"
+
 
 # ── install.sh CLI 参数 ──────────────────────────────────────────
 
@@ -68,6 +72,8 @@ class TestInstallSteps:
     STEP_FUNCTIONS = [
         "step_check_env",
         "step_get_config",
+        "step_prepare_node_runtime",
+        "step_network_check",
         "step_install_openclaw_official",
         "step_preinstall_openclaw_assets",
         "step_download",
@@ -159,7 +165,60 @@ class TestChecksum:
         assert "SHA256SUMS" in install_sh
 
 
+class TestOpenClawNetworkCheck:
+    def test_network_check_function(self, install_sh):
+        assert "step_network_check()" in install_sh
+
+    def test_network_check_hosts(self, install_sh):
+        assert "OPENCLAW_NET_CHECK_HOSTS" in install_sh
+        assert "registry.npmmirror.com" in install_sh
+        assert "github.com" in install_sh
+
+    def test_network_check_called_in_main(self, install_sh):
+        assert "step_network_check" in install_sh
+
+
+class TestOpenClawNpmAcceleration:
+    def test_default_registry_is_npmmirror(self, install_sh):
+        assert "registry.npmmirror.com" in install_sh
+        assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_sh
+
+    def test_registry_env_override(self, install_sh):
+        assert "OPENCLAW_NPM_REGISTRY" in install_sh
+
+    def test_npm_fetch_timeout_set(self, install_sh):
+        assert "NPM_CONFIG_FETCH_TIMEOUT" in install_sh
+        assert "NPM_CONFIG_FETCH_RETRIES" in install_sh
+
+
+class TestOpenClawInstallObservability:
+    def test_log_file_created(self, install_sh):
+        assert "opc200-openclaw-install-" in install_sh
+
+    def test_timeout_constant(self, install_sh):
+        assert "OPENCLAW_INSTALL_TIMEOUT_SEC" in install_sh
+        assert "900" in install_sh
+
+    def test_timeout_enforced(self, install_sh):
+        assert "timeout" in install_sh
+        assert "超时" in install_sh
+
+    def test_realtime_output(self, install_sh):
+        assert "tee" in install_sh
+
+    def test_exit_code_checked(self, install_sh):
+        assert "exit_code" in install_sh
+
+    def test_log_path_shown_on_failure(self, install_sh):
+        assert "日志:" in install_sh
+
+
 class TestOpenClawOfficialInstall:
+    def test_node_runtime_prerequisite_present(self, install_sh):
+        assert "OPENCLAW_MIN_NODE_MAJOR=22" in install_sh
+        assert "step_prepare_node_runtime" in install_sh
+        assert "install_node_linux_from_official" in install_sh
+
     def test_official_install_url_configurable(self, install_sh):
         assert "OPENCLAW_INSTALL_URL" in install_sh
 
@@ -232,6 +291,12 @@ class TestUninstall:
 
     def test_removes_service_file(self, uninstall_sh):
         assert "systemd" in uninstall_sh or "service" in uninstall_sh
+
+    def test_purge_openclaw_flag(self, uninstall_sh):
+        assert "--purge-openclaw" in uninstall_sh
+
+    def test_openclaw_official_uninstall_invoked(self, uninstall_sh):
+        assert "openclaw uninstall --all --yes --non-interactive" in uninstall_sh
 
 
 # ── 包管理器检测 ─────────────────────────────────────────────────
