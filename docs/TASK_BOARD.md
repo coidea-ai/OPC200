@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-15（预装小龙虾第一期 1.1 核心演示流程已验收）
+**最后更新**: 2026-04-15（AGENT-007 M3：`agent_health` 对齐 OpenClaw 网关探测）
 
 ---
 
@@ -290,14 +290,14 @@
 
 #### AGENT-007: 脚本支持安装 OpenClaw（官方 latest + 轻预装 + health 打通）
 
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成
 - **负责人**: 未分配
 - **预计 AI 工时**: 6h
 - **描述**: 基于官方渠道安装 OpenClaw 最新版，在其上叠加轻预装层，并打通 exporter 对 OpenClaw 健康数据采集
 - **里程碑**:
   - [x] M1 官方渠道安装最新版：安装脚本默认通过 OpenClaw 官方渠道安装全量 latest（官方入口 + https + 官方域名白名单）
   - [x] M2 轻预装层：通过 OpenClaw 自带插件机制安装 skills，投放 `SOUL.md`/`IDENTITY.md`/`AGENTS.md`（skills 失败仅告警继续；文档存在写 `.new`）
-  - [ ] M3 exporter 打通 openclaw health：采集 OpenClaw 运行健康并进入现有指标链路
+  - [x] M3 exporter 打通 openclaw health：`agent_health` 默认探测 `http://127.0.0.1:18789/health` + 本进程存活；详见 `docs/METRICS_PROTOCOL.md`（端到端联调见 Roadmap §2.7 末项）
 - **详细计划文档**: `docs/PREINSTALLED_LOBSTER_ROADMAP.md`
 
 #### AGENT-008: 调整 Python import 路径
@@ -427,6 +427,10 @@
 ## 📝 任务变更日志
 
 ### 2026-04-15
+
+- **推进**: AGENT-007 完成里程碑 M3（`agent_health` 语义对齐 OpenClaw 网关）
+  - `agent/src/exporter/collector.py`：`agent_health` 默认 HTTP GET `OPENCLAW_GATEWAY_HEALTH_URL`（默认 `http://127.0.0.1:18789/health`），支持 `OPENCLAW_GATEWAY_HEALTH_PROBE=0` 跳过网关探测
+  - `docs/METRICS_PROTOCOL.md`、`docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` §2.7 已同步；`test_agent004_exporter.py` 已扩展并通过
 - **推进**: AGENT-007 预装小龙虾路线图第一期 §1.1「核心演示流程」已走通并完成勾选（见 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`）
 - **修复**: AGENT-007 Linux 安装路径补齐 OpenClaw 的 Node v22+ 前置保障
   - `install.sh` 新增 `step_prepare_node_runtime`，在调用 OpenClaw 官方安装器前检测 `node -v`
@@ -437,6 +441,7 @@
   - 安装步骤提示由 9 步调整为 10 步；`test_agent002_install.py` 已更新并通过
 
 ### 2026-04-14
+
 - **推进**: AGENT-007 完成里程碑 M1（官方渠道安装 latest）
   - `install.ps1` 默认官方入口调整为 `https://openclaw.ai/install.ps1`
   - `install.sh` 默认官方入口调整为 `https://openclaw.ai/install.sh`
@@ -533,6 +538,7 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-007**: OpenClaw 官方安装 + 轻预装 + `agent_health` 网关探测打通（2026-04-15）
 - **AGENT-003**: v2 重写 Mac/Linux 安装脚本（2026-04-12）
 - **AGENT-002**: v2 重写 Windows 安装脚本（2026-04-12）
 - **AGENT-005**: v2 重写 exporter 指标推送（2026-04-12）
@@ -546,10 +552,10 @@
 
 | 状态 | Phase 1 | Phase 2 | Phase 3 | Backlog |
 |------|---------|---------|---------|---------|
-| 📥 待领取 | 0 | 5 | 3 | 2 |
+| 📥 待领取 | 0 | 4 | 3 | 2 |
 | 🏃 进行中 | 0 | 0 | 0 | 0 |
 | 👀 审核中 | 0 | 0 | 0 | 0 |
-| ✅ 已完成 | 12 | 0 | 0 | 0 |
+| ✅ 已完成 | 12 | 1 | 0 | 0 |
 | ⏸️ 阻塞中 | 0 | 0 | 0 | 0 |
 
 ---

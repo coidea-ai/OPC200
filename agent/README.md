@@ -91,6 +91,19 @@ cd E:\projects\OPC200\agent\scripts
   -ApiKey "dev-local-test"
 ```
 
+#### 重启
+
+```powershell
+# 重启
+Stop-ScheduledTask -TaskName "OPC200-Agent" -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+Start-ScheduledTask -TaskName "OPC200-Agent"
+
+# 查看状态
+Get-ScheduledTask -TaskName "OPC200-Agent" | Format-List TaskName,State
+Get-ScheduledTaskInfo -TaskName "OPC200-Agent" | Format-List LastRunTime,LastTaskResult
+```
+
 #### 卸载
 
 `uninstall.ps1` 参数说明：
