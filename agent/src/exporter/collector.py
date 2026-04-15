@@ -1,7 +1,15 @@
 """AGENT-004: 系统指标采集器
 
-使用 psutil 跨平台采集 CPU / 内存 / 磁盘使用率及 Agent 健康状态，
-输出符合 PLAT-003 协议的 Prometheus text format。
+使用 psutil 跨平台采集 CPU / 内存 / 磁盘使用率及指标 `agent_health`。
+
+`agent_health` 语义（AGENT-007 / 预装小龙虾）：表示 **OpenClaw（小龙虾）网关侧可观测健康**，
+默认探测 `OPENCLAW_GATEWAY_HEALTH_URL`（与安装脚本约定目录及文档 `18789` 网关一致），
+并结合本进程（opc-agent / exporter 所在进程）非僵尸存活检查。
+
+环境变量（单一配置源，与安装脚本 `OPENCLAW_PROFILE_DIR` 命名对齐）：
+
+- `OPENCLAW_GATEWAY_HEALTH_URL`：网关 HTTP 健康 URL，默认 `http://127.0.0.1:18789/health`
+- `OPENCLAW_GATEWAY_HEALTH_PROBE`：设为 `0`/`false`/`off` 时跳过网关探测（仅进程存活则报 1，供无 OpenClaw 环境）
 """
 
 from __future__ import annotations
@@ -9,6 +17,8 @@ from __future__ import annotations
 import os
 import platform
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -20,6 +30,31 @@ except ImportError:
 REQUIRED_LABELS = ("tenant_id", "agent_version", "os")
 OPTIONAL_LABELS = ("arch", "hostname")
 METRIC_NAMES = ("agent_health", "cpu_usage", "memory_usage", "disk_usage")
+
+DEFAULT_OPENCLAW_GATEWAY_HEALTH_URL = "http://127.0.0.1:18789/health"
+
+
+def _openclaw_gateway_health_url() -> str:
+    return os.environ.get("OPENCLAW_GATEWAY_HEALTH_URL", DEFAULT_OPENCLAW_GATEWAY_HEALTH_URL).strip()
+
+
+def _openclaw_gateway_probe_enabled() -> bool:
+    v = os.environ.get("OPENCLAW_GATEWAY_HEALTH_PROBE", "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
+def probe_openclaw_gateway_health(url: Optional[str] = None, timeout_sec: float = 3.0) -> bool:
+    """对 OpenClaw 网关发起 HTTP GET；2xx 视为健康。供单测 mock / 直接调用。"""
+    u = (url or _openclaw_gateway_health_url()).strip()
+    if not u:
+        return True
+    req = urllib.request.Request(u)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            return 200 <= int(code) < 300
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+        return False
 
 
 def _detect_os() -> str:
@@ -81,7 +116,7 @@ class MetricsCollector:
             cpu = self._collect_cpu()
             mem = self._collect_memory()
             disk = self._collect_disk()
-            health = self._check_health(cpu, mem, disk)
+            health = self._compute_agent_health()
             return SystemMetrics(
                 cpu_usage=cpu,
                 memory_usage=mem,
@@ -124,8 +159,16 @@ class MetricsCollector:
         except Exception:
             return 0.0
 
+    def _compute_agent_health(self) -> int:
+        if not self._process_running_ok():
+            return 0
+        if _openclaw_gateway_probe_enabled():
+            if not probe_openclaw_gateway_health():
+                return 0
+        return 1
+
     @staticmethod
-    def _check_health(cpu: float, mem: float, disk: float) -> int:
+    def _process_running_ok() -> int:
         try:
             proc = psutil.Process(os.getpid())
             if not proc.is_running():
@@ -133,7 +176,5 @@ class MetricsCollector:
             if proc.status() == psutil.STATUS_ZOMBIE:
                 return 0
         except Exception:
-            return 0
-        if cpu == 0.0 and mem == 0.0 and disk == 0.0:
             return 0
         return 1
