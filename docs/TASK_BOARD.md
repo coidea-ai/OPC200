@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-14（新增 P1：预装版 OpenClaw 安装任务）
+**最后更新**: 2026-04-15（预装小龙虾第一期 1.1 核心演示流程已验收）
 
 ---
 
@@ -425,6 +425,16 @@
 ---
 
 ## 📝 任务变更日志
+
+### 2026-04-15
+- **推进**: AGENT-007 预装小龙虾路线图第一期 §1.1「核心演示流程」已走通并完成勾选（见 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`）
+- **修复**: AGENT-007 Linux 安装路径补齐 OpenClaw 的 Node v22+ 前置保障
+  - `install.sh` 新增 `step_prepare_node_runtime`，在调用 OpenClaw 官方安装器前检测 `node -v`
+  - Linux 下若 Node 不存在或主版本 < 22，则从 `nodejs.org` 官方 `latest-v22.x` 下载对应架构 tar.xz 并安装到 `/usr/local`
+  - 安装步骤提示由 9 步调整为 10 步；`test_agent003_install.py` 已更新并通过（77 passed）
+- **修复**: AGENT-007 Windows 安装路径上 OpenClaw 官方脚本要求 Node v22+，而 winget 对已装旧版常无法升级、且当前 shell 未刷新 PATH
+  - `install.ps1` 在调用官方安装器前增加 `Ensure-OpenClawNodeRuntime`：合并 Machine/User `Path`、可选 winget、失败则从 `nodejs.org` 拉取 win-x64 MSI 静默安装
+  - 安装步骤提示由 9 步调整为 10 步；`test_agent002_install.py` 已更新并通过
 
 ### 2026-04-14
 - **推进**: AGENT-007 完成里程碑 M1（官方渠道安装 latest）

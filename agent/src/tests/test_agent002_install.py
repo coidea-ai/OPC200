@@ -58,6 +58,7 @@ class TestInstallSteps:
     STEP_FUNCTIONS = [
         "Test-Environment",
         "Get-InstallConfig",
+        "Ensure-OpenClawNodeRuntime",
         "Install-OpenClawOfficial",
         "Install-OpenClawPreload",
         "Get-AgentBinary",
@@ -148,6 +149,67 @@ class TestChecksum:
         assert "SHA256SUMS" in install_ps1
 
 
+class TestOpenClawNodePrerequisite:
+    def test_node_major_constant(self, install_ps1):
+        assert "OPENCLAW_MIN_NODE_MAJOR" in install_ps1
+        assert "nodejs.org/dist/index.json" in install_ps1
+
+    def test_ensure_node_runtime_function(self, install_ps1):
+        assert "function Ensure-OpenClawNodeRuntime" in install_ps1
+        assert "function Install-NodeJsWinMsiFromDist" in install_ps1
+        assert "Sync-SessionPathFromRegistry" in install_ps1
+
+
+class TestOpenClawNetworkCheck:
+    def test_network_check_function(self, install_ps1):
+        assert "function Test-OpenClawNetworkReady" in install_ps1
+
+    def test_network_check_hosts(self, install_ps1):
+        assert "OPENCLAW_NET_CHECK_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+        assert "registry.npmmirror.com" in install_ps1
+        assert "github.com" in install_ps1
+
+    def test_network_check_called_in_main(self, install_ps1):
+        assert "Test-OpenClawNetworkReady" in install_ps1
+
+
+class TestOpenClawNpmAcceleration:
+    def test_default_registry_is_npmmirror(self, install_ps1):
+        assert "registry.npmmirror.com" in install_ps1
+        assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
+
+    def test_registry_env_override(self, install_ps1):
+        assert "OPENCLAW_NPM_REGISTRY" in install_ps1
+
+    def test_npm_fetch_timeout_set(self, install_ps1):
+        assert "NPM_CONFIG_FETCH_TIMEOUT" in install_ps1
+        assert "NPM_CONFIG_FETCH_RETRIES" in install_ps1
+
+
+class TestOpenClawInstallObservability:
+    def test_log_file_created(self, install_ps1):
+        assert "opc200-openclaw-install-" in install_ps1
+
+    def test_timeout_constant(self, install_ps1):
+        assert "OPENCLAW_INSTALL_TIMEOUT_SEC" in install_ps1
+        assert "900" in install_ps1
+
+    def test_timeout_enforced(self, install_ps1):
+        assert "deadline" in install_ps1
+        assert "超时" in install_ps1
+
+    def test_realtime_output(self, install_ps1):
+        assert "Get-Content" in install_ps1
+        assert "openclaw]" in install_ps1
+
+    def test_exit_code_checked(self, install_ps1):
+        assert "ExitCode" in install_ps1
+
+    def test_log_path_shown_on_failure(self, install_ps1):
+        assert "日志:" in install_ps1
+
+
 class TestOpenClawOfficialInstall:
     def test_official_install_url_configurable(self, install_ps1):
         assert "OPENCLAW_INSTALL_URL" in install_ps1
@@ -159,6 +221,11 @@ class TestOpenClawOfficialInstall:
     def test_official_host_whitelist(self, install_ps1):
         assert "OPENCLAW_ALLOWED_HOSTS" in install_ps1
         assert "openclaw.ai" in install_ps1
+
+    def test_official_install_uses_subprocess(self, install_ps1):
+        assert "Install-OpenClawOfficial" in install_ps1
+        assert "Start-Process" in install_ps1
+        assert "HasExited" in install_ps1
 
 
 class TestOpenClawPreload:
@@ -213,6 +280,12 @@ class TestUninstall:
 
     def test_admin_check(self, uninstall_ps1):
         assert "Administrator" in uninstall_ps1
+
+    def test_purge_openclaw_switch(self, uninstall_ps1):
+        assert "PurgeOpenClaw" in uninstall_ps1
+
+    def test_openclaw_official_uninstall_invoked(self, uninstall_ps1):
+        assert "openclaw uninstall --all --yes --non-interactive" in uninstall_ps1
 
 
 # ── 与 AGENT-001 SPEC 一致性 ────────────────────────────────────

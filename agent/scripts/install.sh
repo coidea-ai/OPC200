@@ -12,9 +12,13 @@ DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VE
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="https://platform.opc200.co"
 OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
+OPENCLAW_MIN_NODE_MAJOR=22
+OPENCLAW_DEFAULT_NPM_REGISTRY="https://registry.npmmirror.com/"
+OPENCLAW_INSTALL_TIMEOUT_SEC=900
+OPENCLAW_NET_CHECK_HOSTS=("openclaw.ai" "registry.npmmirror.com" "github.com")
 OPENCLAW_DEFAULT_PROFILE_DIR="$HOME/.openclaw"
 OPENCLAW_DEFAULT_SKILLS="skill-vetter"
-OPENCLAW_DEFAULT_SKILL_INSTALL_CMD="openclaw skill install"
+OPENCLAW_DEFAULT_SKILL_INSTALL_CMD="openclaw skills install"
 DEFAULT_PORT=8080
 MIN_DISK_MB=1024
 
@@ -86,7 +90,7 @@ detect_pkg_manager() {
 # ── Step 1: 环境检查 ─────────────────────────────────────────────
 
 step_check_env() {
-    info "1/7 环境检查"
+    info "1/10 环境检查"
 
     # root / sudo
     if [[ $EUID -ne 0 ]]; then
@@ -177,7 +181,7 @@ step_check_env() {
 # ── Step 2: 获取配置 ─────────────────────────────────────────────
 
 step_get_config() {
-    info "2/9 获取配置"
+    info "2/10 获取配置"
 
     if $SILENT; then
         [[ -z "$PLATFORM_URL" ]] && PLATFORM_URL="$DEFAULT_URL"
@@ -207,10 +211,104 @@ step_get_config() {
     ok "目录: $INSTALL_DIR"
 }
 
-# ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
+# ── Step 3: 准备 Node.js（Linux）──────────────────────────────────
+
+get_node_major_version() {
+    if ! command -v node &>/dev/null; then
+        echo "0"
+        return
+    fi
+    local ver
+    ver="$(node -v 2>/dev/null || true)"
+    if [[ "$ver" =~ ^v([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+    fi
+    echo "0"
+}
+
+install_node_linux_from_official() {
+    local node_arch
+    case "$(uname -m)" in
+        x86_64|amd64) node_arch="x64" ;;
+        aarch64|arm64) node_arch="arm64" ;;
+        *) fail $E002 "E002: Node 官方包不支持当前架构: $(uname -m)" ;;
+    esac
+
+    local page tarball url tmpdir extracted
+    page="$(curl -fsSL "https://nodejs.org/dist/latest-v22.x/" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 22）"
+    tarball="$(printf '%s\n' "$page" | sed -n "s/.*href=\"\\(node-v22[^\"]*-linux-${node_arch}\\.tar\\.xz\\)\".*/\\1/p" | head -n1)"
+    [[ -n "$tarball" ]] || fail $E002 "E002: 未找到 Node 22 Linux 安装包（架构 ${node_arch}）"
+    url="https://nodejs.org/dist/latest-v22.x/${tarball}"
+
+    tmpdir="$(mktemp -d)"
+    register_rollback "rm -rf '${tmpdir}'"
+    ok "下载 Node.js: $url"
+    curl -fsSL "$url" -o "${tmpdir}/node.tar.xz" || fail $E002 "E002: 下载 Node 22 失败"
+    tar -xJf "${tmpdir}/node.tar.xz" -C "$tmpdir" || fail $E002 "E002: 解压 Node 22 失败"
+    extracted="$(ls -d "${tmpdir}"/node-v22* 2>/dev/null | head -n1)"
+    [[ -n "$extracted" ]] || fail $E002 "E002: Node 22 解压目录异常"
+
+    cp -f "${extracted}/bin/node" /usr/local/bin/node || fail $E002 "E002: 安装 node 失败"
+    cp -f "${extracted}/bin/npm" /usr/local/bin/npm || true
+    cp -f "${extracted}/bin/npx" /usr/local/bin/npx || true
+    rm -rf /usr/local/lib/node_modules
+    mkdir -p /usr/local/lib/node_modules
+    cp -a "${extracted}/lib/node_modules/." /usr/local/lib/node_modules/ || fail $E002 "E002: 安装 node_modules 失败"
+    ok "Node.js 22 已安装到 /usr/local/bin"
+}
+
+step_prepare_node_runtime() {
+    info "3/10 准备 Node.js（OpenClaw 需要 v${OPENCLAW_MIN_NODE_MAJOR}+）"
+
+    if [[ "$OS_TYPE" != "linux" ]]; then
+        ok "当前非 Linux，跳过 Node.js 预安装步骤"
+        return
+    fi
+
+    local major
+    major="$(get_node_major_version)"
+    if [[ "$major" -ge "$OPENCLAW_MIN_NODE_MAJOR" ]]; then
+        ok "Node.js 主版本 ${major} 已满足要求"
+        return
+    fi
+
+    if [[ "$major" -gt 0 ]]; then
+        warn "当前 Node.js 主版本 ${major}，需要 ${OPENCLAW_MIN_NODE_MAJOR}+，将自动安装 Node 22"
+    else
+        warn "未检测到 Node.js，将自动安装 Node 22"
+    fi
+
+    install_node_linux_from_official
+    hash -r
+    major="$(get_node_major_version)"
+    [[ "$major" -ge "$OPENCLAW_MIN_NODE_MAJOR" ]] || fail $E002 "E002: Node.js 版本仍低于 ${OPENCLAW_MIN_NODE_MAJOR}+"
+    ok "Node.js 主版本 ${major} 已就绪"
+}
+
+# ── 网络预检 ─────────────────────────────────────────────────────
+
+step_network_check() {
+    info "3.5/10 网络连通性预检"
+    local all_ok=true
+    for h in "${OPENCLAW_NET_CHECK_HOSTS[@]}"; do
+        if command -v nc &>/dev/null; then
+            nc -z -w 5 "$h" 443 &>/dev/null && ok "可达: $h" || { warn "不可达: $h（安装可能变慢或失败）"; all_ok=false; }
+        elif command -v curl &>/dev/null; then
+            curl -sf --connect-timeout 5 "https://$h" -o /dev/null &>/dev/null && ok "可达: $h" || { warn "不可达: $h（安装可能变慢或失败）"; all_ok=false; }
+        else
+            warn "无 nc/curl，跳过 $h 连通性检测"
+        fi
+    done
+    if ! $all_ok; then
+        warn "部分主机不可达；若安装超时，可设置 OPENCLAW_NPM_REGISTRY 指向可用镜像后重试"
+    fi
+}
+
+# ── Step 4: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 step_install_openclaw_official() {
-    info "3/9 官方渠道安装 OpenClaw latest"
+    info "4/10 官方渠道安装 OpenClaw latest"
 
     # 允许环境变量覆写安装入口，但仅允许官方域名，避免被导向私有或恶意源。
     local install_url="${OPENCLAW_INSTALL_URL:-$OPENCLAW_DEFAULT_INSTALL_URL}"
@@ -228,16 +326,42 @@ step_install_openclaw_official() {
         channel="latest"
     fi
 
+    # npm registry：优先使用环境变量，默认淘宝镜像加速
+    local npm_registry="${OPENCLAW_NPM_REGISTRY:-$OPENCLAW_DEFAULT_NPM_REGISTRY}"
+
     ok "OpenClaw 安装源: $install_url"
     ok "OpenClaw 渠道: $channel"
-    curl -fsSL "$install_url" | bash || fail $E002 "E002: OpenClaw 官方安装失败"
+    ok "npm registry: $npm_registry"
+
+    # 实时输出 + 超时控制：通过 tee 落日志，timeout 命令限制最长执行时间
+    local log_file
+    log_file="$(mktemp /tmp/opc200-openclaw-install-XXXXXX.log)"
+    ok "安装日志: $log_file"
+
+    local exit_code=0
+    NPM_CONFIG_REGISTRY="$npm_registry" \
+    NPM_CONFIG_FETCH_RETRIES="3" \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="10000" \
+    NPM_CONFIG_FETCH_TIMEOUT="60000" \
+    NODE_LLAMA_CPP_SKIP_DOWNLOAD="1" \
+    OPENCLAW_NO_ONBOARD="1" \
+        timeout "$OPENCLAW_INSTALL_TIMEOUT_SEC" \
+        bash -c "curl -fsSL '$install_url' | bash" \
+        2>&1 | tee "$log_file" || exit_code=${PIPESTATUS[0]}
+
+    if [[ "$exit_code" -eq 124 ]]; then
+        fail $E002 "E002: OpenClaw 官方安装超时（>${OPENCLAW_INSTALL_TIMEOUT_SEC}s）。日志: $log_file"
+    elif [[ "$exit_code" -ne 0 ]]; then
+        fail $E002 "E002: OpenClaw 官方安装失败（退出码 ${exit_code}）。日志: $log_file"
+    fi
+
     ok "OpenClaw 官方安装完成"
 }
 
-# ── Step 4: 轻预装层（skills + 文档）────────────────────────────
+# ── Step 5: 轻预装层（skills + 文档）────────────────────────────
 
 step_preinstall_openclaw_assets() {
-    info "4/9 轻预装层（skills + 文档）"
+    info "5/10 轻预装层（skills + 文档）"
 
     local profile_dir="${OPENCLAW_PROFILE_DIR:-$OPENCLAW_DEFAULT_PROFILE_DIR}"
     local skills_csv="${OPENCLAW_PREINSTALL_SKILLS:-$OPENCLAW_DEFAULT_SKILLS}"
@@ -292,7 +416,7 @@ _write_doc_template_from_file() {
 
 step_download() {
     if [[ -n "$LOCAL_BINARY" ]]; then
-        info "5/9 使用本地二进制"
+        info "6/10 使用本地二进制"
         [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
         TMP_BINARY="$LOCAL_BINARY"
         ok "使用本地二进制: $LOCAL_BINARY"
@@ -303,9 +427,9 @@ step_download() {
         local reqfile="requirements-agent-runtime.txt"
         if $FULL_RUNTIME_DEPS; then
             reqfile="requirements-agent-runtime-full.txt"
-            info "5/9 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
+            info "6/10 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
         else
-            info "5/9 Python 运行环境 (venv + pip，精简依赖)"
+            info "6/10 Python 运行环境 (venv + pip，精简依赖)"
         fi
         [[ -f "$REPO_ROOT/agent/scripts/$reqfile" ]] || fail $E001 "E001: 缺少 $reqfile（$REPO_ROOT）"
         local pyexe=python3
@@ -323,7 +447,7 @@ step_download() {
         return
     fi
 
-    info "5/9 下载 Agent"
+    info "6/10 下载 Agent"
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -386,7 +510,7 @@ step_download() {
 # ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 step_install() {
-    info "6/9 安装部署"
+    info "7/10 安装部署"
 
     local root="$INSTALL_DIR"
     local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/journal" "$root/data/exporter" "$root/logs")
@@ -456,7 +580,7 @@ YAML
 # ── Step 7: 注册系统服务 ─────────────────────────────────────────
 
 step_register_service() {
-    info "7/9 注册系统服务"
+    info "8/10 注册系统服务"
 
     local agent_bin="${INSTALL_DIR}/bin/opc-agent"
     local config_yml="${INSTALL_DIR}/config/config.yml"
@@ -537,7 +661,7 @@ PLIST
 # ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 step_start_verify() {
-    info "8/9 启动验证"
+    info "9/10 启动验证"
 
     if [[ "$OS_TYPE" == "linux" ]]; then
         systemctl start "$SERVICE_NAME" || fail $E005 "E005: 服务启动失败"
@@ -574,7 +698,7 @@ step_start_verify() {
 # ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 step_summary() {
-    info "9/9 安装完成"
+    info "10/10 安装完成"
 
     echo ""
     echo "  安装目录 : $INSTALL_DIR"
@@ -634,6 +758,8 @@ main() {
 
     step_check_env
     step_get_config
+    step_prepare_node_runtime
+    step_network_check
     step_install_openclaw_official
     step_preinstall_openclaw_assets
     step_download
