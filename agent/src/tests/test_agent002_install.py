@@ -57,10 +57,15 @@ class TestInstallParams:
 class TestInstallSteps:
     STEP_FUNCTIONS = [
         "Test-Environment",
-        "Get-InstallConfig",
+        "Initialize-InstallPaths",
         "Ensure-OpenClawNodeRuntime",
+        "Test-OpenClawNetworkReady",
         "Install-OpenClawOfficial",
+        "Install-OpenClawOnboardIfRequested",
         "Install-OpenClawPreload",
+        "Ensure-OpenClawCliPresentOrInstall",
+        "Invoke-OpenClawPart2InstallAndGateway",
+        "Get-OpcAgentPlatformConfig",
         "Get-AgentBinary",
         "Install-Agent",
         "Register-Service",
@@ -138,15 +143,28 @@ class TestSecurity:
     def test_api_key_secure_input(self, install_ps1):
         assert "AsSecureString" in install_ps1
 
+    def test_secure_string_to_plain_uses_bstr(self, install_ps1):
+        assert "PtrToStringBSTR" in install_ps1
+        assert "PtrToStringAuto" not in install_ps1
 
-# ── SHA256 校验 ──────────────────────────────────────────────────
+    def test_secret_input_rejects_control_chars(self, install_ps1):
+        assert "Test-SecretPlainLooksValid" in install_ps1
+        assert "IsControl" in install_ps1
 
-class TestChecksum:
-    def test_sha256_check(self, install_ps1):
-        assert "SHA256" in install_ps1
+    def test_read_secure_line_trims_paste_whitespace(self, install_ps1):
+        i = install_ps1.find("function Normalize-SecretPlainLine")
+        assert i >= 0
+        assert ".Trim()" in install_ps1[i : i + 400]
 
-    def test_checksum_file_referenced(self, install_ps1):
-        assert "SHA256SUMS" in install_ps1
+    def test_read_secure_line_offers_plain_and_file_modes(self, install_ps1):
+        assert "回车=2" in install_ps1
+        assert "UTF-8 文本文件" in install_ps1
+
+
+class TestVenvInstall:
+    def test_venv_and_pip(self, install_ps1):
+        assert "python.exe" in install_ps1
+        assert "pip install" in install_ps1
 
 
 class TestOpenClawNodePrerequisite:
@@ -179,8 +197,8 @@ class TestOpenClawNpmAcceleration:
         assert "registry.npmmirror.com" in install_ps1
         assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
 
-    def test_registry_env_override(self, install_ps1):
-        assert "OPENCLAW_NPM_REGISTRY" in install_ps1
+    def test_registry_uses_script_default_only(self, install_ps1):
+        assert "$npmRegistry = $script:OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
 
     def test_npm_fetch_timeout_set(self, install_ps1):
         assert "NPM_CONFIG_FETCH_TIMEOUT" in install_ps1

@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-15（P1 新增 AGENT-008：OpenClaw 开箱即用配置自动化）
+**最后更新**: 2026-04-16（AGENT-008 ✅；`install.ps1` 三部分/14 步流程重构）
 
 ---
 
@@ -197,19 +197,19 @@
 - **预计 AI 工时**: 2h
 - **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - ✅ `agent/scripts/install.ps1` — 7 步安装流程，严格按 AGENT-001 SPEC
+  - ✅ `agent/scripts/install.ps1` — 主流程 14 段（步骤提示 1/14–14/14），严格按 AGENT-001 SPEC；仅 Python venv+源码
   - ✅ `agent/scripts/uninstall.ps1` — 3 步卸载，支持 KeepData
-  - ✅ `agent/src/tests/test_agent002_install.py` — 49 个规范一致性测试
+  - ✅ `agent/src/tests/test_agent002_install.py` — 安装脚本规范一致性测试
   - ✅ 目录结构 `~/.opc200/`（bin/config/data/journal/exporter/logs）
-  - ✅ SHA256 校验、端口占用检测、磁盘空间检查
+  - ✅ 端口占用检测、磁盘空间检查
   - ✅ 错误码 E001-E005（按 SPEC §6.1）
   - ✅ 失败自动回滚（按 SPEC §6.2）
   - ✅ .env ACL 权限受限存储 API Key
-- **测试**: 49/49 规范一致性测试通过
+- **测试**: `pytest agent/src/tests/test_agent002_install.py` 规范一致性测试通过
 - **提交**: `d2c84fb`（v2），~~`7515747`~~（v1 已废弃）
 - **v2 改进**:
   - 安装目录从 `$LOCALAPPDATA\OPC200` 改为 `~/.opc200/`（与 SPEC 对齐）
-  - 新增 `bin/` 子目录、SHA256 校验、端口检测、回滚机制
+  - 新增 `bin/` 子目录、端口检测、回滚机制（Windows 现仅 venv+源码，无 Release exe 校验）
   - 删除旧 TEST_PLAN.md / LOCAL_TEST_GUIDE.md / run-local-tests.sh
 - **依赖**: AGENT-001 ✅
 
@@ -317,15 +317,15 @@
 
 #### AGENT-008: OpenClaw 开箱即用配置自动化（免手动 setup）
 
-- **状态**: 🏃 进行中 (In Progress)
+- **状态**: ✅ 已完成
 - **负责人**: @zhang-yao-claw
 - **预计 AI 工时**: 4h
 - **描述**: 安装脚本自动完成 OpenClaw 最小可用配置（模型提供商/模型/API Key 等），支持交互问答与静默参数输入，完成后可直接可用。
 - **里程碑**:
-  - [ ] M1 明确最小可用配置集（provider / model / api key / 可选 base url）
-  - [ ] M2 安装阶段交互采集 + 静默参数输入（Windows + Linux）
-  - [ ] M3 非引导式配置落地（优先官方 CLI，失败 fallback 配置文件）
-  - [ ] M4 完成安装后可用性验证（gateway/dashboard health）与错误兜底提示
+  - [x] M1 明确最小可用配置集（`OPENCLAW_AUTH_CHOICE` + 网关端口 + custom 端点变量；与官方 onboard 文档对齐）
+  - [x] M2 安装阶段交互采集 + 静默参数输入（Windows `install.ps1` + Linux `install.sh`）
+  - [x] M3 非引导式配置落地（`openclaw onboard --non-interactive`；写配置文件 fallback 列为后续，见 Roadmap §2.8）
+  - [x] M4 安装后网关 HTTP 健康检查 + `OPENCLAW_ONBOARD_STRICT` 严格失败中止
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
 
 #### AGENT-009: 调整 Python import 路径
@@ -454,6 +454,14 @@
 
 ## 📝 任务变更日志
 
+### 2026-04-16
+
+- **重构**: `install.ps1`（AGENT-007/002 对齐）：安装开头不再采集平台三件套；OpenClaw 顺序为官方安装 → PATH 同步 → onboard → 轻预装 → `doctor` + `gateway restart`；OPC200 Agent 前再采平台与租户，平台 ApiKey 复用 OpenClaw 模型密钥或 `-ApiKey` / `OPC200_API_KEY`；移除 `-LocalBinary`/`-UseBinary` 与 Release exe 下载，仅 venv+pip；`agent/README.md` + `test_agent002_install.py` 同步
+- **完成**: AGENT-008 OpenClaw 开箱即用配置自动化
+  - `agent/scripts/install.ps1`：可选 `-OpenClawOnboard` / `-SkipOpenClawOnboard` / `-OpenClawAuthChoice`；`OPENCLAW_ONBOARD=1` 时执行 `openclaw onboard --non-interactive`；交互 `SecureString`；健康探测与 `OPENCLAW_ONBOARD_STRICT`
+  - `agent/scripts/install.sh`：`--openclaw-onboard` / `--skip-openclaw-onboard`；子 shell 注入密钥避免污染父环境；GNU `timeout` 包裹 onboard
+  - 单测：`agent/src/tests/test_agent008_openclaw_onboard_install.py`；Roadmap §2.8 已勾选
+
 ### 2026-04-15
 
 - **规划**: 将“OpenClaw 开箱即用配置自动化”纳入 P1，落位为 AGENT-008，并顺延后续任务编号（AGENT-009~017）
@@ -572,6 +580,7 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-008**: OpenClaw 可选非交互 onboard + 网关健康验证（2026-04-16）
 - **AGENT-007**: OpenClaw 官方安装 + 轻预装 + `agent_health` 网关探测打通（2026-04-15）
 - **AGENT-003**: v2 重写 Mac/Linux 安装脚本（2026-04-12）
 - **AGENT-002**: v2 重写 Windows 安装脚本（2026-04-12）
@@ -586,10 +595,10 @@
 
 | 状态 | Phase 1 | Phase 2 | Phase 3 | Backlog |
 |------|---------|---------|---------|---------|
-| 📥 待领取 | 0 | 5 | 3 | 2 |
+| 📥 待领取 | 0 | 4 | 3 | 2 |
 | 🏃 进行中 | 0 | 0 | 0 | 0 |
 | 👀 审核中 | 0 | 0 | 0 | 0 |
-| ✅ 已完成 | 12 | 1 | 0 | 0 |
+| ✅ 已完成 | 12 | 2 | 0 | 0 |
 | ⏸️ 阻塞中 | 0 | 0 | 0 | 0 |
 
 ---

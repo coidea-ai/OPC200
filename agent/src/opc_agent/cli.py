@@ -1,7 +1,6 @@
 """opc-agent CLI: --config PATH (run | service run) — 本地健康检查 + 指标推送。
 
-install.ps1 注册的 Windows 服务若出现 1053，说明 SCM 需要原生 Service 宿主；
-联调阶段可前台运行: opc-agent.exe --config ... run
+联调: `python -m agent.src.opc_agent.cli --config ... run`（与安装脚本 venv 一致）。
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ def main() -> None:
     if not cfg:
         sys.stderr.write(
             "usage: opc-agent --config PATH (run | service run)\n"
-            "  run          — 前台运行（联调 / LocalBinary 推荐）\n"
+            "  run          — 前台运行（联调）\n"
             "  service run  — 与 run 相同（保留与 install.ps1 参数一致）\n"
         )
         sys.exit(2)

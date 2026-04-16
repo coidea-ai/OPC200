@@ -4,33 +4,33 @@
     OPC200 Agent Windows 安装脚本 (v2)
 .DESCRIPTION
     按 AGENT-001 (docs/INSTALL_SCRIPT_SPEC.md) 规范实现。
-    流程: 环境检查 → 配置获取 → 下载 Agent → 安装部署 → 注册计划任务(登录自启) → 启动验证 → 完成输出
+    流程: 环境检测 → OpenClaw 安装与配置 → OPC200 Agent (venv) → 计划任务 → 验证
 .PARAMETER PlatformUrl
-    平台端点地址 (默认 https://platform.opc200.co)
+    平台端点（第三部分；静默必填时可省略则用默认）
 .PARAMETER CustomerId
-    用户唯一标识
+    租户 ID（第三部分；静默必填）
 .PARAMETER ApiKey
-    API 认证密钥
+    平台 ApiKey；若已在 OpenClaw 步骤填写模型密钥则复用，无需再传
 .PARAMETER InstallDir
     安装目录 (默认 ~/.opc200)
 .PARAMETER Port
     本地服务端口 (默认 8080)
 .PARAMETER Silent
     静默安装模式
-.PARAMETER LocalBinary
-    本地 opc-agent 可执行文件路径；指定时跳过从 GitHub Release 下载（适用于 Release 尚未发布或离线安装）
-.PARAMETER UseBinary
-    从 GitHub Release 下载单文件 exe；默认不使用二进制，而用本机 Python venv + 仓库源码运行
 .PARAMETER RepoRoot
     OPC200 仓库根目录（含 agent/、src/）；默认为本脚本所在位置的 ..\..
 .PARAMETER FullRuntimeDeps
     安装完整 pip 依赖（含 sentence-transformers/PyTorch，很慢）；默认仅装精简依赖（/health + 指标推送）
+.PARAMETER OpenClawOnboard
+    显式要求执行 onboard（静默时常用）。交互安装默认即会执行，一般无需再传。
+.PARAMETER SkipOpenClawOnboard
+    跳过 OpenClaw 首次配置（交互默认会做；设 OPENCLAW_ONBOARD=0 亦可关闭）
+.PARAMETER OpenClawAuthChoice
+    与 OPENCLAW_AUTH_CHOICE 一致：apiKey | openai-api-key | gemini-api-key | custom-api-key（不再支持 skip）
 .EXAMPLE
     .\install.ps1
 .EXAMPLE
-    .\install.ps1 -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx" -Silent
-.EXAMPLE
-    .\install.ps1 -Silent -LocalBinary "C:\build\opc-agent-windows-amd64.exe" -PlatformUrl "http://127.0.0.1:9091" -CustomerId "e2e-1" -ApiKey "x"
+    .\install.ps1 -Silent -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx"
 #>
 
 param(
@@ -40,10 +40,11 @@ param(
     [string]$InstallDir = "",
     [int]$Port          = 8080,
     [switch]$Silent,
-    [string]$LocalBinary = "",
-    [switch]$UseBinary,
     [string]$RepoRoot   = "",
-    [switch]$FullRuntimeDeps
+    [switch]$FullRuntimeDeps,
+    [switch]$OpenClawOnboard,
+    [switch]$SkipOpenClawOnboard,
+    [string]$OpenClawAuthChoice = ""
 )
 
 Set-StrictMode -Version Latest
@@ -52,9 +53,6 @@ $ErrorActionPreference = "Stop"
 # ── 常量 ──────────────────────────────────────────────────────────
 
 $script:AGENT_VERSION   = "2.3.0"
-$script:DOWNLOAD_BASE   = "https://github.com/coidea-ai/OPC200/releases/download/v$($script:AGENT_VERSION)"
-$script:AGENT_BINARY    = "opc-agent-windows-amd64.exe"
-$script:CHECKSUM_FILE   = "SHA256SUMS"
 $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
 $script:TASK_NAME       = "OPC200-Agent"
@@ -69,6 +67,11 @@ $script:OPENCLAW_NET_CHECK_HOSTS        = @("openclaw.ai", "registry.npmmirror.c
 $script:OPENCLAW_DEFAULT_PROFILE_DIR = Join-Path $HOME ".openclaw"
 $script:OPENCLAW_DEFAULT_SKILLS = "skill-vetter"
 $script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD = "openclaw skills install"
+$script:OPENCLAW_DEFAULT_GATEWAY_PORT      = 18789
+$script:OPENCLAW_ONBOARD_TIMEOUT_SEC      = 600
+$script:OPENCLAW_GW_INSTALL_MAX_RETRY     = 3
+$script:OPENCLAW_GATEWAY_WARMUP_MAX_TRIES  = 25
+$script:OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC  = 2
 $script:MIN_WIN_BUILD   = [System.Version]"10.0.17763"   # Windows 10 1809
 $script:MIN_DISK_GB     = 1
 
@@ -80,8 +83,11 @@ $script:E004 = 4   # 校验失败
 $script:E005 = 5   # 服务注册失败
 
 $script:RepoRootResolved = ""
-$script:UsePythonMode   = $true
 $script:RunAgentScript  = ""
+$script:PlatformUrl     = ""
+$script:CustomerId      = ""
+$script:ApiKey          = ""
+$script:InstallRoot     = ""
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
 
@@ -184,7 +190,7 @@ function Install-NodeJsWinMsiFromDist {
 }
 
 function Ensure-OpenClawNodeRuntime {
-    Write-Step "3/10 准备 Node.js（OpenClaw 需要 v$($script:OPENCLAW_MIN_NODE_MAJOR)+）"
+    Write-Step "3/15 准备 Node.js（OpenClaw 需要 v$($script:OPENCLAW_MIN_NODE_MAJOR)+）"
 
     Sync-SessionPathFromRegistry
     $maj = Get-NodeJsMajorVersion
@@ -235,7 +241,7 @@ function Ensure-OpenClawNodeRuntime {
 # ── Step 1: 环境检查 ─────────────────────────────────────────────
 
 function Test-Environment {
-    Write-Step "1/10 环境检查"
+    Write-Step "1/15 环境检查"
 
     # 管理员权限
     $principal = New-Object Security.Principal.WindowsPrincipal(
@@ -263,7 +269,7 @@ function Test-Environment {
     $drive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'"
     $freeGB = [math]::Round($drive.FreeSpace / 1GB, 2)
     if ($freeGB -lt $script:MIN_DISK_GB) {
-        Fail $script:E001 "E001: 磁盘可用 ${freeGB}GB, 需要 ${script:MIN_DISK_GB}GB+"
+        Fail $script:E001 "E001: 磁盘可用 ${freeGB}GB, 需要 $($script:MIN_DISK_GB)GB+"
     }
     Write-Ok "磁盘可用 ${freeGB}GB"
 
@@ -274,70 +280,79 @@ function Test-Environment {
     }
     Write-Ok "端口 $Port 可用"
 
-    if ($script:UsePythonMode) {
-        $cli = Join-Path $script:RepoRootResolved "agent\src\opc_agent\cli.py"
-        if (-not (Test-Path -LiteralPath $cli)) {
-            Fail $script:E001 "E001: 非 OPC200 仓库根目录: $($script:RepoRootResolved)（请用 -RepoRoot 或在克隆仓库内执行）"
-        }
-        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
-        if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
-        if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python/python3" }
-        $ver = & $pyCmd.Name -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
-        $parts = $ver -split '\.'
-        if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 10)) {
-            Fail $script:E001 "E001: 需要 Python 3.10+（当前 $ver）"
-        }
-        Write-Ok "Python 与源码: $($pyCmd.Source)；$($script:RepoRootResolved)"
+    $cli = Join-Path $script:RepoRootResolved "agent\src\opc_agent\cli.py"
+    if (-not (Test-Path -LiteralPath $cli)) {
+        Fail $script:E001 "E001: 非 OPC200 仓库根目录: $($script:RepoRootResolved)（请用 -RepoRoot 或在克隆仓库内执行）"
     }
+    $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
+    if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python/python3" }
+    if ($pyCmd.Source -like "*\AppData\Local\Microsoft\WindowsApps\python*.exe") {
+        Fail $script:E001 "E001: 当前仅检测到 WindowsApps Python 占位符，请先安装真实 Python 3.10+（建议 python.org 或 winget）"
+    }
+    $pyExe = $pyCmd.Source
+    $verRaw = & $pyExe -c "import sys; print('{}.{}'.format(sys.version_info[0], sys.version_info[1]))" 2>&1 | Select-Object -First 1
+    $verText = if ($null -eq $verRaw) { "" } else { "$verRaw".Trim() }
+    $m = [regex]::Match($verText, '\d+\.\d+')
+    $ver = if ($m.Success) { $m.Value } else { "" }
+    if (-not $ver) {
+        Fail $script:E001 "E001: 无法解析 Python 版本（当前输出: $verText）"
+    }
+    $parts = $ver -split '\.'
+    if ($parts.Count -lt 2) {
+        Fail $script:E001 "E001: Python 版本格式异常（当前 $ver）"
+    }
+    if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 10)) {
+        Fail $script:E001 "E001: 需要 Python 3.10+（当前 $ver）"
+    }
+    Write-Ok "Python 与源码: $($pyCmd.Source)；$($script:RepoRootResolved)"
 }
 
-# ── Step 2: 获取配置 ─────────────────────────────────────────────
-
-function Get-InstallConfig {
-    Write-Step "2/10 获取配置"
-
-    if ($Silent) {
-        if (-not $PlatformUrl)  { $script:PlatformUrl = $script:DEFAULT_URL } else { $script:PlatformUrl = $PlatformUrl }
-        if (-not $CustomerId)   { Fail $script:E001 "E001: 静默模式必须提供 -CustomerId" }
-        if (-not $ApiKey)       { Fail $script:E001 "E001: 静默模式必须提供 -ApiKey" }
-        $script:CustomerId = $CustomerId
-        $script:ApiKey     = $ApiKey
-    }
-    else {
-        $inputUrl = Read-Host "平台地址 [$($script:DEFAULT_URL)]"
-        $script:PlatformUrl = if ($inputUrl) { $inputUrl } else { $script:DEFAULT_URL }
-
-        do {
-            $script:CustomerId = Read-Host "Customer ID (必需)"
-            if (-not $script:CustomerId) { Write-Err "Customer ID 不能为空" }
-        } while (-not $script:CustomerId)
-
-        do {
-            $sec = Read-Host "API Key (必需)" -AsSecureString
-            $script:ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
-            )
-            if (-not $script:ApiKey) { Write-Err "API Key 不能为空" }
-        } while (-not $script:ApiKey)
-    }
-
-    # 安装目录
+function Initialize-InstallPaths {
+    Write-Step "2/15 安装目录"
     if ($InstallDir) {
-        $script:InstallRoot = $InstallDir
+        $script:InstallRoot = $InstallDir.Trim()
     }
     else {
         $script:InstallRoot = Join-Path $HOME ".opc200"
     }
+    Write-Ok "InstallRoot: $($script:InstallRoot)"
+}
 
-    Write-Ok "平台: $($script:PlatformUrl)"
-    Write-Ok "用户: $($script:CustomerId)"
-    Write-Ok "目录: $($script:InstallRoot)"
+function Get-OpcAgentPlatformConfig {
+    Write-Step "10/15 平台与租户 (OPC200 Agent)"
+
+    if ($Silent) {
+        if ($PlatformUrl) { $script:PlatformUrl = $PlatformUrl } else { $script:PlatformUrl = $script:DEFAULT_URL }
+        if (-not $CustomerId) { Fail $script:E001 "E001: 静默须 -CustomerId" }
+        $script:CustomerId = $CustomerId
+        if (-not $script:ApiKey) {
+            if ($ApiKey) { $script:ApiKey = $ApiKey }
+            elseif ($env:OPC200_API_KEY) { $script:ApiKey = $env:OPC200_API_KEY }
+            else { Fail $script:E001 "E001: 静默须平台 ApiKey：OpenClaw 已填模型密钥，或 -ApiKey，或 OPC200_API_KEY" }
+        }
+    }
+    else {
+        $inputUrl = Read-Host "平台地址 [$($script:DEFAULT_URL)]"
+        $script:PlatformUrl = if ($inputUrl) { $inputUrl } else { $script:DEFAULT_URL }
+        do {
+            $script:CustomerId = Read-Host "Customer ID (必需)"
+            if (-not $script:CustomerId) { Write-Err "不能为空" }
+        } while (-not $script:CustomerId)
+        if (-not $script:ApiKey) {
+            $script:ApiKey = Read-SecureLineNonEmpty -Prompt "平台 API Key (OpenClaw 未采集密钥时必填)"
+        }
+        else {
+            Write-Ok "已复用 OpenClaw 阶段的密钥作为平台 ApiKey"
+        }
+    }
+    Write-Ok "平台: $($script:PlatformUrl) | Customer: $($script:CustomerId)"
 }
 
 # ── 网络预检 ─────────────────────────────────────────────────────
 
 function Test-OpenClawNetworkReady {
-    Write-Step "3.5/10 网络连通性预检"
+    Write-Step "4/15 网络连通性预检"
     $allOk = $true
     foreach ($netHost in $script:OPENCLAW_NET_CHECK_HOSTS) {
         try {
@@ -356,14 +371,14 @@ function Test-OpenClawNetworkReady {
         }
     }
     if (-not $allOk) {
-        Write-Warn "部分主机不可达；若安装超时，可设置 OPENCLAW_NPM_REGISTRY 指向可用镜像后重试"
+        Write-Warn "部分主机不可达；若安装超时，请检查网络或稍后重试"
     }
 }
 
 # ── Step 3: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 function Install-OpenClawOfficial {
-    Write-Step "4/10 官方渠道安装 OpenClaw latest"
+    Write-Step "5/15 官方渠道安装 OpenClaw latest"
 
     # 允许通过环境变量覆写安装入口，但必须经过官方域名白名单校验。
     $installUrl = if ($env:OPENCLAW_INSTALL_URL) { $env:OPENCLAW_INSTALL_URL } else { $script:OPENCLAW_DEFAULT_INSTALL_URL }
@@ -382,7 +397,7 @@ function Install-OpenClawOfficial {
     }
 
     # npm registry：优先使用环境变量，默认淘宝镜像加速
-    $npmRegistry = if ($env:OPENCLAW_NPM_REGISTRY) { $env:OPENCLAW_NPM_REGISTRY } else { $script:OPENCLAW_DEFAULT_NPM_REGISTRY }
+    $npmRegistry = $script:OPENCLAW_DEFAULT_NPM_REGISTRY
     $prevRegistry          = $env:NPM_CONFIG_REGISTRY
     $prevFetchRetries      = $env:NPM_CONFIG_FETCH_RETRIES
     $prevFetchRetryTimeout = $env:NPM_CONFIG_FETCH_RETRY_MINTIMEOUT
@@ -395,6 +410,8 @@ function Install-OpenClawOfficial {
     Write-Ok "OpenClaw 安装源: $installUrl"
     Write-Ok "OpenClaw 渠道: $channel"
     Write-Ok "npm registry: $npmRegistry"
+    Write-Host "  [i] 本步将执行官方安装器（内含 npm 全局安装 openclaw，依赖大，首次常见 5–20 分钟；长时间无新行仍可能在下载/编译）。" -ForegroundColor DarkGray
+    Write-Host "  [i] 下方 [openclaw] 为实时输出；若暂时无输出，将每 15s 提示已运行时长与日志末行。" -ForegroundColor DarkGray
 
     # 实时日志落文件，超时 $OPENCLAW_INSTALL_TIMEOUT_SEC 秒后强制失败
     $logFile = Join-Path $env:TEMP ("opc200-openclaw-install-" + [Guid]::NewGuid().ToString("N") + ".log")
@@ -470,9 +487,11 @@ function Install-OpenClawOfficial {
             -RedirectStandardError  ($logFile + ".err") `
             -PassThru -NoNewWindow
 
-        # 实时跟踪日志输出
+        # 实时跟踪日志输出 + 心跳（npm 常长时间无 stdout，避免误以为卡死）
         $lastSize = 0
         $deadline = [DateTime]::UtcNow.AddSeconds($script:OPENCLAW_INSTALL_TIMEOUT_SEC)
+        $installStartedAt = Get-Date
+        $lastHeartbeatAt = $installStartedAt
         while (-not $proc.HasExited) {
             if ([DateTime]::UtcNow -gt $deadline) {
                 try { $proc.Kill() } catch { }
@@ -480,7 +499,7 @@ function Install-OpenClawOfficial {
             }
             Start-Sleep -Milliseconds 500
             if (Test-Path -LiteralPath $logFile) {
-                $content = Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue
+                $content = Get-Content -LiteralPath $logFile -Raw -Encoding utf8 -ErrorAction SilentlyContinue
                 if ($content -and $content.Length -gt $lastSize) {
                     $newLines = $content.Substring($lastSize) -split "`n"
                     foreach ($line in $newLines) {
@@ -490,11 +509,36 @@ function Install-OpenClawOfficial {
                     $lastSize = $content.Length
                 }
             }
+            $nowHb = Get-Date
+            if (($nowHb - $lastHeartbeatAt).TotalSeconds -ge 15) {
+                $lastHeartbeatAt = $nowHb
+                $elapsed = [int](($nowHb - $installStartedAt).TotalSeconds)
+                $kb = 0.0
+                if (Test-Path -LiteralPath $logFile) {
+                    try { $kb = [math]::Round((Get-Item -LiteralPath $logFile).Length / 1KB, 1) } catch { }
+                }
+                $tail = ""
+                if (Test-Path -LiteralPath $logFile) {
+                    try {
+                        $lastLine = Get-Content -LiteralPath $logFile -Tail 1 -Encoding utf8 -ErrorAction SilentlyContinue
+                        if ($lastLine) {
+                            $tail = "$lastLine".Trim()
+                            if ($tail.Length -gt 100) { $tail = $tail.Substring(0, 100) + "..." }
+                        }
+                    }
+                    catch { }
+                }
+                $hbMsg = "仍运行中（已 ${elapsed}s，日志约 ${kb} KB"
+                if ($tail) { $hbMsg += "，末行: $tail" }
+                else { $hbMsg += "，末行尚空（npm 可能仍在缓冲）" }
+                $hbMsg += "）"
+                Write-Host "  [openclaw] $hbMsg" -ForegroundColor DarkGray
+            }
         }
 
         # 打印剩余未输出内容
         if (Test-Path -LiteralPath $logFile) {
-            $content = Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue
+            $content = Get-Content -LiteralPath $logFile -Raw -Encoding utf8 -ErrorAction SilentlyContinue
             if ($content -and $content.Length -gt $lastSize) {
                 $newLines = $content.Substring($lastSize) -split "`n"
                 foreach ($line in $newLines) {
@@ -504,7 +548,7 @@ function Install-OpenClawOfficial {
             }
         }
         if (Test-Path -LiteralPath ($logFile + ".err")) {
-            $errContent = Get-Content -LiteralPath ($logFile + ".err") -Raw -ErrorAction SilentlyContinue
+            $errContent = Get-Content -LiteralPath ($logFile + ".err") -Raw -Encoding utf8 -ErrorAction SilentlyContinue
             if ($errContent -and $errContent.Trim() -ne "") {
                 foreach ($line in ($errContent -split "`n")) {
                     $trimmed = $line.TrimEnd("`r")
@@ -532,6 +576,7 @@ function Install-OpenClawOfficial {
         $env:OPENCLAW_NO_ONBOARD               = $null
     }
     Write-Ok "OpenClaw 官方安装完成"
+    Write-Host "  [i] 若日志里出现 openclaw doctor 提示 gateway.mode 未设置、属安装器收尾阶段尚未 onboard；下一步将 onboard / 轻预装 / 复查。" -ForegroundColor DarkGray
 }
 
 # ── Step 4: 轻预装层（skills + 文档）────────────────────────────
@@ -549,7 +594,7 @@ function Write-DocTemplate {
 }
 
 function Install-OpenClawPreload {
-    Write-Step "5/10 轻预装层（skills + 文档）"
+    Write-Step "7/15 轻预装层（skills + 文档）"
 
     $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { $script:OPENCLAW_DEFAULT_PROFILE_DIR }
     $skillsCsv = if ($env:OPENCLAW_PREINSTALL_SKILLS) { $env:OPENCLAW_PREINSTALL_SKILLS } else { $script:OPENCLAW_DEFAULT_SKILLS }
@@ -588,6 +633,490 @@ function Install-OpenClawPreload {
     }
 }
 
+function Build-ProcessStartInfoArguments {
+    param([string[]]$ArgsAll)
+    $sb = New-Object System.Text.StringBuilder
+    $idx = 0
+    foreach ($arg in $ArgsAll) {
+        $s = "$arg"
+        if ($idx -gt 0) { [void]$sb.Append(' ') }
+        $idx++
+        if ($s -match '[\s"]') {
+            [void]$sb.Append('"')
+            [void]$sb.Append(($s -replace '"', '""'))
+            [void]$sb.Append('"')
+        }
+        else {
+            [void]$sb.Append($s)
+        }
+    }
+    return $sb.ToString()
+}
+
+function Start-OpenClawCliProcess {
+    param(
+        [Parameter(Mandatory)][string]$OpenclawPath,
+        [Parameter(Mandatory)][string[]]$CliArguments,
+        [string]$RedirectStandardOutput,
+        [string]$RedirectStandardError,
+        [switch]$NoNewWindow,
+        [switch]$PassThru,
+        [switch]$Wait
+    )
+    $resolved = $OpenclawPath
+    if (-not (Test-Path -LiteralPath $resolved)) {
+        throw "OpenClaw 路径不存在: $resolved"
+    }
+    $resolved = (Resolve-Path -LiteralPath $resolved).Path
+    $ext = [System.IO.Path]::GetExtension($resolved).ToLowerInvariant()
+
+    $sp = @{
+        NoNewWindow = [bool]$NoNewWindow
+        PassThru    = [bool]$PassThru
+        Wait        = [bool]$Wait
+    }
+    if ($RedirectStandardOutput) { $sp['RedirectStandardOutput'] = $RedirectStandardOutput }
+    if ($RedirectStandardError) { $sp['RedirectStandardError'] = $RedirectStandardError }
+
+    function Escape-CmdArg {
+        param([string]$s)
+        $t = "$s"
+        if ($t -match '[\s"&]') { return '"' + ($t -replace '"', '""') + '"' }
+        return $t
+    }
+
+    function Start-OpenClawProcessFromStartInfo {
+        param(
+            [string]$FileName,
+            [string]$Arguments
+        )
+        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+        $pinfo.FileName = $FileName
+        $pinfo.Arguments = $Arguments
+        $pinfo.UseShellExecute = $false
+        $pinfo.CreateNoWindow = [bool]$NoNewWindow
+        if ($RedirectStandardOutput) {
+            $pinfo.RedirectStandardOutput = $true
+            $pinfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        }
+        if ($RedirectStandardError) {
+            $pinfo.RedirectStandardError = $true
+            $pinfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        }
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $pinfo
+        [void]$proc.Start()
+        if ($RedirectStandardOutput -or $RedirectStandardError) {
+            if (-not $Wait) {
+                throw "内部错误：重定向输出时必须 Wait"
+            }
+            $proc.WaitForExit()
+            $outText = if ($RedirectStandardOutput) { $proc.StandardOutput.ReadToEnd() } else { "" }
+            $errText = if ($RedirectStandardError) { $proc.StandardError.ReadToEnd() } else { "" }
+            if ($RedirectStandardOutput) {
+                [System.IO.File]::WriteAllText($RedirectStandardOutput, $outText, [System.Text.UTF8Encoding]::new($false))
+            }
+            if ($RedirectStandardError) {
+                [System.IO.File]::WriteAllText($RedirectStandardError, $errText, [System.Text.UTF8Encoding]::new($false))
+            }
+        }
+        elseif ($Wait) {
+            $proc.WaitForExit()
+        }
+        return $proc
+    }
+
+    if ($ext -eq '.cmd' -or $ext -eq '.bat') {
+        $tail = if ($CliArguments.Count -gt 0) { ' ' + (($CliArguments | ForEach-Object { Escape-CmdArg $_ }) -join ' ') } else { '' }
+        $inner = "`"$resolved`"$tail"
+        return Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', $inner) @sp
+    }
+    if ($ext -eq '.ps1') {
+        $psExe = $null
+        foreach ($name in @('pwsh.exe', 'powershell.exe')) {
+            $c = Get-Command $name -ErrorAction SilentlyContinue
+            if ($c) {
+                $psExe = (Resolve-Path -LiteralPath $c.Source).Path
+                break
+            }
+        }
+        if (-not $psExe) {
+            $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        }
+        $allPs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $resolved) + $CliArguments
+        $argLine = Build-ProcessStartInfoArguments $allPs
+        return Start-OpenClawProcessFromStartInfo -FileName $psExe -Arguments $argLine
+    }
+    if ($ext -eq '.exe') {
+        $argLine = Build-ProcessStartInfoArguments $CliArguments
+        return Start-OpenClawProcessFromStartInfo -FileName $resolved -Arguments $argLine
+    }
+
+    $isPe = $false
+    try {
+        $fs = [System.IO.File]::OpenRead($resolved)
+        $buf = New-Object byte[] 2
+        $n = $fs.Read($buf, 0, 2)
+        $fs.Dispose()
+        if ($n -ge 2 -and $buf[0] -eq 0x4D -and $buf[1] -eq 0x5A) { $isPe = $true }
+    }
+    catch { }
+
+    if ($isPe) {
+        $argLine = Build-ProcessStartInfoArguments $CliArguments
+        return Start-OpenClawProcessFromStartInfo -FileName $resolved -Arguments $argLine
+    }
+
+    $cmdSibling = "$resolved.cmd"
+    if (Test-Path -LiteralPath $cmdSibling) {
+        $tail = if ($CliArguments.Count -gt 0) { ' ' + (($CliArguments | ForEach-Object { Escape-CmdArg $_ }) -join ' ') } else { '' }
+        $inner = "`"$cmdSibling`"$tail"
+        return Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', $inner) @sp
+    }
+
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($nodeCmd) {
+        $nodeExe = (Resolve-Path -LiteralPath $nodeCmd.Source).Path
+        $argLine = Build-ProcessStartInfoArguments (@($resolved) + $CliArguments)
+        return Start-OpenClawProcessFromStartInfo -FileName $nodeExe -Arguments $argLine
+    }
+
+    throw "无法启动 openclaw（非 PE 且未找到 node.exe）：$resolved"
+}
+
+function Invoke-OpenClawLoggedUtf8 {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList,
+        [Parameter(Mandatory)][string]$LinePrefix
+    )
+    $logOut = Join-Path $env:TEMP ("opc200-openclaw-" + [Guid]::NewGuid().ToString("N") + ".log")
+    $logErr = "${logOut}.err"
+    try {
+        $p = Start-OpenClawCliProcess -OpenclawPath $ExePath -CliArguments $ArgumentList -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+        foreach ($pth in @($logOut, $logErr)) {
+            if (-not (Test-Path -LiteralPath $pth)) { continue }
+            $lines = Get-Content -LiteralPath $pth -Encoding utf8 -ErrorAction SilentlyContinue
+            if ($null -eq $lines) { continue }
+            foreach ($line in @($lines)) {
+                $t = "$line".TrimEnd()
+                if ($t.Length -eq 0) { continue }
+                Write-Host "  [$LinePrefix] $t"
+            }
+        }
+        return $p.ExitCode
+    }
+    catch {
+        Write-Warn "${LinePrefix}: $_"
+        return 1
+    }
+    finally {
+        Remove-Item -LiteralPath $logOut -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $logErr -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-OpenClawCaptureUtf8 {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+    $logOut = Join-Path $env:TEMP ("opc200-openclaw-" + [Guid]::NewGuid().ToString("N") + ".capture.log")
+    $logErr = "${logOut}.err"
+    try {
+        $p = Start-OpenClawCliProcess -OpenclawPath $ExePath -CliArguments $ArgumentList -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+        $stdout = ""
+        $stderr = ""
+        if (Test-Path -LiteralPath $logOut) { $stdout = Get-Content -LiteralPath $logOut -Raw -Encoding utf8 -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $logErr) { $stderr = Get-Content -LiteralPath $logErr -Raw -Encoding utf8 -ErrorAction SilentlyContinue }
+        return @{
+            ExitCode = $p.ExitCode
+            StdOut   = if ($stdout) { "$stdout" } else { "" }
+            StdErr   = if ($stderr) { "$stderr" } else { "" }
+        }
+    }
+    catch {
+        return @{
+            ExitCode = 1
+            StdOut   = ""
+            StdErr   = "$_"
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $logOut -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $logErr -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Find-FirstValueByKeyLike {
+    param(
+        [Parameter(Mandatory)]$Node,
+        [Parameter(Mandatory)][string[]]$Patterns
+    )
+    if ($null -eq $Node) { return $null }
+    if ($Node -is [System.Collections.IDictionary]) {
+        foreach ($k in $Node.Keys) {
+            $name = "$k"
+            foreach ($pat in $Patterns) {
+                if ($name -match $pat) {
+                    return $Node[$k]
+                }
+            }
+        }
+        foreach ($k in $Node.Keys) {
+            $v = Find-FirstValueByKeyLike -Node $Node[$k] -Patterns $Patterns
+            if ($null -ne $v) { return $v }
+        }
+        return $null
+    }
+    if (($Node -is [System.Collections.IEnumerable]) -and -not ($Node -is [string])) {
+        foreach ($item in $Node) {
+            $v = Find-FirstValueByKeyLike -Node $item -Patterns $Patterns
+            if ($null -ne $v) { return $v }
+        }
+    }
+    return $null
+}
+
+function Test-OpenClawGatewayInstalledFromStatusJson {
+    param([string]$StatusJson)
+    if ([string]::IsNullOrWhiteSpace($StatusJson)) { return $false }
+    try {
+        $obj = $StatusJson | ConvertFrom-Json -Depth 100
+        $installedVal = Find-FirstValueByKeyLike -Node $obj -Patterns @("(?i)^installed$", "(?i)service.*installed")
+        if ($installedVal -is [bool]) { return $installedVal }
+        if ($installedVal) {
+            $txt = "$installedVal".Trim().ToLowerInvariant()
+            if ($txt -eq "true" -or $txt -eq "installed") { return $true }
+            if ($txt -eq "false") { return $false }
+        }
+        $stateVal = Find-FirstValueByKeyLike -Node $obj -Patterns @("(?i)^state$", "(?i)service.*state")
+        if ($stateVal) {
+            $stateTxt = "$stateVal".Trim().ToLowerInvariant()
+            if ($stateTxt -match "not[_-]?installed|missing|absent") { return $false }
+        }
+    }
+    catch { }
+    if ($StatusJson -match '(?i)"installed"\s*:\s*true') { return $true }
+    if ($StatusJson -match '(?i)not[_-]?installed|not installed') { return $false }
+    return $true
+}
+
+function Ensure-OpenClawCliPresentOrInstall {
+    Sync-SessionPathFromRegistry
+    $oc = Get-Command openclaw -ErrorAction SilentlyContinue
+    if ($oc) {
+        Write-Ok "已检测到 openclaw CLI"
+        return $false
+    }
+    Install-OpenClawOfficial
+    Sync-SessionPathFromRegistry
+    $oc2 = Get-Command openclaw -ErrorAction SilentlyContinue
+    if (-not $oc2) {
+        Fail $script:E002 "E002: OpenClaw 安装后仍未在 PATH 中找到 openclaw。请关闭并重新打开 PowerShell 后重新执行本脚本。"
+    }
+    Write-Ok "openclaw CLI 已就绪"
+    return $true
+}
+
+function Set-OpenClawGatewayPortEnvForAgent {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [int]$GwPortHint
+    )
+    $gwPort = $GwPortHint
+    $portProbe = Invoke-OpenClawCaptureUtf8 -ExePath $ExePath -ArgumentList @("config", "get", "gateway.port")
+    if ($portProbe.ExitCode -eq 0) {
+        $portText = "$($portProbe.StdOut)".Trim()
+        if ($portText.StartsWith('"') -and $portText.EndsWith('"')) { $portText = $portText.Trim('"') }
+        if ($portText -match '^\d+$') { $gwPort = [int]$portText }
+        else { Write-Warn "gateway.port 读取结果非数字（$portText），回退使用端口 $gwPort" }
+    }
+    else {
+        Write-Warn "gateway.port 读取失败，回退使用端口 $gwPort"
+    }
+    $env:OPENCLAW_GATEWAY_PORT = "$gwPort"
+    $env:OPENCLAW_GATEWAY_HEALTH_URL = "http://127.0.0.1:$gwPort/health"
+    Write-Ok "已记录 gateway 端口 $gwPort（OPENCLAW_GATEWAY_PORT / OPENCLAW_GATEWAY_HEALTH_URL，供 OPC200 agent_health）"
+}
+
+function Install-OpenClawGatewayWithRetry {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][int]$GwPort
+    )
+    $lastCode = -1
+    for ($attempt = 1; $attempt -le $script:OPENCLAW_GW_INSTALL_MAX_RETRY; $attempt++) {
+        Write-Ok "安装 gateway 服务（第 $attempt/$($script:OPENCLAW_GW_INSTALL_MAX_RETRY) 次）：openclaw gateway install --port $GwPort"
+        $instArgs = @("gateway", "install", "--port", "$GwPort")
+        $codeGi = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList $instArgs -LinePrefix "openclaw:gw-install"
+        $lastCode = $codeGi
+        if ($codeGi -eq 0) {
+            Write-Ok "gateway install 成功"
+            return
+        }
+        Write-Warn "gateway install 失败（退出码 $codeGi），将重试"
+    }
+    Fail $script:E002 "E002: gateway install 在 $($script:OPENCLAW_GW_INSTALL_MAX_RETRY) 次重试后仍失败（最后退出码 $lastCode）。请检查网络与权限后重新执行本脚本。"
+}
+
+function Invoke-OpenClawGatewayConfigureLocal {
+    param([Parameter(Mandatory)][string]$ExePath)
+    Write-Ok "配置网关：gateway.mode=local"
+    $codeMode = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList @("config", "set", "gateway.mode", "local") -LinePrefix "openclaw:cfg"
+    if ($codeMode -ne 0) {
+        Fail $script:E002 "E002: openclaw config set gateway.mode local 失败（退出码 $codeMode）"
+    }
+    Write-Ok "配置网关：gateway.tls.enabled=false（HTTP）"
+    $codeTls = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList @("config", "set", "gateway.tls.enabled", "false") -LinePrefix "openclaw:cfg-tls"
+    if ($codeTls -ne 0) {
+        Write-Warn "未能写入 gateway.tls.enabled=false（退出码 $codeTls）；若 CLI 无此键可忽略"
+    }
+    Write-Host "  [i] config 变更后需重启网关才会完全生效（见 CLI 提示 Restart the gateway）。" -ForegroundColor DarkGray
+}
+
+function Wait-OpenClawGatewayRpcOrHttp {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][int]$GwPort
+    )
+    $max = $script:OPENCLAW_GATEWAY_WARMUP_MAX_TRIES
+    $sec = $script:OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC
+    for ($i = 1; $i -le $max; $i++) {
+        $cap = Invoke-OpenClawCaptureUtf8 -ExePath $ExePath -ArgumentList @("gateway", "status", "--json", "--require-rpc")
+        if ($cap.ExitCode -eq 0) {
+            Write-Ok "网关 RPC 探测就绪（第 $i/$max 次）"
+            return $true
+        }
+        try {
+            $hu = "http://127.0.0.1:$GwPort/health"
+            $r = Invoke-WebRequest -Uri $hu -UseBasicParsing -TimeoutSec 3
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) {
+                Write-Ok "网关 HTTP /health 就绪（第 $i/$max 次）"
+                return $true
+            }
+        }
+        catch { }
+        if ($i -lt $max) {
+            Write-Host "  [i] 等待网关监听/RPC... $i/$max" -ForegroundColor DarkGray
+            Start-Sleep -Seconds $sec
+        }
+    }
+    Write-Warn "约 $($max * $sec)s 内 gateway status --require-rpc 与 /health 均未就绪；可手动: openclaw gateway restart"
+    return $false
+}
+
+function Start-OpenClawGatewayForPart2 {
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][int]$GwPort
+    )
+    Write-Ok "应用网关配置：openclaw gateway restart（使 mode/TLS 等生效）"
+    $codeRe = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList @("gateway", "restart") -LinePrefix "openclaw:gw-restart"
+    if ($codeRe -ne 0) {
+        Write-Warn "gateway restart 返回非零（$codeRe）；尝试 gateway start"
+        $codeSt = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList @("gateway", "start") -LinePrefix "openclaw:gw-start"
+        if ($codeSt -ne 0) {
+            Write-Warn "gateway start 返回非零（$codeSt）"
+            return $false
+        }
+    }
+    Write-Ok "已请求 gateway restart/start"
+    Start-Sleep -Seconds 2
+    $null = Wait-OpenClawGatewayRpcOrHttp -ExePath $ExePath -GwPort $GwPort
+    return $true
+}
+
+function Invoke-OpenClawPart2DoctorOnly {
+    param([Parameter(Mandatory)][string]$ExePath)
+    Write-Step "9/15 OpenClaw doctor 复查"
+    $code = Invoke-OpenClawLoggedUtf8 -ExePath $ExePath -ArgumentList @("doctor", "--non-interactive") -LinePrefix "openclaw:doctor"
+    if ($code -ne 0) {
+        Write-Warn "openclaw doctor 返回非零（$code）；仍将继续安装 OPC200 Agent，必要时请手动排查"
+    }
+    else {
+        Write-Ok "openclaw doctor 完成"
+    }
+}
+
+function Invoke-OpenClawPart2InstallAndGateway {
+    param([bool]$FreshOpenClawCliInstall)
+    Write-Step "8/15 OpenClaw 网关配置"
+    Sync-SessionPathFromRegistry
+    $oc = Get-Command openclaw -ErrorAction SilentlyContinue
+    if (-not $oc) {
+        Fail $script:E002 "E002: 第二部分需要 openclaw CLI，但未找到。请先完成官方安装或检查 PATH。"
+    }
+    $exe = $oc.Source
+    $gwPort = $script:OPENCLAW_DEFAULT_GATEWAY_PORT
+    if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gwPort = [int]$env:OPENCLAW_GATEWAY_PORT }
+
+    if ($FreshOpenClawCliInstall) {
+        Install-OpenClawGatewayWithRetry -ExePath $exe -GwPort $gwPort
+        Invoke-OpenClawGatewayConfigureLocal -ExePath $exe
+        $started = Start-OpenClawGatewayForPart2 -ExePath $exe -GwPort $gwPort
+        if ($started) {
+            Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+            $gp = $gwPort
+            if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
+            Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
+            return
+        }
+        Invoke-OpenClawPart2DoctorOnly -ExePath $exe
+        Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+        return
+    }
+
+    $statusNoProbe = Invoke-OpenClawCaptureUtf8 -ExePath $exe -ArgumentList @("gateway", "status", "--json", "--no-probe")
+    $installed = $false
+    if ($statusNoProbe.ExitCode -eq 0) {
+        $installed = Test-OpenClawGatewayInstalledFromStatusJson -StatusJson $statusNoProbe.StdOut
+    }
+    else {
+        Write-Warn "gateway status --no-probe 失败（退出码 $($statusNoProbe.ExitCode)），按未安装 gateway 服务处理"
+    }
+
+    if ($installed) {
+        $statusRpc = Invoke-OpenClawCaptureUtf8 -ExePath $exe -ArgumentList @("gateway", "status", "--json", "--require-rpc")
+        if ($statusRpc.ExitCode -eq 0) {
+            Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+            $gp = $gwPort
+            if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
+            Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
+            Write-Ok "网关已安装且 RPC 探测正常，跳过安装/配置/启动"
+            return
+        }
+        Write-Warn "网关已安装但未通过 RPC 健康探测（退出码 $($statusRpc.ExitCode)），将尝试配置并启动"
+        Invoke-OpenClawGatewayConfigureLocal -ExePath $exe
+        $started = Start-OpenClawGatewayForPart2 -ExePath $exe -GwPort $gwPort
+        if ($started) {
+            Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+            $gp = $gwPort
+            if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
+            Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
+            return
+        }
+        Invoke-OpenClawPart2DoctorOnly -ExePath $exe
+        Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+        return
+    }
+
+    Install-OpenClawGatewayWithRetry -ExePath $exe -GwPort $gwPort
+    Invoke-OpenClawGatewayConfigureLocal -ExePath $exe
+    $started = Start-OpenClawGatewayForPart2 -ExePath $exe -GwPort $gwPort
+    if ($started) {
+        Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+        $gp = $gwPort
+        if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
+        Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
+        return
+    }
+    Invoke-OpenClawPart2DoctorOnly -ExePath $exe
+    Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+}
+
 function Write-DocTemplateFromFile {
     param([string]$SourcePath, [string]$TargetPath)
     if (-not (Test-Path -LiteralPath $SourcePath)) {
@@ -603,102 +1132,359 @@ function Write-DocTemplateFromFile {
     }
 }
 
-# ── Step 5: 下载 Agent ───────────────────────────────────────────
+function ConvertFrom-SecureStringPlain {
+    param([System.Security.SecureString]$Secure)
+    if ($null -eq $Secure) { return "" }
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
+
+function Test-SecretPlainLooksValid {
+    param([string]$s)
+    if ($null -eq $s) { return $false }
+    if ($s.Length -lt 8) { return $false }
+    foreach ($ch in $s.ToCharArray()) {
+        if ([char]::IsControl($ch)) { return $false }
+    }
+    return $true
+}
+
+function Normalize-SecretPlainLine {
+    param([string]$s)
+    if ($null -eq $s) { return "" }
+    $t = $s.Trim()
+    if ($t.Length -gt 0 -and [int][char]$t[0] -eq 0xFEFF) {
+        $t = $t.Substring(1).Trim()
+    }
+    return $t
+}
+
+function Read-SecureLineNonEmpty {
+    param([Parameter(Mandatory)][string]$Prompt)
+    Write-Host ""
+    Write-Host $Prompt -ForegroundColor Cyan
+    Write-Host "  [1] 掩码输入（仅手敲；Ctrl+V/Shift+Ins 常无效）" -ForegroundColor DarkGray
+    Write-Host "  [2] 可见粘贴一行（推荐）" -ForegroundColor DarkGray
+    Write-Host "  [3] 从 UTF-8 文本文件读一行" -ForegroundColor DarkGray
+    $m = (Read-Host "选择 [1-3]，回车=2").Trim()
+    if ($m -ne "1" -and $m -ne "3") { $m = "2" }
+
+    while ($true) {
+        $plain = $null
+        if ($m -eq "1") {
+            $sec = Read-Host "密钥（掩码）" -AsSecureString
+            $plain = Normalize-SecretPlainLine (ConvertFrom-SecureStringPlain $sec)
+        }
+        elseif ($m -eq "3") {
+            $fp = (Read-Host "文件完整路径").Trim('"')
+            if (-not (Test-Path -LiteralPath $fp)) {
+                Write-Err "文件不存在"
+                continue
+            }
+            try {
+                $plain = Normalize-SecretPlainLine (Get-Content -LiteralPath $fp -Raw -Encoding UTF8)
+            }
+            catch {
+                Write-Err "读取失败: $($_.Exception.Message)"
+                continue
+            }
+        }
+        else {
+            Write-Warn "可见输入：密钥会显示在屏幕上，输入后建议执行 cls"
+            $plain = Normalize-SecretPlainLine (Read-Host "API Key 一行")
+        }
+
+        if ([string]::IsNullOrWhiteSpace($plain)) {
+            Write-Err "不能为空；若粘贴失败请选 2 或 3，静默安装请设环境变量 CUSTOM_API_KEY 等"
+            continue
+        }
+        if (-not (Test-SecretPlainLooksValid $plain)) {
+            Write-Err "过短或含不可见控制字符；请选 2 可见粘贴或 3 从文件读取，或改用环境变量"
+            continue
+        }
+        return $plain
+    }
+}
+
+function Test-OpenClawOnboardRequested {
+    if ($SkipOpenClawOnboard) { return $false }
+    if ($env:OPENCLAW_SKIP_ONBOARD -eq "1") { return $false }
+    if ($env:OPENCLAW_ONBOARD -eq "0") { return $false }
+    if ($OpenClawOnboard) { return $true }
+    if ($env:OPENCLAW_ONBOARD -eq "1") { return $true }
+    if (-not $Silent) { return $true }
+    return $false
+}
+
+function Clear-EnvIfSet {
+    param([string[]]$Names)
+    foreach ($n in $Names) {
+        if ([string]::IsNullOrWhiteSpace($n)) { continue }
+        Set-Item -Path "Env:$n" -Value $null -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-OpenClawOnboardIfRequested {
+    if (-not (Test-OpenClawOnboardRequested)) { return }
+
+    Write-Step "6/15 OpenClaw 首次配置（官方 onboard --non-interactive）"
+    if (-not $Silent) {
+        Write-Host "  OpenClaw CLI 已就绪。下面采集模型/网关所需最少信息；随后自动执行官方非交互 onboard。" -ForegroundColor Gray
+    }
+    Sync-SessionPathFromRegistry
+
+    $ocCmd = Get-Command openclaw -ErrorAction SilentlyContinue
+    if (-not $ocCmd) {
+        Write-Warn "未找到 openclaw 命令（PATH 未刷新或安装未完成），跳过 onboard。请新开终端后执行: openclaw onboard --non-interactive ..."
+        return
+    }
+
+    $gwPort = $script:OPENCLAW_DEFAULT_GATEWAY_PORT
+    if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gwPort = [int]$env:OPENCLAW_GATEWAY_PORT }
+
+    $auth = $OpenClawAuthChoice.Trim()
+    if (-not $auth -and $null -ne $env:OPENCLAW_AUTH_CHOICE) {
+        $auth = $env:OPENCLAW_AUTH_CHOICE.Trim()
+    }
+
+    if ($Silent) {
+        if (-not $auth) {
+            Fail $script:E001 "E001: 静默安装且启用 OpenClaw onboard 时必须设置 OPENCLAW_AUTH_CHOICE（或 -OpenClawAuthChoice）"
+        }
+    }
+    elseif (-not $auth) {
+        Write-Host ""
+        Write-Host "OpenClaw 模型认证（输入序号，须配置模型密钥）:" -ForegroundColor Cyan
+        Write-Host "  1) Anthropic API Key (apiKey)"
+        Write-Host "  2) OpenAI API Key (openai-api-key)"
+        Write-Host "  3) Google Gemini API Key (gemini-api-key)"
+        Write-Host "  4) OpenAI 兼容自定义端点 (custom-api-key，需 base_url + model)"
+        $pick = Read-Host "选择 [1-4]"
+        switch ($pick.Trim()) {
+            "1" { $auth = "apiKey" }
+            "2" { $auth = "openai-api-key" }
+            "3" { $auth = "gemini-api-key" }
+            "4" { $auth = "custom-api-key" }
+            default { Fail $script:E001 "E001: 无效选择（请输入 1-4）" }
+        }
+    }
+
+    if ($auth -eq "skip") {
+        Fail $script:E001 "E001: 已不再支持 skip（跳过密钥）；请使用 apiKey、openai-api-key、gemini-api-key 或 custom-api-key，并配置对应密钥环境变量"
+    }
+
+    $secretMode = if ($env:OPENCLAW_SECRET_INPUT_MODE) { $env:OPENCLAW_SECRET_INPUT_MODE.Trim() } else { "plaintext" }
+    if ($secretMode -ne "plaintext" -and $secretMode -ne "ref") {
+        Fail $script:E001 "E001: OPENCLAW_SECRET_INPUT_MODE 仅支持 plaintext 或 ref"
+    }
+
+    $toClear = [System.Collections.Generic.List[string]]::new()
+    function Fail-Onboard {
+        param([int]$Code, [string]$Message)
+        Clear-EnvIfSet @($toClear.ToArray())
+        Fail $Code $Message
+    }
+
+    if (-not $Silent) {
+        switch ($auth) {
+            "apiKey" {
+                $plain = Read-SecureLineNonEmpty -Prompt "Anthropic API Key"
+                $env:ANTHROPIC_API_KEY = $plain
+                [void]$toClear.Add("ANTHROPIC_API_KEY")
+            }
+            "openai-api-key" {
+                $plain = Read-SecureLineNonEmpty -Prompt "OpenAI API Key"
+                $env:OPENAI_API_KEY = $plain
+                [void]$toClear.Add("OPENAI_API_KEY")
+            }
+            "gemini-api-key" {
+                $plain = Read-SecureLineNonEmpty -Prompt "Gemini API Key"
+                $env:GEMINI_API_KEY = $plain
+                [void]$toClear.Add("GEMINI_API_KEY")
+            }
+            "custom-api-key" {
+                $bu = ""
+                do {
+                    $bu = Read-Host "自定义 Base URL (OPENAI 兼容 v1)"
+                    if ([string]::IsNullOrWhiteSpace($bu)) { Write-Err "Base URL 不能为空，请重新输入" }
+                } while ([string]::IsNullOrWhiteSpace($bu))
+                $mid = ""
+                do {
+                    $mid = Read-Host "模型 ID (custom-model-id)"
+                    if ([string]::IsNullOrWhiteSpace($mid)) { Write-Err "模型 ID 不能为空，请重新输入" }
+                } while ([string]::IsNullOrWhiteSpace($mid))
+                $plain = Read-SecureLineNonEmpty -Prompt "API Key (写入 CUSTOM_API_KEY)"
+                $env:OPENCLAW_CUSTOM_BASE_URL = $bu
+                $env:OPENCLAW_CUSTOM_MODEL_ID = $mid
+                $env:CUSTOM_API_KEY = $plain
+                [void]$toClear.Add("OPENCLAW_CUSTOM_BASE_URL")
+                [void]$toClear.Add("OPENCLAW_CUSTOM_MODEL_ID")
+                [void]$toClear.Add("CUSTOM_API_KEY")
+            }
+        }
+    }
+
+    switch ($auth) {
+        "apiKey" {
+            if ($secretMode -eq "ref") {
+                if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+                    Fail-Onboard $script:E001 "E001: ref 模式需在环境中设置 ANTHROPIC_API_KEY"
+                }
+            }
+            else {
+                if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+                    Fail-Onboard $script:E001 "E001: 需提供 ANTHROPIC_API_KEY 环境变量（静默）或交互输入"
+                }
+            }
+        }
+        "openai-api-key" {
+            if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
+                Fail-Onboard $script:E001 "E001: 需提供 OPENAI_API_KEY（静默或 ref 模式环境）"
+            }
+        }
+        "gemini-api-key" {
+            if ([string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
+                Fail-Onboard $script:E001 "E001: 需提供 GEMINI_API_KEY"
+            }
+        }
+        "custom-api-key" {
+            if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_CUSTOM_BASE_URL) -or [string]::IsNullOrWhiteSpace($env:OPENCLAW_CUSTOM_MODEL_ID)) {
+                Fail-Onboard $script:E001 "E001: custom-api-key 需 OPENCLAW_CUSTOM_BASE_URL 与 OPENCLAW_CUSTOM_MODEL_ID"
+            }
+            if ($secretMode -eq "plaintext" -and [string]::IsNullOrWhiteSpace($env:CUSTOM_API_KEY)) {
+                Fail-Onboard $script:E001 "E001: custom-api-key plaintext 需 CUSTOM_API_KEY"
+            }
+        }
+        default { Fail-Onboard $script:E001 "E001: 不支持的 OPENCLAW_AUTH_CHOICE: $auth（支持 apiKey|openai-api-key|gemini-api-key|custom-api-key）" }
+    }
+
+    $argList = [System.Collections.Generic.List[string]]::new()
+    # 官方非交互 onboard 要求显式风险确认，见 https://docs.openclaw.ai/security
+    [void]$argList.AddRange([string[]]@(
+            "onboard", "--non-interactive", "--accept-risk", "--mode", "local",
+            "--auth-choice", "$auth",
+            "--secret-input-mode", "$secretMode",
+            "--gateway-port", "$gwPort",
+            "--gateway-bind", "loopback",
+            "--install-daemon",
+            "--daemon-runtime", "node",
+            "--skip-skills"
+        ))
+
+    if ($auth -eq "custom-api-key") {
+        [void]$argList.AddRange([string[]]@("--custom-base-url", "$($env:OPENCLAW_CUSTOM_BASE_URL)", "--custom-model-id", "$($env:OPENCLAW_CUSTOM_MODEL_ID)"))
+        $compat = if ($env:OPENCLAW_CUSTOM_COMPATIBILITY) { $env:OPENCLAW_CUSTOM_COMPATIBILITY } else { "openai" }
+        [void]$argList.AddRange([string[]]@("--custom-compatibility", "$compat"))
+        if ($env:OPENCLAW_CUSTOM_PROVIDER_ID) {
+            [void]$argList.AddRange([string[]]@("--custom-provider-id", "$($env:OPENCLAW_CUSTOM_PROVIDER_ID)"))
+        }
+    }
+
+    $exePath = $ocCmd.Source
+    $obTimeout = $script:OPENCLAW_ONBOARD_TIMEOUT_SEC
+    if ($env:OPENCLAW_ONBOARD_TIMEOUT_SEC -match '^\d+$') { $obTimeout = [int]$env:OPENCLAW_ONBOARD_TIMEOUT_SEC }
+    Write-Ok "执行 openclaw onboard --non-interactive（auth=$auth gatewayPort=$gwPort secret=$secretMode）"
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($obTimeout)
+    $argArray = @($argList.ToArray())
+    switch ($auth) {
+        "apiKey" { if ($env:ANTHROPIC_API_KEY) { $script:ApiKey = $env:ANTHROPIC_API_KEY } }
+        "openai-api-key" { if ($env:OPENAI_API_KEY) { $script:ApiKey = $env:OPENAI_API_KEY } }
+        "gemini-api-key" { if ($env:GEMINI_API_KEY) { $script:ApiKey = $env:GEMINI_API_KEY } }
+        "custom-api-key" { if ($env:CUSTOM_API_KEY) { $script:ApiKey = $env:CUSTOM_API_KEY } }
+        default { }
+    }
+    try {
+        $proc = Start-OpenClawCliProcess -OpenclawPath $exePath -CliArguments $argArray -NoNewWindow -PassThru
+    }
+    catch {
+        Fail-Onboard $script:E002 "E002: 无法启动 openclaw onboard（多为 npm 的 .cmd 入口或 PATH）：$_"
+    }
+    while (-not $proc.HasExited) {
+        if ([DateTime]::UtcNow -gt $deadline) {
+            try { $proc.Kill() } catch { }
+            Fail-Onboard $script:E002 ("E002: openclaw onboard 超时（>{0}s）。请检查网络与 openclaw 版本；可手动: openclaw doctor" -f $obTimeout)
+        }
+        Start-Sleep -Milliseconds 400
+    }
+    try { $null = $proc.WaitForExit(0) } catch { }
+    try { $proc.Refresh() } catch { }
+    # Windows 上部分 npm/cmd 链路的 ExitCode 会为 $null；$null -ne 0 在 PowerShell 中为 $true，会误判失败
+    $rawExit = $null
+    try { $rawExit = $proc.ExitCode } catch { }
+    $code = if ($null -eq $rawExit) { 0 } else { [int]$rawExit }
+    Clear-EnvIfSet $toClear
+
+    if ($code -ne 0) {
+        if ($env:OPENCLAW_ONBOARD_STRICT -eq "1") {
+            Fail $script:E002 "E002: openclaw onboard 失败（退出码 $code）。请查看终端输出或运行 openclaw doctor"
+        }
+        Write-Warn "openclaw onboard 失败（退出码 $code），已按非严格策略继续。设置 OPENCLAW_ONBOARD_STRICT=1 可在失败时中止安装。"
+        return
+    }
+
+    $healthUrl = if ($env:OPENCLAW_GATEWAY_HEALTH_URL) { $env:OPENCLAW_GATEWAY_HEALTH_URL } else { "http://127.0.0.1:$gwPort/health" }
+    Write-Ok "探测网关健康: $healthUrl"
+    $okHealth = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        try {
+            $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { $okHealth = $true; break }
+        }
+        catch { }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $okHealth) {
+        if ($env:OPENCLAW_ONBOARD_STRICT -eq "1") {
+            Fail $script:E002 "E002: onboard 后网关健康检查失败。请确认计划任务/服务已拉起网关或检查 OPENCLAW_GATEWAY_HEALTH_URL"
+        }
+        Write-Warn "网关 HTTP 健康检查未在约 60s 内通过；opc-agent 仍会继续安装。可稍后重试网关或设置 OPENCLAW_GATEWAY_HEALTH_PROBE=0（仅 Agent 指标场景）"
+    }
+    else {
+        Write-Ok "OpenClaw 网关健康检查通过"
+    }
+}
 
 function Get-AgentBinary {
-    if ($LocalBinary) {
-        Write-Step "6/10 使用本地 Agent 二进制 (跳过下载)"
-        if (-not (Test-Path -LiteralPath $LocalBinary)) {
-            Fail $script:E002 "E002: 本地文件不存在: $LocalBinary"
-        }
-        $script:TmpBinary = (Resolve-Path -LiteralPath $LocalBinary).Path
-        Write-Ok "本地二进制: $($script:TmpBinary)"
-        return
+    if ($FullRuntimeDeps) {
+        Write-Step "11/15 Python 运行环境 (venv + pip，完整依赖，较慢)"
+        $reqName = "requirements-agent-runtime-full.txt"
     }
-
-    if ($script:UsePythonMode) {
-        if ($FullRuntimeDeps) {
-            Write-Step "6/10 Python 运行环境 (venv + pip，完整依赖，较慢)"
-            $reqName = "requirements-agent-runtime-full.txt"
-        }
-        else {
-            Write-Step "6/10 Python 运行环境 (venv + pip，精简依赖)"
-            $reqName = "requirements-agent-runtime.txt"
-        }
-        $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
-        if (-not (Test-Path -LiteralPath $req)) {
-            Fail $script:E001 "E001: 缺少 $reqName"
-        }
-        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
-        if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
-        if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python" }
-        $root = $script:InstallRoot
-        if (-not (Test-Path -LiteralPath $root)) {
-            New-Item -ItemType Directory -Path $root -Force | Out-Null
-        }
-        $venv = Join-Path $root "venv"
-        try {
-            & $pyCmd.Name -m venv $venv
-            $venvPy = Join-Path $venv "Scripts\python.exe"
-            & $venvPy -m pip install -q -U pip
-            $env:PYTHONUTF8 = "1"
-            & $venvPy -m pip install -q -r $req
-        }
-        catch {
-            if (Test-Path $venv) { Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue }
-            Fail $script:E002 "E002: venv/pip 失败 - $_"
-        }
-        Write-Ok "已安装运行时依赖 → $venv"
-        $script:TmpBinary = ""
-        return
+    else {
+        Write-Step "11/15 Python 运行环境 (venv + pip，精简依赖)"
+        $reqName = "requirements-agent-runtime.txt"
     }
-
-    Write-Step "6/10 下载 Agent"
-
-    $binUrl  = "$($script:DOWNLOAD_BASE)/$($script:AGENT_BINARY)"
-    $shaUrl  = "$($script:DOWNLOAD_BASE)/$($script:CHECKSUM_FILE)"
-    $tmpDir  = Join-Path $env:TEMP "opc200-install"
-    $binDest = Join-Path $tmpDir $script:AGENT_BINARY
-    $shaDest = Join-Path $tmpDir $script:CHECKSUM_FILE
-
-    if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
-    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
-
+    $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
+    if (-not (Test-Path -LiteralPath $req)) {
+        Fail $script:E001 "E001: 缺少 $reqName"
+    }
+    $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pyCmd) { $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue }
+    if (-not $pyCmd) { Fail $script:E001 "E001: 未找到 python" }
+    $root = $script:InstallRoot
+    if (-not (Test-Path -LiteralPath $root)) {
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+    }
+    $venv = Join-Path $root "venv"
     try {
-        $ProgressPreference = "SilentlyContinue"
-        Invoke-WebRequest -Uri $binUrl -OutFile $binDest -UseBasicParsing
-        Write-Ok "已下载 $($script:AGENT_BINARY)"
+        & $pyCmd.Name -m venv $venv
+        $venvPy = Join-Path $venv "Scripts\python.exe"
+        & $venvPy -m pip install -q -U pip
+        $env:PYTHONUTF8 = "1"
+        & $venvPy -m pip install -q -r $req
     }
     catch {
-        Fail $script:E002 "E002: 下载失败 - $_"
+        if (Test-Path $venv) { Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue }
+        Fail $script:E002 "E002: venv/pip 失败 - $_"
     }
-
-    # SHA256 校验
-    try {
-        Invoke-WebRequest -Uri $shaUrl -OutFile $shaDest -UseBasicParsing
-        $expectedHash = (Get-Content $shaDest | Where-Object { $_ -match $script:AGENT_BINARY } | ForEach-Object { ($_ -split '\s+')[0] })
-        if ($expectedHash) {
-            $actualHash = (Get-FileHash -Path $binDest -Algorithm SHA256).Hash.ToLower()
-            if ($actualHash -ne $expectedHash.ToLower()) {
-                Fail $script:E004 "E004: SHA256 校验失败 (期望 $expectedHash, 实际 $actualHash)"
-            }
-            Write-Ok "SHA256 校验通过"
-        }
-        else {
-            Write-Warn "SHA256SUMS 中未找到对应条目，跳过校验"
-        }
-    }
-    catch {
-        Write-Warn "无法下载 SHA256SUMS，跳过校验"
-    }
-
-    $script:TmpBinary = $binDest
+    Write-Ok "已安装运行时依赖 → $venv"
 }
 
 # ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 function Install-Agent {
-    Write-Step "7/10 安装部署"
+    Write-Step "12/15 安装部署"
 
     $root = $script:InstallRoot
 
@@ -727,24 +1513,16 @@ function Install-Agent {
 
     Write-Ok "目录结构已创建"
 
-    if ($script:UsePythonMode -and -not $LocalBinary) {
-        $rp = $script:RepoRootResolved -replace "'", "''"
-        $pyw = Join-Path $root "venv\Scripts\python.exe"
-        $cfgPath = Join-Path $root "config\config.yml"
-        $script:RunAgentScript = Join-Path $root "run-agent.ps1"
-        $raContent = @"
+    $rp = $script:RepoRootResolved -replace "'", "''"
+    $pyw = Join-Path $root "venv\Scripts\python.exe"
+    $cfgPath = Join-Path $root "config\config.yml"
+    $script:RunAgentScript = Join-Path $root "run-agent.ps1"
+    $raContent = @"
 `$env:PYTHONPATH = '$rp'
 & '$($pyw -replace "'", "''")' -m agent.src.opc_agent.cli --config '$($cfgPath -replace "'", "''")' run
 "@
-        [System.IO.File]::WriteAllText($script:RunAgentScript, $raContent.TrimEnd() + "`n", [System.Text.UTF8Encoding]::new($true))
-        Write-Ok "已写入 $($script:RunAgentScript)"
-    }
-    else {
-        $agentDest = Join-Path $root "bin\opc-agent.exe"
-        Copy-Item -Path $script:TmpBinary -Destination $agentDest -Force
-        Write-Ok "Agent 二进制已部署"
-        $script:AgentExe = $agentDest
-    }
+    [System.IO.File]::WriteAllText($script:RunAgentScript, $raContent.TrimEnd() + "`n", [System.Text.UTF8Encoding]::new($true))
+    Write-Ok "已写入 $($script:RunAgentScript)"
 
     # config.yml (AGENT-001 §3.2)
     $configYml = @"
@@ -798,7 +1576,7 @@ logging:
 # ── Step 7: 注册自动启动（计划任务；opc-agent 为普通进程，非 Windows 服务 SCM 宿主）──
 
 function Register-Service {
-    Write-Step "8/10 注册计划任务(登录时启动)"
+    Write-Step "13/15 注册计划任务(登录时启动)"
 
     $legacy = Get-Service -Name $script:SERVICE_NAME -ErrorAction SilentlyContinue
     if ($legacy) {
@@ -811,19 +1589,10 @@ function Register-Service {
     Unregister-ScheduledTask -TaskName $script:TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
 
     try {
-        if ($script:UsePythonMode -and -not $LocalBinary) {
-            $ra = $script:RunAgentScript
-            $wdir = Split-Path -Parent $ra
-            $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-                -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ra`"" -WorkingDirectory $wdir
-        }
-        else {
-            $exe = $script:AgentExe
-            $cfg = $script:ConfigYml
-            $arg = "--config `"$cfg`" run"
-            $wdir = Split-Path -Parent $exe
-            $action = New-ScheduledTaskAction -Execute $exe -Argument $arg -WorkingDirectory $wdir
-        }
+        $ra = $script:RunAgentScript
+        $wdir = Split-Path -Parent $ra
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ra`"" -WorkingDirectory $wdir
         $userId = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
         $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
@@ -845,7 +1614,7 @@ function Register-Service {
 # ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 function Start-AndVerify {
-    Write-Step "9/10 启动验证"
+    Write-Step "14/15 启动验证"
 
     try {
         Start-ScheduledTask -TaskName $script:TASK_NAME -ErrorAction Stop
@@ -879,7 +1648,7 @@ function Start-AndVerify {
 # ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 function Show-Summary {
-    Write-Step "10/10 安装完成"
+    Write-Step "15/15 安装完成"
 
     $root = $script:InstallRoot
     Write-Host ""
@@ -888,9 +1657,7 @@ function Show-Summary {
     Write-Host "  日志文件 : $root\logs\agent.log" -ForegroundColor Cyan
     Write-Host "  计划任务 : $($script:TASK_NAME) (登录时运行)" -ForegroundColor Cyan
     Write-Host "  健康检查 : http://127.0.0.1:$Port/health" -ForegroundColor Cyan
-    if ($script:UsePythonMode -and -not $LocalBinary) {
-        Write-Host "  运行方式 : Python venv + 仓库 $($script:RepoRootResolved)" -ForegroundColor Cyan
-    }
+    Write-Host "  运行方式 : Python venv + 仓库 $($script:RepoRootResolved)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  查看任务 : Get-ScheduledTask -TaskName $($script:TASK_NAME)" -ForegroundColor Gray
     Write-Host ('  查看日志 : Get-Content {0}\logs\agent.log -Tail 50' -f $root) -ForegroundColor Gray
@@ -911,21 +1678,32 @@ function Main {
     else {
         $script:RepoRootResolved = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
     }
-    $script:UsePythonMode = $true
-    if ($UseBinary) { $script:UsePythonMode = $false }
-    if ($LocalBinary) { $script:UsePythonMode = $false }
-
+    # ── 第一部分：环境检测与 Node / 网络预检 ──
     Test-Environment
-    Get-InstallConfig
+    Initialize-InstallPaths
     Ensure-OpenClawNodeRuntime
     Test-OpenClawNetworkReady
-    Install-OpenClawOfficial
+
+    # 第二部分（前段）：OpenClaw CLI 就绪后，先做交互/静默 onboard 与轻预装；之后再进入网关安装与配置状态机。
+    $freshCli = Ensure-OpenClawCliPresentOrInstall
+    Install-OpenClawOnboardIfRequested
     Install-OpenClawPreload
+    # 第二部分（后段）：网关安装 / 探测 / 配置 / 启动 / 记端口（Invoke-OpenClawPart2InstallAndGateway）。
+    Invoke-OpenClawPart2InstallAndGateway -FreshOpenClawCliInstall:$freshCli
+
+    <#
+    # ── 第三部分：OPC200 Agent（测第二部分时保持注释）──
+    Get-OpcAgentPlatformConfig
     Get-AgentBinary
     Install-Agent
     Register-Service
     Start-AndVerify
     Show-Summary
+    #>
+
+    Write-Host ""
+    Write-Host "[TEST] 第一部分 + 第二部分已执行；第三部分（OPC200 Agent）仍注释。" -ForegroundColor Yellow
+    Write-Host ""
 
     return 0
 }
