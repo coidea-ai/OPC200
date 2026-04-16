@@ -1,7 +1,7 @@
 # 预装版小龙虾（OpenClaw）交付路线图
 
 > **用途**：后续预装版安装、打包、观测相关工作以此文档为单一事实来源；完成项及时勾选，并在文末更新「变更记录」。  
-> **最后更新**：2026-04-15（新增第二期 §2.8：OpenClaw 开箱即用配置自动化）
+> **最后更新**：2026-04-16（§2.8：OpenClaw 开箱即用配置自动化落地）
 
 ---
 
@@ -107,11 +107,11 @@
 
 > **目标**：用户执行安装脚本后即可直接使用 OpenClaw，不再依赖手动执行 `openclaw dashboard` / `openclaw setup` 完成首次配置。
 
-- [ ] 冻结最小可用配置集：`provider`、`model`、`api_key`、可选 `base_url`、可选 gateway 端口。
-- [ ] 安装脚本交互采集配置：非静默模式问答输入（Windows + Linux），敏感字段隐藏输入并避免明文日志。
-- [ ] 静默模式参数化：支持通过脚本参数或环境变量一次性传入上述配置（便于 CI / 自动化部署）。
-- [ ] 配置落地策略：优先官方 CLI 非引导式配置能力；若不可用则 fallback 写入配置文件（需记录版本兼容约束）。
-- [ ] 成功判定与兜底：安装后自动验证可用性（gateway/dashboard health）；失败时输出明确错误与修复指引。
+- [x] 冻结最小可用配置集：`OPENCLAW_AUTH_CHOICE` 支持 `apiKey` / `openai-api-key` / `gemini-api-key` / `custom-api-key`（须配置模型密钥，不支持 `skip`）；网关端口 `OPENCLAW_GATEWAY_PORT`（默认 18789）；自定义端点 `OPENCLAW_CUSTOM_*` / `CUSTOM_API_KEY`；与官方文档 `openclaw onboard --non-interactive` 对齐。
+- [x] 安装脚本交互采集配置：非静默模式问答输入（Windows + Linux），敏感字段 `SecureString` / `read -rsp`；执行参数日志不打印密钥。
+- [x] 静默模式参数化：`OPENCLAW_AUTH_CHOICE` + 对应 provider 环境变量；Windows 增加 `-OpenClawOnboard` / `-OpenClawAuthChoice` / `-SkipOpenClawOnboard`；Linux 增加 `--openclaw-onboard` / `--skip-openclaw-onboard`；**交互安装默认执行 onboard**；**静默**须 `OPENCLAW_ONBOARD=1`（或 CLI 开关）才跑 onboard，避免无密钥 CI 误跑；`OPENCLAW_ONBOARD=0` 或 `Skip` 可显式跳过。
+- [x] 配置落地策略：优先官方 `openclaw onboard --non-interactive`（见 https://docs.openclaw.ai/start/wizard-cli-automation ）；**直接写 `openclaw.json` 的 fallback 仍列为后续**（schema 随版本变化，避免脚本侧误写）。
+- [x] 成功判定与兜底：`OPENCLAW_GATEWAY_HEALTH_URL` 或默认 `http://127.0.0.1:<port>/health` 轮询；`OPENCLAW_ONBOARD_STRICT=1` 时 onboard 或健康失败则中止安装；否则告警继续并完成 opc-agent 安装。
 
 ---
 
@@ -148,6 +148,9 @@
 
 | 日期 | 摘要 |
 |------|------|
+| 2026-04-16 | Windows `install.ps1`：三段流程（环境 → OpenClaw → OPC200 Agent）；onboard 后轻预装；`doctor`+`gateway restart`；平台 URL/租户在 Agent 前采集；平台 ApiKey 复用模型密钥；无 exe 分支 |
+| 2026-04-16 | 交互安装默认执行 OpenClaw onboard；静默仍须 `OPENCLAW_ONBOARD=1`；支持 `OPENCLAW_ONBOARD=0` / Skip 显式关闭 |
+| 2026-04-16 | §2.8 落地：`install.ps1` / `install.sh` 可选 `openclaw onboard --non-interactive` + 网关 HTTP 健康检查；单测 `test_agent008_openclaw_onboard_install.py` |
 | 2026-04-15 | 新增第二期 §2.8：OpenClaw 开箱即用配置自动化（最小配置集、交互采集、静默参数、配置落地与验证兜底） |
 | 2026-04-15 | AGENT-007：Windows/Linux 卸载脚本交互对齐（确认是否卸载 OpenClaw + 卸载进度提示 + CLI 手动清理提醒） |
 | 2026-04-15 | 第二期 §2.7：`agent_health` 改为 OpenClaw 网关 HTTP 探测 + 本进程存活；协议与单测已更新（端到端联调待办） |

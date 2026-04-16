@@ -38,8 +38,7 @@ docker run -d \
 
 ## 开发
 
-开发模式下，脚本默认使用 `Python venv + 仓库源码` 运行 `opc-agent`（无需先构建可执行文件）。  
-如需二进制模式，可显式传 `--binary` / `-UseBinary` 或 `--local-binary` / `-LocalBinary`。
+开发模式下，脚本使用 `Python venv + 仓库源码` 运行 `opc-agent`（不下载 Release exe）。
 
 ---
 
@@ -53,16 +52,17 @@ docker run -d \
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `-PlatformUrl` | `https://platform.opc200.co` | 平台地址（Pushgateway 根地址） |
-| `-CustomerId` | 无 | 租户标识，必填（静默模式） |
-| `-ApiKey` | 无 | API Key，必填（静默模式） |
+| `-PlatformUrl` | `https://platform.opc200.co` | 平台地址（第三部分采集；静默可省略则用默认） |
+| `-CustomerId` | 无 | 租户标识（第三部分；静默必填） |
+| `-ApiKey` | 无 | 平台推送密钥；OpenClaw onboard 已填模型密钥时复用；未采集时用本参数或 `OPC200_API_KEY` |
 | `-InstallDir` | `$HOME\.opc200` | 安装目录 |
 | `-Port` | `8080` | 本地健康检查端口 |
 | `-Silent` | `False` | 静默安装（不交互） |
-| `-LocalBinary` | 空 | 使用本地 exe，跳过下载/源码模式 |
-| `-UseBinary` | `False` | 强制使用 Release 二进制模式 |
 | `-RepoRoot` | 脚本目录 `..\..` | OPC200 仓库根目录 |
 | `-FullRuntimeDeps` | `False` | 安装完整依赖（含重包，耗时长） |
+| `-OpenClawOnboard` | `False` | **静默安装**时与 `OPENCLAW_ONBOARD=1` 等价，显式打开 onboard。**交互安装默认就会做 OpenClaw 首次配置**，一般不必传。 |
+| `-SkipOpenClawOnboard` | `False` | 跳过 OpenClaw 首次配置（或设环境变量 `OPENCLAW_ONBOARD=0`） |
+| `-OpenClawAuthChoice` | 空 | 等价于环境变量 `OPENCLAW_AUTH_CHOICE`（静默时常用） |
 
 安装示例：
 
@@ -82,10 +82,29 @@ cd E:\projects\OPC200\agent\scripts
   -PlatformUrl "http://127.0.0.1:9091" `
   -CustomerId "win-e2e-001" `
   -ApiKey "dev-local-test"
+```
 
-# 使用本地 exe 安装（前提：需要先执行 build-windows-exe.ps1 生成 exe 文件）
+#### OpenClaw 首次配置
+
+官方安装脚本在拉包阶段会设 `OPENCLAW_NO_ONBOARD=1`，避免在 **npm 安装结束时** 再弹一次官方交互向导；随后在 OPC200 脚本里统一用 **`openclaw onboard --non-interactive`** 落地配置。
+
+- **交互安装（未加 `-Silent`）**：官方安装 OpenClaw CLI → **首次配置（onboard）** → **轻预装（skills + 模板）** → `doctor` / 网关重启。须选择模型提供方并采集密钥，然后 `openclaw onboard --non-interactive`。**不需要**再传 `-OpenClawOnboard`。
+- **不想配置 OpenClaw**：传 `-SkipOpenClawOnboard`，或事先设置 `OPENCLAW_ONBOARD=0`。
+- **静默安装（`-Silent`）**：默认**不**跑 OpenClaw onboard（便于 CI 仅装 Agent）。若要静默完成 OpenClaw 配置，需 **`OPENCLAW_ONBOARD=1`**（或 `-OpenClawOnboard`）并设置 `OPENCLAW_AUTH_CHOICE` 及对应密钥环境变量。
+- **其它开关**：`OPENCLAW_SKIP_ONBOARD=1` 与 `-SkipOpenClawOnboard` 等价，强制跳过。
+- **认证方式**：`OPENCLAW_AUTH_CHOICE`（或 `-OpenClawAuthChoice`），取值：`apiKey`（Anthropic）、`openai-api-key`、`gemini-api-key`、`custom-api-key`（须配置对应密钥，不再支持 `skip`）。官方参数说明见 [CLI Automation](https://docs.openclaw.ai/start/wizard-cli-automation)。
+- **静默且启用 onboard 时**：必须设置 `OPENCLAW_AUTH_CHOICE`，并准备好对应密钥环境变量（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`）；`custom-api-key` 还需 `OPENCLAW_CUSTOM_BASE_URL`、`OPENCLAW_CUSTOM_MODEL_ID` 与 `CUSTOM_API_KEY`（plaintext）。`OPENCLAW_SECRET_INPUT_MODE=ref` 时按官方要求仅保留环境引用、勿缺省对应变量。
+- **网关与健康**：默认网关端口 `18789`（可用 `OPENCLAW_GATEWAY_PORT` 覆盖）；onboard 后会探测 `OPENCLAW_GATEWAY_HEALTH_URL`，未设置时等价于 `http://127.0.0.1:<端口>/health`。`OPENCLAW_ONBOARD_STRICT=1` 时，onboard 进程非零退出或健康检查超时将**中止整个安装**；否则仅告警并继续安装 opc-agent。
+- **超时**：`OPENCLAW_ONBOARD_TIMEOUT_SEC`（默认 `600`，秒）。
+
+静默 + OpenClaw onboard + Anthropic 示例：
+
+```powershell
+$env:OPENCLAW_ONBOARD = "1"
+$env:OPENCLAW_AUTH_CHOICE = "apiKey"
+$env:ANTHROPIC_API_KEY = "sk-ant-..."   # 勿提交到仓库
+
 .\install.ps1 -Silent `
-  -LocalBinary "E:\projects\OPC200\dist\opc-agent-windows-amd64.exe" `
   -PlatformUrl "http://127.0.0.1:9091" `
   -CustomerId "win-e2e-001" `
   -ApiKey "dev-local-test"
@@ -150,11 +169,11 @@ cd E:\projects\OPC200\agent\scripts
 | `--api-key` | 无 | API Key，必填（静默模式） |
 | `--install-dir` | `$HOME/.opc200` | 安装目录 |
 | `--port` | `8080` | 本地健康检查端口 |
-| `--local-binary` | 空 | 使用本地二进制路径 |
 | `--repo-root` | 脚本目录 `../..` | OPC200 仓库根目录 |
-| `--binary` | `False` | 强制二进制下载模式 |
 | `--full-runtime-deps` | `False` | 安装完整依赖（含重包，耗时长） |
 | `--silent` | `False` | 静默安装（不交互） |
+| `--openclaw-onboard` | `False` | **静默**时与 `OPENCLAW_ONBOARD=1` 等价。**交互安装默认即会做 OpenClaw 首次配置**，一般不必传。 |
+| `--skip-openclaw-onboard` | `False` | 跳过 OpenClaw 首次配置（或 `OPENCLAW_ONBOARD=0`） |
 
 安装示例：
 
@@ -174,10 +193,19 @@ sudo bash ./install.sh --silent --full-runtime-deps \
   --platform-url "http://127.0.0.1:9091" \
   --customer-id "linux-e2e-001" \
   --api-key "dev-local-test"
+```
 
-# 使用本地二进制安装（前提：需要先执行 build-linux.sj 生成可执行文件）
-sudo bash ./install.sh --silent \
-  --local-binary "/mnt/e/projects/OPC200/dist/opc-agent-linux-amd64" \
+与 Windows 相同：**交互安装默认会提示并完成 OpenClaw onboard**；静默需 `OPENCLAW_ONBOARD=1` 并设置 `OPENCLAW_AUTH_CHOICE` 与密钥。环境变量在 `sudo` 前 `export`，对静默 + onboard 使用 `sudo -E` 保留环境。交互模式下密钥通过 `read -rsp` 读入且仅在子 shell 中传给 `openclaw`。若系统有 GNU `timeout`，onboard 会受 `OPENCLAW_ONBOARD_TIMEOUT_SEC` 约束。
+
+静默 + OpenClaw onboard + OpenAI 示例：
+
+```bash
+export OPENCLAW_ONBOARD=1
+export OPENCLAW_AUTH_CHOICE=openai-api-key
+export OPENAI_API_KEY=sk-...   # 勿提交到仓库
+
+cd /path/to/OPC200/agent/scripts
+sudo -E bash ./install.sh --silent \
   --platform-url "http://127.0.0.1:9091" \
   --customer-id "linux-e2e-001" \
   --api-key "dev-local-test"
@@ -214,11 +242,3 @@ sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --keep-data
 # 同时按官方推荐卸载 OpenClaw（见 https://docs.openclaw.ai/cli/uninstall ）
 sudo bash ./uninstall.sh --install-dir "$HOME/.opc200" --silent --purge-openclaw
 ```
-
-## 用户安装（todo）
-
-分两类：**Windows** 与 **Mac / Linux**。
-
-### Windows
-
-### Mac / Linux

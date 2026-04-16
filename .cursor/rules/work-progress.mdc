@@ -14,11 +14,12 @@ alwaysApply: true
 
 当前 **P0（Phase 1）已完成**，按 **P1（Phase 2）** 顺序推进，且以任务编号顺序为准：
 
-1. **AGENT-007（P1 第一个）**：脚本支持安装 OpenClaw（官方渠道 latest + 轻预装层 + exporter health 打通）
-2. **AGENT-008**：调整 Python import 路径
-3. **AGENT-009**：实现 selfhealer/l1_local_fix.py
-4. **AGENT-010**：实现 updater/update_client.py
-5. **AGENT-011**：创建 platform/docker-compose.yml 完整版
+1. **AGENT-007**：脚本支持安装 OpenClaw（官方渠道 latest + 轻预装层 + exporter health 打通）— ✅ 已完成
+2. **AGENT-008**：OpenClaw 开箱即用配置自动化（可选 `openclaw onboard --non-interactive`）— ✅ 已完成
+3. **AGENT-009（P1 当前）**：调整 Python import 路径
+4. **AGENT-010**：实现 selfhealer/l1_local_fix.py
+5. **AGENT-011**：实现 updater/update_client.py
+6. **AGENT-012**：创建 platform/docker-compose.yml 完整版
 
 其余 **P2/P3** 任务在 P1 关键路径完成后推进，或按用户明确要求调整。
 

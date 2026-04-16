@@ -183,8 +183,8 @@ class TestOpenClawNpmAcceleration:
         assert "registry.npmmirror.com" in install_sh
         assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_sh
 
-    def test_registry_env_override(self, install_sh):
-        assert "OPENCLAW_NPM_REGISTRY" in install_sh
+    def test_registry_uses_script_default_only(self, install_sh):
+        assert 'local npm_registry="$OPENCLAW_DEFAULT_NPM_REGISTRY"' in install_sh
 
     def test_npm_fetch_timeout_set(self, install_sh):
         assert "NPM_CONFIG_FETCH_TIMEOUT" in install_sh

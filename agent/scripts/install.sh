@@ -19,6 +19,8 @@ OPENCLAW_NET_CHECK_HOSTS=("openclaw.ai" "registry.npmmirror.com" "github.com")
 OPENCLAW_DEFAULT_PROFILE_DIR="$HOME/.openclaw"
 OPENCLAW_DEFAULT_SKILLS="skill-vetter"
 OPENCLAW_DEFAULT_SKILL_INSTALL_CMD="openclaw skills install"
+OPENCLAW_DEFAULT_GATEWAY_PORT=18789
+OPENCLAW_ONBOARD_TIMEOUT_SEC=600
 DEFAULT_PORT=8080
 MIN_DISK_MB=1024
 
@@ -46,6 +48,8 @@ REPO_ROOT=""
 SCRIPT_DIR=""
 FULL_RUNTIME_DEPS=false
 ROLLBACK_ITEMS=()
+OPENCLAW_ONBOARD_CLI=false
+OPENCLAW_SKIP_ONBOARD_CLI=false
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
 
@@ -301,7 +305,7 @@ step_network_check() {
         fi
     done
     if ! $all_ok; then
-        warn "部分主机不可达；若安装超时，可设置 OPENCLAW_NPM_REGISTRY 指向可用镜像后重试"
+        warn "部分主机不可达；若安装超时，请检查网络或稍后重试"
     fi
 }
 
@@ -326,8 +330,8 @@ step_install_openclaw_official() {
         channel="latest"
     fi
 
-    # npm registry：优先使用环境变量，默认淘宝镜像加速
-    local npm_registry="${OPENCLAW_NPM_REGISTRY:-$OPENCLAW_DEFAULT_NPM_REGISTRY}"
+    # npm registry：固定使用脚本内默认（npmmirror）
+    local npm_registry="$OPENCLAW_DEFAULT_NPM_REGISTRY"
 
     ok "OpenClaw 安装源: $install_url"
     ok "OpenClaw 渠道: $channel"
@@ -396,6 +400,218 @@ step_preinstall_openclaw_assets() {
 
     if [[ "$failed" -eq 1 ]]; then
         warn "部分 skills 安装失败，已按策略继续安装"
+    fi
+}
+
+step_openclaw_onboard() {
+    if $OPENCLAW_SKIP_ONBOARD_CLI || [[ "${OPENCLAW_SKIP_ONBOARD:-}" == "1" ]]; then
+        return 0
+    fi
+    if [[ "${OPENCLAW_ONBOARD:-}" == "0" ]]; then
+        return 0
+    fi
+    if $SILENT; then
+        if ! $OPENCLAW_ONBOARD_CLI && [[ "${OPENCLAW_ONBOARD:-}" != "1" ]]; then
+            return 0
+        fi
+    fi
+
+    info "5.5/10 OpenClaw 首次配置（官方 onboard --non-interactive）"
+    if ! $SILENT; then
+        printf "\033[90m  OpenClaw CLI 已就绪。下面采集模型/网关所需最少信息；随后自动执行官方非交互 onboard。\033[0m\n"
+    fi
+
+    if ! command -v openclaw &>/dev/null; then
+        warn "未找到 openclaw（PATH 未刷新或安装未完成），跳过 onboard。请新开 shell 后执行: openclaw onboard --non-interactive ..."
+        return 0
+    fi
+
+    local gw_port="${OPENCLAW_GATEWAY_PORT:-$OPENCLAW_DEFAULT_GATEWAY_PORT}"
+    local auth="${OPENCLAW_AUTH_CHOICE:-}"
+    auth="$(printf '%s' "$auth" | xargs)"
+
+    if $SILENT; then
+        [[ -n "$auth" ]] || fail $E001 "E001: 静默安装且启用 OpenClaw onboard 时必须设置 OPENCLAW_AUTH_CHOICE"
+    elif [[ -z "$auth" ]]; then
+        echo ""
+        echo "OpenClaw 模型认证（输入序号）:"
+        echo "  1) Anthropic API Key (apiKey)"
+        echo "  2) OpenAI API Key (openai-api-key)"
+        echo "  3) Google Gemini API Key (gemini-api-key)"
+        echo "  4) OpenAI 兼容自定义端点 (custom-api-key)"
+        local pick=""
+        read -rp "选择 [1-4]: " pick || true
+        case "$(printf '%s' "$pick" | xargs)" in
+            1) auth="apiKey" ;;
+            2) auth="openai-api-key" ;;
+            3) auth="gemini-api-key" ;;
+            4) auth="custom-api-key" ;;
+            *) fail $E001 "E001: 无效选择（请输入 1-4）" ;;
+        esac
+    fi
+
+    [[ "$auth" != "skip" ]] || fail $E001 "E001: 已不再支持 skip（跳过密钥）；请使用 apiKey、openai-api-key、gemini-api-key 或 custom-api-key，并配置对应密钥"
+
+    local secret_mode="${OPENCLAW_SECRET_INPUT_MODE:-plaintext}"
+    secret_mode="$(printf '%s' "$secret_mode" | xargs)"
+    [[ "$secret_mode" == "plaintext" || "$secret_mode" == "ref" ]] || fail $E001 "E001: OPENCLAW_SECRET_INPUT_MODE 仅支持 plaintext 或 ref"
+
+    local v_anth="" v_openai="" v_gemini="" v_custom_key="" v_custom_url="" v_custom_model=""
+    if ! $SILENT; then
+        local line=""
+        case "$auth" in
+            apiKey)
+                read -rsp "Anthropic API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_anth="$line"
+                ;;
+            openai-api-key)
+                read -rsp "OpenAI API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_openai="$line"
+                ;;
+            gemini-api-key)
+                read -rsp "Gemini API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_gemini="$line"
+                ;;
+            custom-api-key)
+                local bu="" mid=""
+                read -rp "自定义 Base URL (OPENAI 兼容 v1): " bu || true
+                read -rp "模型 ID (custom-model-id): " mid || true
+                [[ -n "$bu" && -n "$mid" ]] || fail $E001 "E001: custom 需要 base_url 与 model_id"
+                read -rsp "API Key (CUSTOM_API_KEY): " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_custom_url="$bu"
+                v_custom_model="$mid"
+                v_custom_key="$line"
+                ;;
+        esac
+    fi
+
+    case "$auth" in
+        apiKey)
+            if [[ "$secret_mode" == "ref" ]]; then
+                [[ -n "${ANTHROPIC_API_KEY:-}" ]] || fail $E001 "E001: ref 模式需在环境中设置 ANTHROPIC_API_KEY"
+            else
+                if $SILENT; then
+                    [[ -n "${ANTHROPIC_API_KEY:-}" ]] || fail $E001 "E001: 需提供 ANTHROPIC_API_KEY（静默）"
+                else
+                    [[ -n "$v_anth" ]] || fail $E001 "E001: 需提供 ANTHROPIC_API_KEY（交互）"
+                fi
+            fi
+            ;;
+        openai-api-key)
+            if $SILENT; then
+                [[ -n "${OPENAI_API_KEY:-}" ]] || fail $E001 "E001: 需提供 OPENAI_API_KEY"
+            else
+                [[ -n "$v_openai" ]] || fail $E001 "E001: 需提供 OPENAI_API_KEY"
+            fi
+            ;;
+        gemini-api-key)
+            if $SILENT; then
+                [[ -n "${GEMINI_API_KEY:-}" ]] || fail $E001 "E001: 需提供 GEMINI_API_KEY"
+            else
+                [[ -n "$v_gemini" ]] || fail $E001 "E001: 需提供 GEMINI_API_KEY"
+            fi
+            ;;
+        custom-api-key)
+            if $SILENT; then
+                [[ -n "${OPENCLAW_CUSTOM_BASE_URL:-}" && -n "${OPENCLAW_CUSTOM_MODEL_ID:-}" ]] || fail $E001 "E001: custom-api-key 需 OPENCLAW_CUSTOM_BASE_URL 与 OPENCLAW_CUSTOM_MODEL_ID"
+                if [[ "$secret_mode" == "plaintext" ]]; then
+                    [[ -n "${CUSTOM_API_KEY:-}" ]] || fail $E001 "E001: custom-api-key plaintext 需 CUSTOM_API_KEY"
+                fi
+            else
+                [[ -n "$v_custom_url" && -n "$v_custom_model" ]] || fail $E001 "E001: custom-api-key 需 base_url 与 model_id"
+                if [[ "$secret_mode" == "plaintext" ]]; then
+                    [[ -n "$v_custom_key" ]] || fail $E001 "E001: custom-api-key plaintext 需 API Key"
+                fi
+            fi
+            ;;
+        *) fail $E001 "E001: 不支持的 OPENCLAW_AUTH_CHOICE: $auth（支持 apiKey|openai-api-key|gemini-api-key|custom-api-key）" ;;
+    esac
+
+    # 官方非交互 onboard 要求显式风险确认，见 https://docs.openclaw.ai/security
+    local -a oc_args=(
+        onboard --non-interactive --accept-risk --mode local
+        --auth-choice "$auth"
+        --secret-input-mode "$secret_mode"
+        --gateway-port "$gw_port"
+        --gateway-bind loopback
+        --install-daemon
+        --daemon-runtime node
+        --skip-skills
+    )
+    if [[ "$auth" == "custom-api-key" ]]; then
+        if $SILENT; then
+            oc_args+=(--custom-base-url "$OPENCLAW_CUSTOM_BASE_URL" --custom-model-id "$OPENCLAW_CUSTOM_MODEL_ID")
+        else
+            oc_args+=(--custom-base-url "$v_custom_url" --custom-model-id "$v_custom_model")
+        fi
+        oc_args+=(--custom-compatibility "${OPENCLAW_CUSTOM_COMPATIBILITY:-openai}")
+        [[ -n "${OPENCLAW_CUSTOM_PROVIDER_ID:-}" ]] && oc_args+=(--custom-provider-id "$OPENCLAW_CUSTOM_PROVIDER_ID")
+    fi
+    ok "执行 openclaw onboard --non-interactive（auth=$auth gatewayPort=$gw_port secret=$secret_mode）"
+
+    local ob_deadline="${OPENCLAW_ONBOARD_TIMEOUT_SEC:-600}"
+    local exit_code=0
+    (
+        [[ -n "$v_anth" ]] && export ANTHROPIC_API_KEY="$v_anth"
+        [[ -n "$v_openai" ]] && export OPENAI_API_KEY="$v_openai"
+        [[ -n "$v_gemini" ]] && export GEMINI_API_KEY="$v_gemini"
+        [[ -n "$v_custom_key" ]] && export CUSTOM_API_KEY="$v_custom_key"
+        if ! $SILENT && [[ "$auth" == "custom-api-key" ]]; then
+            export OPENCLAW_CUSTOM_BASE_URL="$v_custom_url"
+            export OPENCLAW_CUSTOM_MODEL_ID="$v_custom_model"
+        fi
+        if command -v timeout &>/dev/null; then
+            exec timeout "$ob_deadline" openclaw "${oc_args[@]}"
+        else
+            exec openclaw "${oc_args[@]}"
+        fi
+    ) || exit_code=$?
+
+    if [[ "$exit_code" -eq 124 ]]; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: openclaw onboard 超时（>${ob_deadline}s）。可运行 openclaw doctor"
+        fi
+        warn "openclaw onboard 超时，已非严格继续。设置 OPENCLAW_ONBOARD_STRICT=1 可中止安装。"
+        return 0
+    fi
+    if [[ "$exit_code" -ne 0 ]]; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor"
+        fi
+        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。"
+        return 0
+    fi
+
+    local health_url="${OPENCLAW_GATEWAY_HEALTH_URL:-http://127.0.0.1:${gw_port}/health}"
+    ok "探测网关健康: $health_url"
+    local ok_health=false
+    local i
+    for i in $(seq 1 30); do
+        if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "$health_url" &>/dev/null; then
+            ok_health=true
+            break
+        fi
+        if command -v wget &>/dev/null && wget -q --timeout=2 -O /dev/null "$health_url" 2>/dev/null; then
+            ok_health=true
+            break
+        fi
+        sleep 2
+    done
+    if ! $ok_health; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: onboard 后网关健康检查失败。检查 OPENCLAW_GATEWAY_HEALTH_URL 或网关服务"
+        fi
+        warn "网关 HTTP 健康检查未在约 60s 内通过；可稍后排查或设 OPENCLAW_GATEWAY_HEALTH_PROBE=0"
+    else
+        ok "OpenClaw 网关健康检查通过"
     fi
 }
 
@@ -732,10 +948,13 @@ parse_args() {
             --repo-root)     REPO_ROOT="$2"; shift 2 ;;
             --binary)        USE_PYTHON=false; shift ;;
             --full-runtime-deps) FULL_RUNTIME_DEPS=true; shift ;;
+            --openclaw-onboard) OPENCLAW_ONBOARD_CLI=true; shift ;;
+            --skip-openclaw-onboard) OPENCLAW_SKIP_ONBOARD_CLI=true; shift ;;
             --silent)        SILENT=true; shift ;;
             -h|--help)
                 echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT]"
                 echo "         [--repo-root DIR] [--binary] [--local-binary PATH] [--full-runtime-deps] [--silent]"
+                echo "         [--openclaw-onboard] [--skip-openclaw-onboard]"
                 echo "默认: Python venv + 仓库源码；第三步仅装精简 pip 依赖（/health + 指标推送）。"
                 echo "      --full-runtime-deps 安装完整依赖（含 PyTorch 等，很慢）。"
                 echo "      --binary / --local-binary 使用单文件二进制。"
@@ -762,6 +981,7 @@ main() {
     step_network_check
     step_install_openclaw_official
     step_preinstall_openclaw_assets
+    step_openclaw_onboard
     step_download
     step_install
     step_register_service
