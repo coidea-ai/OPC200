@@ -148,7 +148,7 @@ download_configs() {
         
         # 设置环境变量
         echo 'export OPC200_GATEWAY_TOKEN=$GATEWAY_TOKEN' >> ~/.bashrc
-        echo 'export OPC200_CUSTOMER_ID=OPC-001' >> ~/.bashrc
+        echo 'export OPC200_TENANT_ID=OPC-001' >> ~/.bashrc
     "
     
     print_success "配置文件下载完成"

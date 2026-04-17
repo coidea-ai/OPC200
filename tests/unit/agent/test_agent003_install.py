@@ -49,8 +49,8 @@ class TestFilesExist:
 
 class TestInstallParams:
     REQUIRED_PARAMS = [
-        "--platform-url", "--customer-id", "--api-key",
-        "--install-dir", "--port", "--silent",
+        "--opc200-platform-url", "--opc200-tenant-id", "--opc200-api-key",
+        "--install-dir", "--opc200-port", "--silent",
     ]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
@@ -225,7 +225,7 @@ class TestPackageManagerDetection:
 class TestSpecConsistency:
     def test_three_config_items(self, install_sh):
         lower = install_sh.lower()
-        for item in ("platform_url", "customer_id", "api_key"):
+        for item in ("opc200-platform-url", "opc200-tenant-id", "opc200-api-key"):
             assert item in lower
 
     def test_health_endpoint(self, install_sh):

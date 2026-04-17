@@ -1,8 +1,0 @@
-# Optional full stack (journal vector store, patterns, security crypto, etc.). Pulls PyTorch via sentence-transformers — slow/large.
-cryptography>=41.0.0
-numpy>=1.24.0
-qdrant-client>=1.6.0
-sentence-transformers>=2.2.0
-requests>=2.31.0
-psutil>=5.9.0
-pyyaml>=6.0

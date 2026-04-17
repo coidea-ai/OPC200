@@ -37,9 +37,9 @@
 │     └── 端口占用检测（默认 8080）                            │
 │                          ↓                                  │
 │  2. 交互式配置（或命令行参数）                                │
-│     ├── PLATFORM_URL: 平台端点（默认 https://platform.opc200.co）│
-│     ├── CUSTOMER_ID: 用户唯一标识                           │
-│     └── API_KEY: 认证密钥（安全输入，不显示）                 │
+│     ├── `-OPC200PlatformUrl` / `--opc200-platform-url`: 平台端点（默认 https://platform.opc200.co）│
+│     ├── `-OPC200TenantId` / `--opc200-tenant-id` / `OPC200_TENANT_ID`: 租户唯一标识       │
+│     └── `-OPC200ApiKey` / `--opc200-api-key` / `OPC200_API_KEY`: 认证密钥（安全输入，不显示）                 │
 │                          ↓                                  │
 │  3. 下载 Agent                                               │
 │     ├── 从 GitHub Releases 下载对应平台二进制                │
@@ -98,9 +98,9 @@ platform:
   url: "https://platform.opc200.co"
   metrics_endpoint: "/metrics/job"
   
-# 用户身份
+# 用户身份（YAML 键名仍为 customer，与运行时 TENANT_ID 对应）
 customer:
-  id: "<CUSTOMER_ID>"
+  id: "<TENANT_ID>"
   
 # Agent 配置
 agent:
@@ -139,9 +139,9 @@ journal:
 .\install.ps1
 
 # 静默安装（自动化部署）
-.\install.ps1 -PlatformUrl "https://platform.opc200.co" `
-              -CustomerId "CUST_001" `
-              -ApiKey "sk-xxx" `
+.\install.ps1 -OPC200PlatformUrl "https://platform.opc200.co" `
+              -OPC200TenantId "CUST_001" `
+              -OPC200ApiKey "sk-xxx" `
               -Silent
 ```
 
@@ -160,9 +160,9 @@ journal:
 ./install.sh
 
 # 静默安装
-./install.sh --platform-url "https://platform.opc200.co" \
-             --customer-id "CUST_001" \
-             --api-key "sk-xxx" \
+./install.sh --opc200-platform-url "https://platform.opc200.co" \
+             --opc200-tenant-id "CUST_001" \
+             --opc200-api-key "sk-xxx" \
              --silent
 ```
 
@@ -172,11 +172,11 @@ journal:
 
 | 配置项 | 必需 | 说明 | 示例 |
 |--------|------|------|------|
-| `PLATFORM_URL` | ✅ | 平台端点地址 | `https://platform.opc200.co` |
-| `CUSTOMER_ID` | ✅ | 用户唯一标识 | `CUST_001`, `user@example.com` |
-| `API_KEY` | ✅ | 认证密钥 | `sk-abc123...` |
-| `INSTALL_DIR` | ❌ | 安装目录 | 默认 `~/.opc200` |
-| `PORT` | ❌ | 本地服务端口 | 默认 `8080` |
+| `-OPC200PlatformUrl` / `--opc200-platform-url` | ✅（静默可省略用默认 URL） | 平台端点地址 | `https://platform.opc200.co` |
+| `-OPC200TenantId` / `--opc200-tenant-id` / `OPC200_TENANT_ID` | ✅ | 租户唯一标识（与 OpenClaw `custom-*` 无关） | `CUST_001`, `user@example.com` |
+| `-OPC200ApiKey` / `--opc200-api-key` / `OPC200_API_KEY` | ✅ | 认证密钥 | `sk-abc123...` |
+| `INSTALL_DIR` / `--install-dir` | ❌ | 安装目录 | 默认 `~/.opc200` |
+| `-OPC200Port` / `--opc200-port` | ❌ | 本地 Agent HTTP 端口 | 默认 `8080` |
 
 ---
 

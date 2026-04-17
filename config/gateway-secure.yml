@@ -171,7 +171,7 @@ audit:
 tailscale:
   enabled: true
   auth_key: "${TAILSCALE_AUTHKEY}"
-  hostname: "opc-${CUSTOMER_ID}"
+  hostname: "opc-${OPC200_TENANT_ID}"
   tags:
     - "tag:opc"
   
@@ -221,7 +221,7 @@ support_hub:
   
   # 注册信息
   registration:
-    customer_id: "${OPC200_CUSTOMER_ID}"
+    tenant_id: "${OPC200_TENANT_ID}"
     token: "${OPC200_REGISTRATION_TOKEN}"
   
   # 遥测（可选）

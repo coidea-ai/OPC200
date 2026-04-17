@@ -53,9 +53,9 @@ class TestFilesExist:
 
 class TestInstallParams:
     REQUIRED_PARAMS = [
-        "--platform-url", "--customer-id", "--api-key",
-        "--install-dir", "--port", "--silent",
-        "--local-binary", "--repo-root", "--binary", "--full-runtime-deps",
+        "--opc200-platform-url", "--opc200-tenant-id", "--opc200-api-key",
+        "--install-dir", "--opc200-port", "--silent",
+        "--local-binary", "--repo-root", "--binary",
     ]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
@@ -116,6 +116,15 @@ class TestDirectoryStructure:
 
     def test_default_install_dir(self, install_sh):
         assert ".opc200" in install_sh
+
+
+class TestOpenClawPreinstallToolsProfile:
+    def test_preinstall_sets_tools_profile_full(self, install_sh):
+        i = install_sh.find("step_preinstall_openclaw_assets")
+        assert i >= 0
+        block = install_sh[i : i + 900]
+        assert "tools.profile" in block
+        assert "config set tools.profile full" in block
 
 
 # ── config.yml 模板 ──────────────────────────────────────────────
@@ -326,7 +335,7 @@ class TestPackageManagerDetection:
 class TestSpecConsistency:
     def test_three_config_items(self, install_sh):
         lower = install_sh.lower()
-        for item in ("platform_url", "customer_id", "api_key"):
+        for item in ("opc200-platform-url", "opc200-tenant-id", "opc200-api-key"):
             assert item in lower
 
     def test_health_endpoint(self, install_sh):

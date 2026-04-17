@@ -42,7 +42,7 @@ class TestFilesExist:
 # ── install.ps1 参数声明 ─────────────────────────────────────────
 
 class TestInstallParams:
-    REQUIRED_PARAMS = ["PlatformUrl", "CustomerId", "ApiKey", "InstallDir", "Port", "Silent"]
+    REQUIRED_PARAMS = ["OPC200PlatformUrl", "OPC200TenantId", "OPC200ApiKey", "InstallDir", "OPC200Port", "Silent"]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
     def test_param_declared(self, install_ps1, param):
@@ -253,9 +253,28 @@ class TestOpenClawPreload:
         assert "AGENTS.md" in install_ps1
         assert "openclaw-templates" in install_ps1
 
+    def test_preload_sets_tools_profile_full(self, install_ps1):
+        i = install_ps1.find("function Install-OpenClawPreload")
+        assert i >= 0
+        block = install_ps1[i : i + 1200]
+        assert "tools.profile" in block
+        assert "full" in block
+        assert "openclaw:tools-profile" in block
+
     def test_preload_skill_fail_non_blocking(self, install_ps1):
         assert "skills 安装失败（已忽略）" in install_ps1
         assert "Write-Warn" in install_ps1
+
+
+class TestOpenClawPart2Gateway:
+    def test_part2_unified_status_probe_no_duplicate_fresh_install(self, install_ps1):
+        i = install_ps1.find("function Invoke-OpenClawPart2InstallAndGateway")
+        assert i >= 0
+        block = install_ps1[i : i + 3600]
+        assert "优先 RPC" in block
+        assert "statusRpcFirst" in block
+        assert "网关 RPC 探测正常" in block
+        assert block.count("Install-OpenClawGatewayWithRetry") == 1
 
 
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
@@ -299,8 +318,13 @@ class TestUninstall:
     def test_admin_check(self, uninstall_ps1):
         assert "Administrator" in uninstall_ps1
 
-    def test_purge_openclaw_switch(self, uninstall_ps1):
-        assert "PurgeOpenClaw" in uninstall_ps1
+    def test_keep_openclaw_switch(self, uninstall_ps1):
+        assert "KeepOpenClaw" in uninstall_ps1
+        assert "Resolve-KeepOpenClawChoice" in uninstall_ps1
+
+    def test_openclaw_gateway_stop_before_uninstall(self, uninstall_ps1):
+        assert "gateway stop" in uninstall_ps1
+        assert "Stop-OpenClawGatewayBeforeUninstall" in uninstall_ps1
 
     def test_openclaw_official_uninstall_invoked(self, uninstall_ps1):
         assert "openclaw uninstall --all --yes --non-interactive" in uninstall_ps1
@@ -310,7 +334,7 @@ class TestUninstall:
 
 class TestSpecConsistency:
     def test_three_config_items(self, install_ps1):
-        for item in ("PLATFORM_URL", "CUSTOMER_ID", "API_KEY"):
+        for item in ("PLATFORM_URL", "OPC200_TENANT_ID", "API_KEY"):
             assert item.lower().replace("_", "") in install_ps1.lower().replace("_", "")
 
     def test_health_endpoint(self, install_ps1):
