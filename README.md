@@ -270,7 +270,7 @@ docker run -d \
   --name opc-agent \
   -v ~/.opc200:/data \
   -e PLATFORM_URL=https://opc200.co \
-  -e CUSTOMER_ID=opc-001 \
+  -e TENANT_ID=opc-001 \
   opc-agent:latest
 ```
 

@@ -1,7 +1,7 @@
 # 预装版小龙虾（OpenClaw）交付路线图
 
 > **用途**：后续预装版安装、打包、观测相关工作以此文档为单一事实来源；完成项及时勾选，并在文末更新「变更记录」。  
-> **最后更新**：2026-04-16（§2.8：OpenClaw 开箱即用配置自动化落地）
+> **最后更新**：2026-04-16（轻预装 `tools.profile=full`；网关 RPC 优先探测；`install.ps1` 全量 15 步默认启用）
 
 ---
 
@@ -16,9 +16,10 @@
 
 - **非深度定制**：不做 OpenClaw 私有分叉，不改 OpenClaw 内核逻辑，不交付“魔改发行版”。
 - **官方渠道安装**：用户执行本项目脚本时，底层必须调用 OpenClaw 官方安装渠道，并默认安装**全量 latest**。
-- **仅做轻预装层**：在官方安装完成后，仅自动完成两类动作：  
+- **仅做轻预装层**：在官方安装完成后，自动完成（脚本侧）：  
   1) 通过 OpenClaw 自带插件机制（如 clawhub / 原生命令）安装 skills；  
-  2) 投放预置文档（`SOUL.md`、`IDENTITY.md`、`AGENTS.md` 等）。
+  2) 投放预置文档（`SOUL.md`、`IDENTITY.md`、`AGENTS.md` 等）；  
+  3) 执行 **`openclaw config set tools.profile full`**（失败仅告警，不阻断安装）。
 
 ### 0.3 分期依赖关系
 
@@ -112,6 +113,8 @@
 - [x] 静默模式参数化：`OPENCLAW_AUTH_CHOICE` + 对应 provider 环境变量；Windows 增加 `-OpenClawOnboard` / `-OpenClawAuthChoice` / `-SkipOpenClawOnboard`；Linux 增加 `--openclaw-onboard` / `--skip-openclaw-onboard`；**交互安装默认执行 onboard**；**静默**须 `OPENCLAW_ONBOARD=1`（或 CLI 开关）才跑 onboard，避免无密钥 CI 误跑；`OPENCLAW_ONBOARD=0` 或 `Skip` 可显式跳过。
 - [x] 配置落地策略：优先官方 `openclaw onboard --non-interactive`（见 https://docs.openclaw.ai/start/wizard-cli-automation ）；**直接写 `openclaw.json` 的 fallback 仍列为后续**（schema 随版本变化，避免脚本侧误写）。
 - [x] 成功判定与兜底：`OPENCLAW_GATEWAY_HEALTH_URL` 或默认 `http://127.0.0.1:<port>/health` 轮询；`OPENCLAW_ONBOARD_STRICT=1` 时 onboard 或健康失败则中止安装；否则告警继续并完成 opc-agent 安装。
+- [x] 网关段优化：优先 `gateway status --require-rpc`，避免 onboard 已装 daemon 后重复 `gateway install`；仅在 RPC 未就绪时再区分未安装/需修复；`doctor` 仅在重启仍失败路径触发。
+- [x] 轻预装写入 `tools.profile=full`：`install.ps1` / `install.sh` 在 skills 与文档前执行（CLI 不可用时跳过并告警）。
 
 ---
 
@@ -148,7 +151,7 @@
 
 | 日期 | 摘要 |
 |------|------|
-| 2026-04-16 | Windows `install.ps1`：三段流程（环境 → OpenClaw → OPC200 Agent）；onboard 后轻预装；`doctor`+`gateway restart`；平台 URL/租户在 Agent 前采集；平台 ApiKey 复用模型密钥；无 exe 分支 |
+| 2026-04-16 | Windows `install.ps1`：`Main` 全量三段（环境 → OpenClaw → OPC200 Agent）；onboard 后轻预装（含 `tools.profile=full`）；网关 RPC 优先探测；平台三件套在 Agent 段采集；轻预装/`uninstall.ps1`（`-KeepOpenClaw`）与单测、README 同步 |
 | 2026-04-16 | 交互安装默认执行 OpenClaw onboard；静默仍须 `OPENCLAW_ONBOARD=1`；支持 `OPENCLAW_ONBOARD=0` / Skip 显式关闭 |
 | 2026-04-16 | §2.8 落地：`install.ps1` / `install.sh` 可选 `openclaw onboard --non-interactive` + 网关 HTTP 健康检查；单测 `test_agent008_openclaw_onboard_install.py` |
 | 2026-04-15 | 新增第二期 §2.8：OpenClaw 开箱即用配置自动化（最小配置集、交互采集、静默参数、配置落地与验证兜底） |

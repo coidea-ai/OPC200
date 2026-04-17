@@ -5,22 +5,20 @@
 .DESCRIPTION
     按 AGENT-001 (docs/INSTALL_SCRIPT_SPEC.md) 规范实现。
     流程: 环境检测 → OpenClaw 安装与配置 → OPC200 Agent (venv) → 计划任务 → 验证
-.PARAMETER PlatformUrl
-    平台端点（第三部分；静默必填时可省略则用默认）
-.PARAMETER CustomerId
-    租户 ID（第三部分；静默必填）
-.PARAMETER ApiKey
-    平台 ApiKey；若已在 OpenClaw 步骤填写模型密钥则复用，无需再传
+.PARAMETER OPC200PlatformUrl
+    OPC200 平台端点（第三部分；静默必填时可省略则用默认）
+.PARAMETER OPC200TenantId
+    OPC200 租户 ID（第三部分；静默必填，亦可由环境变量 OPC200_TENANT_ID 提供）
+.PARAMETER OPC200ApiKey
+    OPC200 平台 ApiKey；若已在 OpenClaw 步骤填写模型密钥则复用，无需再传
 .PARAMETER InstallDir
     安装目录 (默认 ~/.opc200)
-.PARAMETER Port
-    本地服务端口 (默认 8080)
+.PARAMETER OPC200Port
+    OPC200 Agent 本地 HTTP 端口 (默认 8080)
 .PARAMETER Silent
     静默安装模式
 .PARAMETER RepoRoot
     OPC200 仓库根目录（含 agent/、src/）；默认为本脚本所在位置的 ..\..
-.PARAMETER FullRuntimeDeps
-    安装完整 pip 依赖（含 sentence-transformers/PyTorch，很慢）；默认仅装精简依赖（/health + 指标推送）
 .PARAMETER OpenClawOnboard
     显式要求执行 onboard（静默时常用）。交互安装默认即会执行，一般无需再传。
 .PARAMETER SkipOpenClawOnboard
@@ -30,18 +28,17 @@
 .EXAMPLE
     .\install.ps1
 .EXAMPLE
-    .\install.ps1 -Silent -PlatformUrl "https://platform.opc200.co" -CustomerId "opc-001" -ApiKey "sk-xxx"
+    .\install.ps1 -Silent -OPC200PlatformUrl "https://platform.opc200.co" -OPC200TenantId "opc-001" -OPC200ApiKey "sk-xxx"
 #>
 
 param(
-    [string]$PlatformUrl = "",
-    [string]$CustomerId = "",
-    [string]$ApiKey     = "",
+    [string]$OPC200PlatformUrl = "",
+    [string]$OPC200TenantId = "",
+    [string]$OPC200ApiKey     = "",
     [string]$InstallDir = "",
-    [int]$Port          = 8080,
+    [int]$OPC200Port          = 8080,
     [switch]$Silent,
     [string]$RepoRoot   = "",
-    [switch]$FullRuntimeDeps,
     [switch]$OpenClawOnboard,
     [switch]$SkipOpenClawOnboard,
     [string]$OpenClawAuthChoice = ""
@@ -85,7 +82,7 @@ $script:E005 = 5   # 服务注册失败
 $script:RepoRootResolved = ""
 $script:RunAgentScript  = ""
 $script:PlatformUrl     = ""
-$script:CustomerId      = ""
+$script:TenantId        = ""
 $script:ApiKey          = ""
 $script:InstallRoot     = ""
 
@@ -274,11 +271,11 @@ function Test-Environment {
     Write-Ok "磁盘可用 ${freeGB}GB"
 
     # 端口占用
-    $portInUse = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    $portInUse = Get-NetTCPConnection -LocalPort $OPC200Port -ErrorAction SilentlyContinue
     if ($portInUse) {
-        Fail $script:E003 "E003: 端口 $Port 被占用"
+        Fail $script:E003 "E003: 端口 $OPC200Port 被占用"
     }
-    Write-Ok "端口 $Port 可用"
+    Write-Ok "端口 $OPC200Port 可用"
 
     $cli = Join-Path $script:RepoRootResolved "agent\src\opc_agent\cli.py"
     if (-not (Test-Path -LiteralPath $cli)) {
@@ -323,22 +320,24 @@ function Get-OpcAgentPlatformConfig {
     Write-Step "10/15 平台与租户 (OPC200 Agent)"
 
     if ($Silent) {
-        if ($PlatformUrl) { $script:PlatformUrl = $PlatformUrl } else { $script:PlatformUrl = $script:DEFAULT_URL }
-        if (-not $CustomerId) { Fail $script:E001 "E001: 静默须 -CustomerId" }
-        $script:CustomerId = $CustomerId
+        if ($OPC200PlatformUrl) { $script:PlatformUrl = $OPC200PlatformUrl } else { $script:PlatformUrl = $script:DEFAULT_URL }
+        $tid = $OPC200TenantId
+        if ([string]::IsNullOrWhiteSpace($tid) -and $env:OPC200_TENANT_ID) { $tid = $env:OPC200_TENANT_ID.Trim() }
+        if ([string]::IsNullOrWhiteSpace($tid)) { Fail $script:E001 "E001: 静默须 -OPC200TenantId 或环境变量 OPC200_TENANT_ID" }
+        $script:TenantId = $tid
         if (-not $script:ApiKey) {
-            if ($ApiKey) { $script:ApiKey = $ApiKey }
+            if ($OPC200ApiKey) { $script:ApiKey = $OPC200ApiKey }
             elseif ($env:OPC200_API_KEY) { $script:ApiKey = $env:OPC200_API_KEY }
-            else { Fail $script:E001 "E001: 静默须平台 ApiKey：OpenClaw 已填模型密钥，或 -ApiKey，或 OPC200_API_KEY" }
+            else { Fail $script:E001 "E001: 静默须 OPC200 平台 ApiKey：OpenClaw 已填模型密钥，或 -OPC200ApiKey，或 OPC200_API_KEY" }
         }
     }
     else {
         $inputUrl = Read-Host "平台地址 [$($script:DEFAULT_URL)]"
         $script:PlatformUrl = if ($inputUrl) { $inputUrl } else { $script:DEFAULT_URL }
         do {
-            $script:CustomerId = Read-Host "Customer ID (必需)"
-            if (-not $script:CustomerId) { Write-Err "不能为空" }
-        } while (-not $script:CustomerId)
+            $script:TenantId = Read-Host "租户 ID (Tenant ID，必需)"
+            if (-not $script:TenantId) { Write-Err "不能为空" }
+        } while (-not $script:TenantId)
         if (-not $script:ApiKey) {
             $script:ApiKey = Read-SecureLineNonEmpty -Prompt "平台 API Key (OpenClaw 未采集密钥时必填)"
         }
@@ -346,7 +345,7 @@ function Get-OpcAgentPlatformConfig {
             Write-Ok "已复用 OpenClaw 阶段的密钥作为平台 ApiKey"
         }
     }
-    Write-Ok "平台: $($script:PlatformUrl) | Customer: $($script:CustomerId)"
+    Write-Ok "平台: $($script:PlatformUrl) | Tenant: $($script:TenantId)"
 }
 
 # ── 网络预检 ─────────────────────────────────────────────────────
@@ -594,7 +593,20 @@ function Write-DocTemplate {
 }
 
 function Install-OpenClawPreload {
-    Write-Step "7/15 轻预装层（skills + 文档）"
+    Write-Step "7/15 轻预装层（tools + skills + 文档）"
+
+    Sync-SessionPathFromRegistry
+    $ocCmd = Get-Command openclaw -ErrorAction SilentlyContinue
+    if ($ocCmd) {
+        Write-Ok "openclaw config set tools.profile full"
+        $tpCode = Invoke-OpenClawLoggedUtf8 -ExePath $ocCmd.Source -ArgumentList @("config", "set", "tools.profile", "full") -LinePrefix "openclaw:tools-profile"
+        if ($tpCode -ne 0) {
+            Write-Warn "tools.profile 未写入（退出码 $tpCode）；可稍后手动: openclaw config set tools.profile full"
+        }
+    }
+    else {
+        Write-Warn "未找到 openclaw，跳过 tools.profile"
+    }
 
     $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { $script:OPENCLAW_DEFAULT_PROFILE_DIR }
     $skillsCsv = if ($env:OPENCLAW_PREINSTALL_SKILLS) { $env:OPENCLAW_PREINSTALL_SKILLS } else { $script:OPENCLAW_DEFAULT_SKILLS }
@@ -1054,20 +1066,20 @@ function Invoke-OpenClawPart2InstallAndGateway {
     if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gwPort = [int]$env:OPENCLAW_GATEWAY_PORT }
 
     if ($FreshOpenClawCliInstall) {
-        Install-OpenClawGatewayWithRetry -ExePath $exe -GwPort $gwPort
-        Invoke-OpenClawGatewayConfigureLocal -ExePath $exe
-        $started = Start-OpenClawGatewayForPart2 -ExePath $exe -GwPort $gwPort
-        if ($started) {
-            Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
-            $gp = $gwPort
-            if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
-            Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
-            return
-        }
-        Invoke-OpenClawPart2DoctorOnly -ExePath $exe
+        Write-Host "  [i] 本次为新安装 openclaw CLI；优先 RPC 探测，未就绪时再区分「未安装」与「已装需修复」。" -ForegroundColor DarkGray
+    }
+
+    $statusRpcFirst = Invoke-OpenClawCaptureUtf8 -ExePath $exe -ArgumentList @("gateway", "status", "--json", "--require-rpc")
+    if ($statusRpcFirst.ExitCode -eq 0) {
         Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
+        $gp = $gwPort
+        if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
+        Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
+        Write-Ok "网关 RPC 探测正常，跳过安装/配置/启动"
         return
     }
+
+    Write-Warn "网关 RPC 未就绪（退出码 $($statusRpcFirst.ExitCode)）；将检查服务是否已安装"
 
     $statusNoProbe = Invoke-OpenClawCaptureUtf8 -ExePath $exe -ArgumentList @("gateway", "status", "--json", "--no-probe")
     $installed = $false
@@ -1079,16 +1091,7 @@ function Invoke-OpenClawPart2InstallAndGateway {
     }
 
     if ($installed) {
-        $statusRpc = Invoke-OpenClawCaptureUtf8 -ExePath $exe -ArgumentList @("gateway", "status", "--json", "--require-rpc")
-        if ($statusRpc.ExitCode -eq 0) {
-            Set-OpenClawGatewayPortEnvForAgent -ExePath $exe -GwPortHint $gwPort
-            $gp = $gwPort
-            if ($env:OPENCLAW_GATEWAY_PORT -match '^\d+$') { $gp = [int]$env:OPENCLAW_GATEWAY_PORT }
-            Write-Host "  浏览器控制台: http://127.0.0.1:$gp （HTTP）" -ForegroundColor DarkGray
-            Write-Ok "网关已安装且 RPC 探测正常，跳过安装/配置/启动"
-            return
-        }
-        Write-Warn "网关已安装但未通过 RPC 健康探测（退出码 $($statusRpc.ExitCode)），将尝试配置并启动"
+        Write-Warn "服务已登记但 RPC 异常，将尝试配置并启动"
         Invoke-OpenClawGatewayConfigureLocal -ExePath $exe
         $started = Start-OpenClawGatewayForPart2 -ExePath $exe -GwPort $gwPort
         if ($started) {
@@ -1447,14 +1450,8 @@ function Install-OpenClawOnboardIfRequested {
 }
 
 function Get-AgentBinary {
-    if ($FullRuntimeDeps) {
-        Write-Step "11/15 Python 运行环境 (venv + pip，完整依赖，较慢)"
-        $reqName = "requirements-agent-runtime-full.txt"
-    }
-    else {
-        Write-Step "11/15 Python 运行环境 (venv + pip，精简依赖)"
-        $reqName = "requirements-agent-runtime.txt"
-    }
+    Write-Step "11/15 Python 运行环境 (venv + pip，精简依赖)"
+    $reqName = "requirements-agent-runtime.txt"
     $req = Join-Path $script:RepoRootResolved "agent\scripts\$reqName"
     if (-not (Test-Path -LiteralPath $req)) {
         Fail $script:E001 "E001: 缺少 $reqName"
@@ -1532,7 +1529,7 @@ platform:
   metrics_endpoint: "/metrics/job"
 
 customer:
-  id: "$($script:CustomerId)"
+  id: "$($script:TenantId)"
 
 agent:
   version: "$($script:AGENT_VERSION)"
@@ -1541,7 +1538,7 @@ agent:
 
 gateway:
   host: "127.0.0.1"
-  port: $Port
+  port: $OPC200Port
 
 journal:
   storage_path: "$($root -replace '\\','/')/data/journal"
@@ -1628,7 +1625,7 @@ function Start-AndVerify {
     Write-Ok "已触发计划任务启动 Agent"
 
     # 健康检查
-    $healthUrl = "http://127.0.0.1:$Port/health"
+    $healthUrl = "http://127.0.0.1:$OPC200Port/health"
     $healthy   = $false
     for ($i = 1; $i -le 10; $i++) {
         try {
@@ -1657,7 +1654,7 @@ function Show-Summary {
     Write-Host "  配置文件 : $root\config\config.yml" -ForegroundColor Cyan
     Write-Host "  日志文件 : $root\logs\agent.log" -ForegroundColor Cyan
     Write-Host "  计划任务 : $($script:TASK_NAME) (登录时运行)" -ForegroundColor Cyan
-    Write-Host "  健康检查 : http://127.0.0.1:$Port/health" -ForegroundColor Cyan
+    Write-Host "  健康检查 : http://127.0.0.1:$OPC200Port/health" -ForegroundColor Cyan
     Write-Host "  运行方式 : Python venv + 仓库 $($script:RepoRootResolved)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  查看任务 : Get-ScheduledTask -TaskName $($script:TASK_NAME)" -ForegroundColor Gray
@@ -1679,32 +1676,26 @@ function Main {
     else {
         $script:RepoRootResolved = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
     }
+
     # ── 第一部分：环境检测与 Node / 网络预检 ──
     Test-Environment
     Initialize-InstallPaths
     Ensure-OpenClawNodeRuntime
     Test-OpenClawNetworkReady
 
-    # 第二部分（前段）：OpenClaw CLI 就绪后，先做交互/静默 onboard 与轻预装；之后再进入网关安装与配置状态机。
+    # ── 第二部分：OpenClaw（CLI → onboard → 轻预装 → 网关）──
     $freshCli = Ensure-OpenClawCliPresentOrInstall
     Install-OpenClawOnboardIfRequested
     Install-OpenClawPreload
-    # 第二部分（后段）：网关安装 / 探测 / 配置 / 启动 / 记端口（Invoke-OpenClawPart2InstallAndGateway）。
     Invoke-OpenClawPart2InstallAndGateway -FreshOpenClawCliInstall:$freshCli
 
-    <#
-    # ── 第三部分：OPC200 Agent（测第二部分时保持注释）──
+    # ── 第三部分：OPC200 Agent ──
     Get-OpcAgentPlatformConfig
     Get-AgentBinary
     Install-Agent
     Register-Service
     Start-AndVerify
     Show-Summary
-    #>
-
-    Write-Host ""
-    Write-Host "[TEST] 第一部分 + 第二部分已执行；第三部分（OPC200 Agent）仍注释。" -ForegroundColor Yellow
-    Write-Host ""
 
     return 0
 }

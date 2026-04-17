@@ -34,7 +34,7 @@ cat > "$REPORT_FILE" <> EOF
 
 **生成时间**: $(date -Iseconds)  
 **主机**: $(hostname)  
-**客户ID**: ${OPC200_CUSTOMER_ID:-unknown}
+**租户ID**: ${OPC200_TENANT_ID:-unknown}
 
 ---
 

@@ -42,7 +42,7 @@ class TestFilesExist:
 # ── install.ps1 参数声明 ─────────────────────────────────────────
 
 class TestInstallParams:
-    REQUIRED_PARAMS = ["PlatformUrl", "CustomerId", "ApiKey", "InstallDir", "Port", "Silent"]
+    REQUIRED_PARAMS = ["OPC200PlatformUrl", "OPC200TenantId", "OPC200ApiKey", "InstallDir", "OPC200Port", "Silent"]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
     def test_param_declared(self, install_ps1, param):
@@ -63,8 +63,8 @@ class TestInstallSteps:
         "Install-OpenClawOfficial",
         "Install-OpenClawOnboardIfRequested",
         "Install-OpenClawPreload",
-        "Invoke-OpenClawGatewayLocalConfigure",
-        "Invoke-OpenClawVerifyAndRestartGateway",
+        "Ensure-OpenClawCliPresentOrInstall",
+        "Invoke-OpenClawPart2InstallAndGateway",
         "Get-OpcAgentPlatformConfig",
         "Get-AgentBinary",
         "Install-Agent",
@@ -282,8 +282,9 @@ class TestUninstall:
     def test_admin_check(self, uninstall_ps1):
         assert "Administrator" in uninstall_ps1
 
-    def test_purge_openclaw_switch(self, uninstall_ps1):
-        assert "PurgeOpenClaw" in uninstall_ps1
+    def test_keep_openclaw_switch(self, uninstall_ps1):
+        assert "KeepOpenClaw" in uninstall_ps1
+        assert "Resolve-KeepOpenClawChoice" in uninstall_ps1
 
     def test_openclaw_official_uninstall_invoked(self, uninstall_ps1):
         assert "openclaw uninstall --all --yes --non-interactive" in uninstall_ps1
@@ -293,7 +294,7 @@ class TestUninstall:
 
 class TestSpecConsistency:
     def test_three_config_items(self, install_ps1):
-        for item in ("PLATFORM_URL", "CUSTOMER_ID", "API_KEY"):
+        for item in ("PLATFORM_URL", "OPC200_TENANT_ID", "API_KEY"):
             assert item.lower().replace("_", "") in install_ps1.lower().replace("_", "")
 
     def test_health_endpoint(self, install_ps1):

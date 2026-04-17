@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-16（AGENT-008 ✅；`install.ps1` 三部分/14 步流程重构）
+**最后更新**: 2026-04-16（`install.ps1` 全量 15 步 + 轻预装 `tools.profile` + 网关 RPC 优先；`agent/README` / Roadmap 同步）
 
 ---
 
@@ -184,7 +184,7 @@
 - **产出**:
   - ✅ `docs/INSTALL_SCRIPT_SPEC.md` - 跨平台安装脚本设计规范
   - ✅ 安装流程: 下载 → 配置环境变量 → 启动 Agent
-  - ✅ 配置项: `PLATFORM_URL`, `CUSTOMER_ID`, `API_KEY`
+  - ✅ 配置项: `PLATFORM_URL`, `OPC200_TENANT_ID` / `TENANT_ID`, `API_KEY`
   - ✅ 数据目录: `~/.opc200/`
   - ✅ 错误码定义、安全设计、目录结构
 - **提交**: `4111c8b` - docs: add Windows install script spec and project setup docs
@@ -197,8 +197,8 @@
 - **预计 AI 工时**: 2h
 - **实际完成**: Day 3（2026-04-12 重写）
 - **产出**:
-  - ✅ `agent/scripts/install.ps1` — 主流程 14 段（步骤提示 1/14–14/14），严格按 AGENT-001 SPEC；仅 Python venv+源码
-  - ✅ `agent/scripts/uninstall.ps1` — 3 步卸载，支持 KeepData
+  - ✅ `agent/scripts/install.ps1` — 主流程 15 步（1/15–15/15）：环境 → OpenClaw（含 onboard、轻预装 `tools.profile=full`、网关 RPC 优先探测）→ OPC200 Agent；严格按 AGENT-001 SPEC；仅 Python venv+源码
+  - ✅ `agent/scripts/uninstall.ps1` — 先 OPC200 再可选卸 OpenClaw；`-KeepOpenClaw`；支持 KeepData
   - ✅ `agent/src/tests/test_agent002_install.py` — 安装脚本规范一致性测试
   - ✅ 目录结构 `~/.opc200/`（bin/config/data/journal/exporter/logs）
   - ✅ 端口占用检测、磁盘空间检查
@@ -456,7 +456,8 @@
 
 ### 2026-04-16
 
-- **重构**: `install.ps1`（AGENT-007/002 对齐）：安装开头不再采集平台三件套；OpenClaw 顺序为官方安装 → PATH 同步 → onboard → 轻预装 → `doctor` + `gateway restart`；OPC200 Agent 前再采平台与租户，平台 ApiKey 复用 OpenClaw 模型密钥或 `-ApiKey` / `OPC200_API_KEY`；移除 `-LocalBinary`/`-UseBinary` 与 Release exe 下载，仅 venv+pip；`agent/README.md` + `test_agent002_install.py` 同步
+- **推进**（Windows 安装脚本阶段性收束）：`install.ps1` **放开 `Main` 全注释**，默认跑满第一～三部分；轻预装增加 **`openclaw config set tools.profile full`**；网关段 **RPC 优先**（`--require-rpc`）避免重复 `gateway install`；`uninstall.ps1` 已对齐 **`-KeepOpenClaw`** 与卸载顺序。`agent/README.md`、`docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`、相关单测已同步。
+- **重构**: `install.ps1`（AGENT-007/002 对齐）：安装开头不再采集平台三件套；OpenClaw 顺序为官方安装 → PATH 同步 → onboard → 轻预装 → 网关配置（现以 RPC 探测为先，非固定 `doctor` 首跑）；OPC200 Agent 前再采平台与租户，平台 ApiKey 复用 OpenClaw 模型密钥或 `-OPC200ApiKey` / `OPC200_API_KEY`；移除 `-LocalBinary`/`-UseBinary` 与 Release exe 下载，仅 venv+pip；`agent/README.md` + `test_agent002_install.py` 同步
 - **完成**: AGENT-008 OpenClaw 开箱即用配置自动化
   - `agent/scripts/install.ps1`：可选 `-OpenClawOnboard` / `-SkipOpenClawOnboard` / `-OpenClawAuthChoice`；`OPENCLAW_ONBOARD=1` 时执行 `openclaw onboard --non-interactive`；交互 `SecureString`；健康探测与 `OPENCLAW_ONBOARD_STRICT`
   - `agent/scripts/install.sh`：`--openclaw-onboard` / `--skip-openclaw-onboard`；子 shell 注入密钥避免污染父环境；GNU `timeout` 包裹 onboard
