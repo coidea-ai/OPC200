@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-16（`install.ps1` 全量 15 步 + 轻预装 `tools.profile` + 网关 RPC 优先；`agent/README` / Roadmap 同步）
+**最后更新**: 2026-04-16（新增 P1 **AGENT-009**：Bootstrap + 制品包无仓库安装；原 AGENT-009~017 顺延为 AGENT-010~018）
 
 ---
 
@@ -328,28 +328,43 @@
   - [x] M4 安装后网关 HTTP 健康检查 + `OPENCLAW_ONBOARD_STRICT` 严格失败中止
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
 
-#### AGENT-009: 调整 Python import 路径
+#### AGENT-009: 无仓库一键安装（Bootstrap + 版本化制品包）
+
+- **状态**: 🏃 进行中
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 8h
+- **依赖**: AGENT-002、AGENT-003、`AGENT_VERSION` 与发布渠道可约定（无硬依赖某平台任务）
+- **描述**: 用户无需 `git clone`：通过托管的 **Bootstrap 脚本**（Windows PowerShell / Linux curl）下载 **Release 制品包（zip/tar）+ `SHA256SUMS`**，校验后解压，再以 **`-RepoRoot` / `--repo-root`** 调用现有 `install.ps1` / `install.sh`，完成 OpenClaw 官方安装 + 轻预装 + OPC200 Agent（与当前仓库内安装等价）。
+- **里程碑**:
+  - [ ] **M1 交付物定义冻结**：制品包最小目录树（含 `agent/scripts`、`agent/src/opc_agent`、`requirements-agent-runtime.txt` 等以实际脚本引用为准）、命名规范、`SHA256SUMS` 格式；Bootstrap 入口 URL 与文档域名策略（HTTPS）
+  - [ ] **M2 Bootstrap（Windows）**：`opc200-install.ps1`（或等价）实现下载、哈希校验、解压、`install.ps1` 二阶段调用；失败非零退出与日志路径
+  - [ ] **M3 Bootstrap（Linux/macOS）**：`opc200-install.sh` 与 `install.sh` 对齐能力；静默参数透传（`--opc200-*` 等以当时脚本为准）
+  - [ ] **M4 CI 发布**：打 zip/tar artifact、生成校验和、上传 Release 或对象存储；`AGENT_VERSION` 与制品版本对齐
+  - [ ] **M5 验收**：无 Git 干净 VM「一条命令」装通；篡改包字节必失败；`agent/README.md` + `INSTALL_SCRIPT_SPEC.md` 安装入口章节与本文互链
+- **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` **§2.9**
+
+#### AGENT-010: 调整 Python import 路径
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 1h
 - **描述**: 批量替换 `from src.xxx` → 新包名
 
-#### AGENT-010: 实现 selfhealer/l1_local_fix.py
+#### AGENT-011: 实现 selfhealer/l1_local_fix.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 3h
 - **描述**: L1 本地自动修复机制
 
-#### AGENT-011: 实现 updater/update_client.py
+#### AGENT-012: 实现 updater/update_client.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 4h
 - **描述**: 版本更新客户端
 
-#### AGENT-012: 创建 platform/docker-compose.yml 完整版
+#### AGENT-013: 创建 platform/docker-compose.yml 完整版
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -360,19 +375,19 @@
 
 ## 🟢 P2 - 中优先级任务（Phase 3）
 
-#### AGENT-013: 创建 shared/proto/ 通信协议
+#### AGENT-014: 创建 shared/proto/ 通信协议
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 2h
 
-#### AGENT-014: 实现 version-control 版本管理服务
+#### AGENT-015: 实现 version-control 版本管理服务
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 6h
 
-#### AGENT-015: 迁移测试文件到 tests/agent/ 和 tests/platform/
+#### AGENT-016: 迁移测试文件到 tests/agent/ 和 tests/platform/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -382,13 +397,13 @@
 
 ## ⚪ P3 - 低优先级任务（Backlog）
 
-#### AGENT-016: 删除旧目录 src/, skills/, config/
+#### AGENT-017: 删除旧目录 src/, skills/, config/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 30min
 
-#### AGENT-017: 完善 CI/CD 脚本适配新结构
+#### AGENT-018: 完善 CI/CD 脚本适配新结构
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -597,7 +612,7 @@
 | 状态 | Phase 1 | Phase 2 | Phase 3 | Backlog |
 |------|---------|---------|---------|---------|
 | 📥 待领取 | 0 | 4 | 3 | 2 |
-| 🏃 进行中 | 0 | 0 | 0 | 0 |
+| 🏃 进行中 | 0 | 1 | 0 | 0 |
 | 👀 审核中 | 0 | 0 | 0 | 0 |
 | ✅ 已完成 | 12 | 2 | 0 | 0 |
 | ⏸️ 阻塞中 | 0 | 0 | 0 | 0 |
