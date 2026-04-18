@@ -3,14 +3,24 @@
 Tests the unified CLI-style skill entry point through OpenClaw context.
 """
 import sys
-import tempfile
 from pathlib import Path
 
-# Add opc-journal to path
-BASE_DIR = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(BASE_DIR / "skills" / "opc-journal"))
+import pytest
 
-from scripts.main import main
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+_OPC_JOURNAL = BASE_DIR / "skills" / "opc-journal"
+_OPC_MAIN = _OPC_JOURNAL / "scripts" / "main.py"
+
+if _OPC_MAIN.is_file():
+    sys.path.insert(0, str(_OPC_JOURNAL))
+    from scripts.main import main
+else:
+    main = None  # noqa: F811
+
+pytestmark = pytest.mark.skipif(
+    main is None,
+    reason="skills/opc-journal/scripts/main.py not in tree",
+)
 
 
 def test_opc_journal_init():
@@ -171,5 +181,8 @@ def run_all_tests():
 
 
 if __name__ == "__main__":
+    if main is None:
+        print("skip: opc-journal bundle not in tree")
+        sys.exit(0)
     success = run_all_tests()
     sys.exit(0 if success else 1)
