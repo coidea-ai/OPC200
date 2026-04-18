@@ -56,6 +56,15 @@ Agent 代码入口为 `agent/src/opc_agent/`（安装脚本会把仓库根目录
 
 在 **管理员 PowerShell** 中进入 `agent/scripts`，执行 `.\install.ps1`。完整流程约 **15 步**（环境 → OpenClaw → OPC200 Agent），步骤号见终端 `[STEP]` 输出。
 
+**无仓库（GitHub Release）**：先下载同版本 `opc200-install.ps1`，再执行（需已发布的 `opc200-agent-<ver>.zip` + `SHA256SUMS`）：
+
+```powershell
+$env:OPC200_GITHUB_REPO = "your-org/OPC200"   # 示例
+powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 -Version latest
+```
+
+详见 `docs/INSTALL_SCRIPT_SPEC.md` §9 与 `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` §2.9。
+
 **`install.ps1` 参数**
 
 | 参数 | 类型 | 默认值 | 说明 |

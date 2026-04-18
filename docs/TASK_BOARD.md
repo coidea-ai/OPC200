@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-16（新增 P1 **AGENT-009**：Bootstrap + 制品包无仓库安装；原 AGENT-009~017 顺延为 AGENT-010~018）
+**最后更新**: 2026-04-17（AGENT-009：Windows Bootstrap + Release 制品 + workflow；Linux Bootstrap 仍为 M3）
 
 ---
 
@@ -336,11 +336,11 @@
 - **依赖**: AGENT-002、AGENT-003、`AGENT_VERSION` 与发布渠道可约定（无硬依赖某平台任务）
 - **描述**: 用户无需 `git clone`：通过托管的 **Bootstrap 脚本**（Windows PowerShell / Linux curl）下载 **Release 制品包（zip/tar）+ `SHA256SUMS`**，校验后解压，再以 **`-RepoRoot` / `--repo-root`** 调用现有 `install.ps1` / `install.sh`，完成 OpenClaw 官方安装 + 轻预装 + OPC200 Agent（与当前仓库内安装等价）。
 - **里程碑**:
-  - [ ] **M1 交付物定义冻结**：制品包最小目录树（含 `agent/scripts`、`agent/src/opc_agent`、`requirements-agent-runtime.txt` 等以实际脚本引用为准）、命名规范、`SHA256SUMS` 格式；Bootstrap 入口 URL 与文档域名策略（HTTPS）
-  - [ ] **M2 Bootstrap（Windows）**：`opc200-install.ps1`（或等价）实现下载、哈希校验、解压、`install.ps1` 二阶段调用；失败非零退出与日志路径
+  - [x] **M1 交付物定义冻结**：制品包最小目录树、`opc200-agent-<ver>.zip` + `SHA256SUMS`；`AGENT_VERSION` 与 `VERSION` 对齐
+  - [x] **M2 Bootstrap（Windows）**：`agent/scripts/opc200-install.ps1`（下载、校验、解压至 `%USERPROFILE%\.opc200\agent-bundle\<ver>`、`install.ps1` 二阶段；校验失败 exit 4）
   - [ ] **M3 Bootstrap（Linux/macOS）**：`opc200-install.sh` 与 `install.sh` 对齐能力；静默参数透传（`--opc200-*` 等以当时脚本为准）
-  - [ ] **M4 CI 发布**：打 zip/tar artifact、生成校验和、上传 Release 或对象存储；`AGENT_VERSION` 与制品版本对齐
-  - [ ] **M5 验收**：无 Git 干净 VM「一条命令」装通；篡改包字节必失败；`agent/README.md` + `INSTALL_SCRIPT_SPEC.md` 安装入口章节与本文互链
+  - [x] **M4 CI 发布**：`.github/workflows/release-opc-agent.yml`（tag `v*`）+ `build-agent-bundle.sh` / `pack-agent-release.ps1`
+  - [ ] **M5 验收**：无 Git 干净 VM「一条命令」装通；篡改包字节 VM 复现；文档互链已完成
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` **§2.9**
 
 #### AGENT-010: 调整 Python import 路径
@@ -468,6 +468,10 @@
 ---
 
 ## 📝 任务变更日志
+
+### 2026-04-17
+
+- **推进**: AGENT-009（Windows）— `opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`；`install.ps1` 与根 `VERSION` 对齐 `AGENT_VERSION=2.5.0`；`INSTALL_SCRIPT_SPEC` §9、`README`、`PREINSTALLED_LOBSTER_ROADMAP` §2.9；`test_agent009_release_bundle.py`
 
 ### 2026-04-16
 
