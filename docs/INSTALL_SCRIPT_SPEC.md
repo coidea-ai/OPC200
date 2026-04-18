@@ -227,8 +227,8 @@ journal:
 ## 9. 无仓库安装（Bootstrap + GitHub Release）
 
 - **制品**：`opc200-agent-<semver>.zip` 与 **`SHA256SUMS`**（同 tag 的 GitHub Release）。
-- **Bootstrap**：`agent/scripts/opc200-install.ps1`（Release 附带同名文件）。需设置 **`OPC200_GITHUB_REPO=owner/repo`**（或 `-GitHubRepo`）；**`-Version`** 为 semver 或 **`latest`**（默认读 `OPC200_INSTALL_VERSION`，未设则 `latest`）。
-- **本地打包**：`agent/scripts/pack-agent-release.ps1` 或 CI（`release-opc-agent.yml`，打 tag `v*`）。解压根目录默认保留在 **`%USERPROFILE%\.opc200\agent-bundle\<ver>`**（供安装后 `PYTHONPATH` 指向的源码树）。
+- **Bootstrap**：`agent/scripts/opc200-install.ps1`（Windows）/ **`agent/scripts/opc200-install.sh`**（Linux/macOS，Release 附带）。需设置 **`OPC200_GITHUB_REPO=owner/repo`**（PowerShell：`-GitHubRepo`；bash：`--github-repo`）；版本 **`latest`** 或显式 semver（环境变量 **`OPC200_INSTALL_VERSION`**，PS：`-Version`）。
+- **本地打包**：`agent/scripts/pack-agent-release.ps1` 或 CI（`release-opc-agent.yml`，打 tag `v*`）。解压根默认：**Windows** ` %USERPROFILE%\.opc200\agent-bundle\<ver>`；**Unix** `$HOME/.opc200/agent-bundle/<ver>`（供安装后 `PYTHONPATH` 指向的源码树）。
 
 ---
 

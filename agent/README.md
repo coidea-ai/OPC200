@@ -195,6 +195,16 @@ Agent 代码入口为 `agent/src/opc_agent/`（安装脚本会把仓库根目录
 - **单元测试**（仓库根）：`python3 -m pytest agent/src/tests -q`；单文件示例：`python3 -m pytest agent/src/tests/test_agent003_install.py -q`。
 - **安装/目录约定**：以 `docs/INSTALL_SCRIPT_SPEC.md` 为准；新代码放在 `agent/` 下，勿在根目录遗留 `src/` 上扩展（见 `docs/architecture/DIRECTORY_MIGRATION.md`）。
 
+**无仓库（GitHub Release）**：下载与 Release 同版本的 `opc200-install.sh`，`chmod +x` 后执行（需已存在 `opc200-agent-<ver>.zip` 与 `SHA256SUMS`）。Linux 下第二阶段会 **`sudo -E`** 调用 `install.sh`，以便继承当前 shell 中的 `OPENCLAW_*` 等环境变量（若需保留）。
+
+```bash
+export OPC200_GITHUB_REPO="your-org/OPC200"
+bash /path/to/opc200-install.sh --version latest --silent \
+  --opc200-tenant-id "tenant-001" --opc200-api-key "your-platform-key"
+```
+
+详见 `docs/INSTALL_SCRIPT_SPEC.md` §9。
+
 #### 安装
 
 在 `agent/scripts` 下执行 `./install.sh`（Linux 下通常 `sudo ./install.sh`）。主流程与 Windows **15 步**对齐（环境 → 安装目录 → Node（Linux）→ 网络 → OpenClaw 官方安装 → onboard → 轻预装含 `tools.profile` → 网关配置 → **平台与租户** → venv → 安装部署 → systemd/launchd → 验证），`[STEP]` 序号见终端输出。
