@@ -44,6 +44,10 @@ class TestFilesExist:
     def test_uninstall_has_shebang(self, uninstall_sh):
         assert uninstall_sh.startswith("#!/usr/bin/env bash")
 
+    def test_install_script_unix_line_endings(self):
+        raw = (SCRIPTS_DIR / "install.sh").read_bytes()
+        assert b"\r" not in raw, "install.sh must be LF-only for bash/WSL"
+
 
 # ── install.sh CLI 参数 ──────────────────────────────────────────
 
@@ -51,6 +55,7 @@ class TestInstallParams:
     REQUIRED_PARAMS = [
         "--opc200-platform-url", "--opc200-tenant-id", "--opc200-api-key",
         "--install-dir", "--opc200-port", "--silent",
+        "--local-binary", "--repo-root", "--binary",
     ]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
@@ -65,8 +70,15 @@ class TestInstallParams:
 
 class TestInstallSteps:
     STEP_FUNCTIONS = [
+        "step_initialize_paths",
         "step_check_env",
-        "step_get_config",
+        "step_prepare_node_runtime",
+        "step_network_check",
+        "step_install_openclaw_official",
+        "step_openclaw_onboard",
+        "step_preinstall_openclaw_assets",
+        "step_openclaw_gateway_part2",
+        "step_opc200_platform_config",
         "step_download",
         "step_install",
         "step_register_service",
@@ -107,6 +119,15 @@ class TestDirectoryStructure:
 
     def test_default_install_dir(self, install_sh):
         assert ".opc200" in install_sh
+
+
+class TestOpenClawPreinstallToolsProfile:
+    def test_preinstall_sets_tools_profile_full(self, install_sh):
+        i = install_sh.find("step_preinstall_openclaw_assets")
+        assert i >= 0
+        block = install_sh[i : i + 900]
+        assert "tools.profile" in block
+        assert "config set tools.profile full" in block
 
 
 # ── config.yml 模板 ──────────────────────────────────────────────
@@ -154,6 +175,83 @@ class TestChecksum:
 
     def test_sha256sums_file(self, install_sh):
         assert "SHA256SUMS" in install_sh
+
+
+class TestOpenClawNetworkCheck:
+    def test_network_check_function(self, install_sh):
+        assert "step_network_check()" in install_sh
+
+    def test_network_check_hosts(self, install_sh):
+        assert "OPENCLAW_NET_CHECK_HOSTS" in install_sh
+        assert "registry.npmmirror.com" in install_sh
+        assert "github.com" in install_sh
+
+    def test_network_check_called_in_main(self, install_sh):
+        assert "step_network_check" in install_sh
+
+
+class TestOpenClawNpmAcceleration:
+    def test_default_registry_is_npmmirror(self, install_sh):
+        assert "registry.npmmirror.com" in install_sh
+        assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_sh
+
+    def test_registry_uses_script_default_only(self, install_sh):
+        assert 'local npm_registry="$OPENCLAW_DEFAULT_NPM_REGISTRY"' in install_sh
+
+    def test_npm_fetch_timeout_set(self, install_sh):
+        assert "NPM_CONFIG_FETCH_TIMEOUT" in install_sh
+        assert "NPM_CONFIG_FETCH_RETRIES" in install_sh
+
+
+class TestOpenClawInstallObservability:
+    def test_log_file_created(self, install_sh):
+        assert "opc200-openclaw-install-" in install_sh
+
+    def test_timeout_constant(self, install_sh):
+        assert "OPENCLAW_INSTALL_TIMEOUT_SEC" in install_sh
+        assert "900" in install_sh
+
+    def test_timeout_enforced(self, install_sh):
+        assert "timeout" in install_sh
+        assert "超时" in install_sh
+
+    def test_realtime_output(self, install_sh):
+        assert "tee" in install_sh
+
+    def test_exit_code_checked(self, install_sh):
+        assert "exit_code" in install_sh
+
+    def test_log_path_shown_on_failure(self, install_sh):
+        assert "日志:" in install_sh
+
+
+class TestOpenClawOfficialInstall:
+    def test_node_runtime_prerequisite_present(self, install_sh):
+        assert "OPENCLAW_MIN_NODE_MAJOR=22" in install_sh
+        assert "step_prepare_node_runtime" in install_sh
+        assert "install_node_linux_from_official" in install_sh
+
+    def test_official_install_url_configurable(self, install_sh):
+        assert "OPENCLAW_INSTALL_URL" in install_sh
+
+    def test_official_channel_defaults_latest(self, install_sh):
+        assert "OPENCLAW_CHANNEL" in install_sh
+        assert "latest" in install_sh
+
+    def test_official_host_whitelist(self, install_sh):
+        assert "openclaw.ai" in install_sh
+
+
+class TestOpenClawPreload:
+    def test_preload_doc_templates(self, install_sh):
+        assert "SOUL.md" in install_sh
+        assert "IDENTITY.md" in install_sh
+        assert "AGENTS.md" in install_sh
+        assert "openclaw-templates" in install_sh
+
+    def test_preload_skill_fail_non_blocking(self, install_sh):
+        assert "skills 安装失败（已忽略）" in install_sh
+        assert "warn" in install_sh
 
 
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
@@ -205,6 +303,24 @@ class TestUninstall:
 
     def test_removes_service_file(self, uninstall_sh):
         assert "systemd" in uninstall_sh or "service" in uninstall_sh
+
+    def test_purge_openclaw_flag(self, uninstall_sh):
+        assert "--purge-openclaw" in uninstall_sh
+
+    def test_openclaw_official_uninstall_invoked(self, uninstall_sh):
+        assert "openclaw uninstall --all --yes --non-interactive" in uninstall_sh
+
+    def test_openclaw_interactive_confirm(self, uninstall_sh):
+        assert "是否保留本机已安装的 OpenClaw" in uninstall_sh
+        assert "SHOULD_KEEP_OPENCLAW" in uninstall_sh
+
+    def test_keep_openclaw_flag(self, uninstall_sh):
+        assert "--keep-openclaw" in uninstall_sh
+
+    def test_openclaw_progress_messages(self, uninstall_sh):
+        assert "进度 1/3：检查 openclaw 命令" in uninstall_sh
+        assert "进度 2/3：若 gateway 在运行则先停止并释放端口" in uninstall_sh
+        assert "进度 3/3：openclaw uninstall --all --yes --non-interactive" in uninstall_sh
 
 
 # ── 包管理器检测 ─────────────────────────────────────────────────
