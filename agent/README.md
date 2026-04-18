@@ -181,19 +181,104 @@ Get-ScheduledTask -TaskName "OPC200-Agent" | Format-List TaskName,State
 Get-ScheduledTaskInfo -TaskName "OPC200-Agent" | Format-List LastRunTime,LastTaskResult
 ```
 
-### Mac/Linux（含 WSL）
+### Linux / macOS（含 WSL）
+
+本机开发建议将 **OPC200 仓库完整克隆**到固定路径。
+
+Agent 代码入口为 `agent/src/opc_agent/`（安装脚本会把仓库根目录写入 `PYTHONPATH`/`runtime.env` 并调用 `python -m agent.src.opc_agent.cli`）。
+
+- **解释器**：需要 **Python 3.10+**（与 `install.sh` 中环境检查一致）。Linux 可用发行版包或 [python.org](https://www.python.org/downloads/source/)；macOS 可用 `brew install python@3.12`。
+- **运行安装脚本**：Linux 需 **root 或 sudo**（systemd 写 `/etc/systemd/system/`）；macOS 使用 launchd，脚本不以 root 跑完整流程时须保证对 `~/Library/LaunchAgents` 等与安装目录的写权限。在 `agent/scripts` 下执行：`sudo ./install.sh`（Linux）或 `./install.sh`（macOS，按提示）。
+- **不跑安装脚本、直接调试 Agent**：在仓库根执行，例如  
+  `python3 -m agent.src.opc_agent.cli --config <你的 config.yml 路径> run`  
+  需自行准备 `config.yml`、`.env`（或环境变量）中的平台地址、租户与 `OPC200_API_KEY`。
+- **单元测试**（仓库根）：`python3 -m pytest agent/src/tests -q`；单文件示例：`python3 -m pytest agent/src/tests/test_agent003_install.py -q`。
+- **安装/目录约定**：以 `docs/INSTALL_SCRIPT_SPEC.md` 为准；新代码放在 `agent/` 下，勿在根目录遗留 `src/` 上扩展（见 `docs/architecture/DIRECTORY_MIGRATION.md`）。
 
 #### 安装
 
-与 Windows 相同的三段流程，脚本为 `agent/scripts/install.sh`。静默示例：
+在 `agent/scripts` 下执行 `./install.sh`（Linux 下通常 `sudo ./install.sh`）。主流程与 Windows **15 步**对齐（环境 → 安装目录 → Node（Linux）→ 网络 → OpenClaw 官方安装 → onboard → 轻预装含 `tools.profile` → 网关配置 → **平台与租户** → venv → 安装部署 → systemd/launchd → 验证），`[STEP]` 序号见终端输出。
+
+**`install.sh` 参数（与 `install.ps1` 对齐）**
+
+| 参数 | 说明 |
+|------|------|
+| `--silent` | 静默安装；第三部分须 `--opc200-tenant-id` / `OPC200_TENANT_ID` 与平台 ApiKey；OpenClaw onboard 默认不执行，除非 `--openclaw-onboard` 或 `OPENCLAW_ONBOARD=1`。 |
+| `--install-dir DIR` | 安装根目录，默认 `$HOME/.opc200`。 |
+| `--repo-root DIR` | OPC200 仓库根（含 `agent/`），默认脚本所在目录的 `../..`。 |
+| `--opc200-platform-url URL` | 平台根地址；静默时可省略则用默认 `https://platform.opc200.co`。 |
+| `--opc200-tenant-id ID` | 租户 ID；兼容旧名 `--customer-id`。 |
+| `--opc200-api-key KEY` | 平台密钥；兼容 `--api-key`。 |
+| `--opc200-port N` | Agent HTTP 健康检查端口，默认 `8080`；兼容 `--port`。 |
+| `--openclaw-onboard` | 静默时要求执行 `openclaw onboard`（同 `OPENCLAW_ONBOARD=1`）。交互安装默认会 onboard。 |
+| `--skip-openclaw-onboard` | 跳过 onboard；同 `OPENCLAW_SKIP_ONBOARD=1`。 |
+| `--binary` / `--local-binary PATH` | 使用发布二进制路径（非 venv 源码模式）。 |
+| `--full-runtime-deps` | venv 使用完整依赖列表（体积大、耗时长）。 |
+
+**常用环境变量**：与 Windows 相同，`OPENCLAW_ONBOARD`、`OPENCLAW_AUTH_CHOICE`、`OPENCLAW_ONBOARD_STRICT`、`OPC200_TENANT_ID`、`OPC200_API_KEY`、`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 等，见上表 Windows 小节。
+
+**示例**
 
 ```bash
-./install.sh --silent \
+cd /path/to/OPC200/agent/scripts
+
+# 直接交互式安装
+sudo ./install.sh
+
+# 静默安装 + 不跑 openclaw onboard
+sudo ./install.sh --silent \
   --opc200-platform-url "https://platform.opc200.co" \
   --opc200-tenant-id "tenant-001" \
   --opc200-api-key "your-platform-key"
+
+# 静默安装 + 跑 openclaw onboard
+sudo env \
+  OPENCLAW_ONBOARD=1 \
+  OPENCLAW_AUTH_CHOICE=custom-api-key \
+  OPENCLAW_CUSTOM_BASE_URL="https://your-llm.example/v1" \
+  OPENCLAW_CUSTOM_MODEL_ID="your-model-id" \
+  CUSTOM_API_KEY="sk-your-inference-key" \
+
+./install.sh --silent --openclaw-onboard \
+	--opc200-platform-url "https://platform.opc200.co" \
+	--opc200-tenant-id "your-tenant-id" \
+	--opc200-api-key "your-opc200-platform-key"
 ```
 
-（亦可用环境变量 `OPC200_TENANT_ID`、`OPC200_API_KEY` 代替对应参数，见 `docs/INSTALL_SCRIPT_SPEC.md`。）
+可选：`OPENCLAW_CUSTOM_COMPATIBILITY=openai`、`OPENCLAW_CUSTOM_PROVIDER_ID=...`；严格失败可再加 `OPENCLAW_ONBOARD_STRICT=1`。
 
 #### 卸载
+
+在 `agent/scripts` 下执行 **`sudo ./uninstall.sh`**（Linux）或 **`./uninstall.sh`**（macOS，视安装目录权限而定）。行为与 `uninstall.ps1` 对齐：先必选 **是否保留 OpenClaw**（交互），再停服务、删目录；卸载 OpenClaw 前会先 **`openclaw gateway stop`**（若可检测到网关），再执行官方 `openclaw uninstall --all --yes --non-interactive`。
+
+| 参数 | 说明 |
+|------|------|
+| `--install-dir DIR` | 安装根目录，默认 `$HOME/.opc200`。 |
+| `--keep-data` | 保留 `data/`，仅删除 `bin`、`config`、`logs`、`venv`、`.env` 等。 |
+| `--silent` | 不交互确认删目录；是否保留 OpenClaw 仅由 `--keep-openclaw` 决定（不传则尝试卸载 OpenClaw）。 |
+| `--keep-openclaw` | 保留本机 OpenClaw（与 `-KeepOpenClaw` 一致）。 |
+| `--purge-openclaw` | 兼容旧参数，表示要卸载 OpenClaw；推荐改用默认行为 + 不传 `--keep-openclaw`。 |
+
+```bash
+sudo ./uninstall.sh --install-dir "$HOME/.opc200"
+
+sudo ./uninstall.sh --silent --keep-openclaw --install-dir "$HOME/.opc200"
+
+sudo ./uninstall.sh --silent --install-dir "$HOME/.opc200"
+```
+
+#### 重启 OPC200-Agent 服务（Linux systemd）
+
+```bash
+sudo systemctl restart opc200-agent
+sudo systemctl status opc200-agent
+journalctl -u opc200-agent -f
+```
+
+#### 重启 / 查看（macOS launchd）
+
+```bash
+launchctl unload ~/Library/LaunchAgents/co.opc200.agent.plist 2>/dev/null
+launchctl load ~/Library/LaunchAgents/co.opc200.agent.plist
+tail -f ~/.opc200/logs/agent.log
+```

@@ -70,12 +70,15 @@ class TestInstallParams:
 
 class TestInstallSteps:
     STEP_FUNCTIONS = [
+        "step_initialize_paths",
         "step_check_env",
-        "step_get_config",
         "step_prepare_node_runtime",
         "step_network_check",
         "step_install_openclaw_official",
+        "step_openclaw_onboard",
         "step_preinstall_openclaw_assets",
+        "step_openclaw_gateway_part2",
+        "step_opc200_platform_config",
         "step_download",
         "step_install",
         "step_register_service",
@@ -308,13 +311,16 @@ class TestUninstall:
         assert "openclaw uninstall --all --yes --non-interactive" in uninstall_sh
 
     def test_openclaw_interactive_confirm(self, uninstall_sh):
-        assert "是否同时卸载 OpenClaw？[y/N]" in uninstall_sh
-        assert "SHOULD_PURGE_OPENCLAW" in uninstall_sh
+        assert "是否保留本机已安装的 OpenClaw" in uninstall_sh
+        assert "SHOULD_KEEP_OPENCLAW" in uninstall_sh
+
+    def test_keep_openclaw_flag(self, uninstall_sh):
+        assert "--keep-openclaw" in uninstall_sh
 
     def test_openclaw_progress_messages(self, uninstall_sh):
         assert "进度 1/3：检查 openclaw 命令" in uninstall_sh
-        assert "进度 2/3：执行 openclaw uninstall --all --yes --non-interactive" in uninstall_sh
-        assert "进度 3/3：OpenClaw 官方卸载命令已执行" in uninstall_sh
+        assert "进度 2/3：若 gateway 在运行则先停止并释放端口" in uninstall_sh
+        assert "进度 3/3：openclaw uninstall --all --yes --non-interactive" in uninstall_sh
 
 
 # ── 包管理器检测 ─────────────────────────────────────────────────
