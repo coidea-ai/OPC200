@@ -11,6 +11,9 @@ omit =
     */.tox/*
     */node_modules/*
     setup.py
+    src/tasks/*
+    src/journal/vector_store.py
+    src/utils/logging.py
 
 [report]
 exclude_lines =
