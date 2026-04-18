@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-17（AGENT-009：Windows Bootstrap + Release 制品 + workflow；Linux Bootstrap 仍为 M3）
+**最后更新**: 2026-04-17（AGENT-009：M3 `opc200-install.sh` + Release 附带；M5 VM 验收仍待办）
 
 ---
 
@@ -338,7 +338,7 @@
 - **里程碑**:
   - [x] **M1 交付物定义冻结**：制品包最小目录树、`opc200-agent-<ver>.zip` + `SHA256SUMS`；`AGENT_VERSION` 与 `VERSION` 对齐
   - [x] **M2 Bootstrap（Windows）**：`agent/scripts/opc200-install.ps1`（下载、校验、解压至 `%USERPROFILE%\.opc200\agent-bundle\<ver>`、`install.ps1` 二阶段；校验失败 exit 4）
-  - [ ] **M3 Bootstrap（Linux/macOS）**：`opc200-install.sh` 与 `install.sh` 对齐能力；静默参数透传（`--opc200-*` 等以当时脚本为准）
+  - [x] **M3 Bootstrap（Linux/macOS）**：`agent/scripts/opc200-install.sh`（下载/校验/unzip、`sudo -E install.sh --repo-root` 透传）；`release-opc-agent.yml` 附带；`README` / `INSTALL_SCRIPT_SPEC` §9；`test_agent009_bootstrap_bash.py`
   - [x] **M4 CI 发布**：`.github/workflows/release-opc-agent.yml`（tag `v*`）+ `build-agent-bundle.sh` / `pack-agent-release.ps1`
   - [ ] **M5 验收**：无 Git 干净 VM「一条命令」装通；篡改包字节 VM 复现；文档互链已完成
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` **§2.9**
@@ -471,6 +471,7 @@
 
 ### 2026-04-17
 
+- **推进**: AGENT-009 **M3** — `opc200-install.sh`、`release-opc-agent.yml` 附带；`INSTALL_SCRIPT_SPEC` §9、`README`；`test_agent009_bootstrap_bash.py`
 - **推进**: AGENT-009（Windows）— `opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`；`install.ps1` 与根 `VERSION` 对齐 `AGENT_VERSION=2.5.0`；`INSTALL_SCRIPT_SPEC` §9、`README`、`PREINSTALLED_LOBSTER_ROADMAP` §2.9；`test_agent009_release_bundle.py`
 
 ### 2026-04-16

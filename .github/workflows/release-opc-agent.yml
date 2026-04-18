@@ -33,3 +33,4 @@ jobs:
             opc200-agent-${{ steps.ver.outputs.ver }}.zip
             SHA256SUMS
             agent/scripts/opc200-install.ps1
+            agent/scripts/opc200-install.sh
