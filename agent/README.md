@@ -414,7 +414,7 @@ chmod +x ~/data/opc200/opc200-install.sh
 | Windows (`opc200-install.ps1`) | Linux/macOS (`opc200-install.sh`) | 含义                                                         |
 | ------------------------------ | --------------------------------- | ------------------------------------------------------------ |
 | `-GitHubRepo`                  | `--github-repo`                   | **必填（若未设环境变量）**：Release 所在仓库，格式 `owner/repo`。 |
-| `-Version`                     | `--version`                       | 要装的版本：`latest`（默认跟最新 Release）或 **不带 `v` 的语义化版本**（如 `2.5.1`）。 |
+| `-Version`                     | `--version`                       | 要装的版本：`latest`（默认跟最新 Release）或 **不带 `v` 的语义化版本**（如 `2.5.2`）。 |
 | `-ExtractParent`               | `--extract-parent`                | **可选**：下载的 zip、`SHA256SUMS` 与解压目录的根路径。不设则默认在用户主目录下 `.opc200\agent-bundle\<版本>`（Windows）或 `$HOME/.opc200/agent-bundle/<版本>`（Linux/macOS）。若希望**所有文件落在同一个自选文件夹**（例如整盘不用 C:），把脚本与 `-ExtractParent` 指到**同一目录**即可。 |
 | `-DownloadOnly`                | `--download-only`                 | 仅下载并校验，不执行第二阶段的 `install.ps1` / `install.sh`。 |
 

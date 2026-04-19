@@ -49,7 +49,7 @@ $ErrorActionPreference = "Stop"
 
 # ── 常量 ──────────────────────────────────────────────────────────
 
-$script:AGENT_VERSION   = "2.5.1"
+$script:AGENT_VERSION   = "2.5.2"
 $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
 $script:TASK_NAME       = "OPC200-Agent"

@@ -88,7 +88,7 @@ resolve_urls() {
         }
         local tsv
         if ! tsv="$(printf '%s' "$js" | parse_latest_release_tsv)"; then
-            err "解析 latest Release 或 zip 资源失败（见上方说明；匿名 GitHub API 易触发 rate limit，可 export GITHUB_TOKEN 后重试，或改用 --version 2.5.1）"
+            err "解析 latest Release 或 zip 资源失败（见上方说明；匿名 GitHub API 易触发 rate limit，可 export GITHUB_TOKEN 后重试，或改用 --version 2.5.2）"
             exit "$E004"
         fi
         IFS=$'\t' read -r TAG SEM ZIP_NAME ZIP_URL <<< "$tsv"
