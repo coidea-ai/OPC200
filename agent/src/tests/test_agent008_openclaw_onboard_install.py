@@ -40,3 +40,5 @@ def test_install_sh_openclaw_onboard_step():
     assert "OPENCLAW_ONBOARD_STRICT" in s
     assert '[[ "${OPENCLAW_ONBOARD:-}" == "0" ]]' in s
     assert "if $SILENT; then" in s
+    assert "use_onboard_daemon" in s
+    assert "OPENCLAW_ONBOARD_FORCE_DAEMON" in s

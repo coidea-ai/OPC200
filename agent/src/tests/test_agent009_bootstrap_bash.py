@@ -29,6 +29,7 @@ def test_script_exists_lf_only():
         "--repo-root",
         "install.sh",
         "E004=4",
+        "extract_zip",
     ],
 )
 def test_bootstrap_contract(opc200_install_sh, needle):

@@ -1,7 +1,7 @@
 # 预装版小龙虾（OpenClaw）交付路线图
 
 > **用途**：后续预装版安装、打包、观测相关工作以此文档为单一事实来源；完成项及时勾选，并在文末更新「变更记录」。  
-> **最后更新**：2026-04-17（§2.9 Windows：Bootstrap + Release 制品 + CI）
+> **最后更新**：2026-04-21（§2.8 sudo/`HOME`；§2.9.2 Bootstrap 入口勾选；与 TASK_BOARD 同步）
 
 ---
 
@@ -115,6 +115,7 @@
 - [x] 成功判定与兜底：`OPENCLAW_GATEWAY_HEALTH_URL` 或默认 `http://127.0.0.1:<port>/health` 轮询；`OPENCLAW_ONBOARD_STRICT=1` 时 onboard 或健康失败则中止安装；否则告警继续并完成 opc-agent 安装。
 - [x] 网关段优化：优先 `gateway status --require-rpc`，避免 onboard 已装 daemon 后重复 `gateway install`；仅在 RPC 未就绪时再区分未安装/需修复；`doctor` 仅在重启仍失败路径触发。
 - [x] 轻预装写入 `tools.profile=full`：`install.ps1` / `install.sh` 在 skills 与文档前执行（CLI 不可用时跳过并告警）。
+- [x] Linux `install.sh`：`sudo` 安装时 OpenClaw 状态目录对齐 **调用用户 `~/.openclaw`**（`SUDO_USER`），**不**默认落在 `/root`；支持环境变量 **`OPENCLAW_STATE_HOME`** 显式覆盖；`openclaw` / `gateway` / `onboard` / `doctor` 与 **8b** 网关补启经 **`_openclaw_run`** 统一 **`HOME`**，消除 **`Missing HOME`** 与配置错位；轻预装模板目录与上述一致（未设 `OPENCLAW_PROFILE_DIR` 时）。
 
 ### 2.9 无仓库一键安装：官方引导脚本 + 版本化制品包（Bootstrap + Release Bundle）
 
@@ -131,7 +132,7 @@
 
 #### 2.9.2 交付物定义（需在本期落地）
 
-- [ ] **Bootstrap 入口**（可二选一或并存）：  
+- [x] **Bootstrap 入口**（可二选一或并存）：  
   - Windows：`opc200-install.ps1`（仓库 `agent/scripts/opc200-install.ps1`；Release 同 tag 附带同名文件）→ 亦可托管于 **HTTPS 固定域名**（如 `https://install.opc200.co/...`），文档给出 `Invoke-RestMethod` / `iex` 示例（并提示校验来源）。  
   - Linux/macOS：`opc200-install.sh`（仓库 `agent/scripts/opc200-install.sh`；Release 附带），文档给出下载后 `bash opc200-install.sh ...` 示例（`README` / `INSTALL_SCRIPT_SPEC` §9）。
 - [x] **版本化制品包**（每 Agent 版本一次构建）：`opc200-agent-<semver>.zip` 内含 `agent/`（`src/opc_agent`、`src/exporter`、`scripts/` 等；`agent/src/__init__.py` 在打包时为 stub，避免依赖整仓 `src.*`）；`RepoRoot` 指向含 `agent/` 的目录根（与现有 `install.ps1` 一致）。
@@ -197,6 +198,7 @@
 
 | 日期 | 摘要 |
 |------|------|
+| 2026-04-21 | §2.8：`sudo` 下 `~/.openclaw` / `OPENCLAW_STATE_HOME` / `_openclaw_run`（与 `install.sh` 一致）；§2.9.2 Bootstrap 入口勾选；与 `docs/TASK_BOARD.md` 对齐 |
 | 2026-04-17 | §2.9 Linux/macOS：`opc200-install.sh` + Release 附带；CI 上传 `opc200-install.sh` |
 | 2026-04-17 | §2.9 Windows：`opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`（tag `v*`）；制品 `opc200-agent-<ver>.zip` + `SHA256SUMS`；`INSTALL_SCRIPT_SPEC` §9 / `README` 互链 |
 | 2026-04-16 | 第二期新增 **§2.9**：无仓库一键安装 — **Bootstrap + 版本化制品包（zip/tar + SHA256SUMS）** 选型、交付物、Bootstrap 行为、CI 发布与验收标准；与第三期企业化衔接说明 |

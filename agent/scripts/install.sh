@@ -253,13 +253,49 @@ step_opc200_platform_config() {
 
 # ── Step 3: 准备 Node.js（Linux）──────────────────────────────────
 
+# sudo 时 PATH 常不含 /usr/local/bin 或 nvm，导致误判「未安装」；可 export NODE_BINARY=/path/to/node 强制指定
+_get_node_executable() {
+    if [[ -n "${NODE_BINARY:-}" && -x "${NODE_BINARY}" ]]; then
+        printf '%s\n' "$NODE_BINARY"
+        return 0
+    fi
+    if command -v node &>/dev/null; then
+        command -v node
+        return 0
+    fi
+    local p glob home
+    for p in /usr/local/bin/node /usr/bin/node /opt/nodejs/bin/node; do
+        if [[ -x "$p" ]]; then
+            printf '%s\n' "$p"
+            return 0
+        fi
+    done
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)" || true
+        if [[ -n "$home" ]]; then
+            glob="$(ls -1 "$home"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -n1)"
+            if [[ -n "$glob" && -x "$glob" ]]; then
+                printf '%s\n' "$glob"
+                return 0
+            fi
+        fi
+    fi
+    glob="$(ls -1 "${HOME}"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -n1)"
+    if [[ -n "$glob" && -x "$glob" ]]; then
+        printf '%s\n' "$glob"
+        return 0
+    fi
+    return 1
+}
+
 get_node_major_version() {
-    if ! command -v node &>/dev/null; then
+    local node_exe ver
+    node_exe="$(_get_node_executable 2>/dev/null || true)"
+    if [[ -z "$node_exe" ]]; then
         echo "0"
         return
     fi
-    local ver
-    ver="$(node -v 2>/dev/null || true)"
+    ver="$("$node_exe" -v 2>/dev/null || true)"
     if [[ "$ver" =~ ^v([0-9]+) ]]; then
         echo "${BASH_REMATCH[1]}"
         return
@@ -275,11 +311,28 @@ install_node_linux_from_official() {
         *) fail $E002 "E002: Node 官方包不支持当前架构: $(uname -m)" ;;
     esac
 
-    local page tarball url tmpdir extracted
-    page="$(curl -fsSL "https://nodejs.org/dist/latest-v22.x/" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 22）"
-    tarball="$(printf '%s\n' "$page" | sed -n "s/.*href=\"\\(node-v22[^\"]*-linux-${node_arch}\\.tar\\.xz\\)\".*/\\1/p" | head -n1)"
+    # 使用 index.json 选取最新 v22.x（含 linux-${arch} 制品），避免目录页 HTML / 镜像格式差异导致 sed 匹配失败
+    local json tarball ver_tag url tmpdir extracted
+    json="$(curl -fsSL "https://nodejs.org/dist/index.json" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 22）"
+    tarball="$(printf '%s\n' "$json" | python3 -c '
+import json, re, sys
+arch = sys.argv[1]
+linux_key = "linux-" + arch
+j = json.load(sys.stdin)
+for row in j:
+    v = row.get("version") or ""
+    if not re.match(r"^v22\.", v):
+        continue
+    if linux_key not in (row.get("files") or []):
+        continue
+    print("node-{}-linux-{}.tar.xz".format(v, arch))
+    sys.exit(0)
+sys.exit(1)
+' "$node_arch")" || true
     [[ -n "$tarball" ]] || fail $E002 "E002: 未找到 Node 22 Linux 安装包（架构 ${node_arch}）"
-    url="https://nodejs.org/dist/latest-v22.x/${tarball}"
+    ver_tag="${tarball#node-}"
+    ver_tag="${ver_tag%-linux-*}"
+    url="https://nodejs.org/dist/${ver_tag}/${tarball}"
 
     tmpdir="$(mktemp -d)"
     register_rollback "rm -rf '${tmpdir}'"
@@ -304,6 +357,17 @@ step_prepare_node_runtime() {
     if [[ "$OS_TYPE" != "linux" ]]; then
         ok "当前非 Linux，跳过 Node.js 预安装步骤"
         return
+    fi
+
+    # sudo 默认 secure_path 可能缺少 /usr/local/bin（用户手动安装的 node 常在此）
+    export PATH="/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+    if [[ -z "${NODE_BINARY:-}" ]]; then
+        local _nx
+        _nx="$(_get_node_executable 2>/dev/null || true)"
+        [[ -n "$_nx" ]] && export NODE_BINARY="$_nx"
+    fi
+    if [[ -n "${NODE_BINARY:-}" ]]; then
+        export PATH="$(dirname "$NODE_BINARY"):${PATH:-}"
     fi
 
     local major
@@ -345,11 +409,170 @@ step_network_check() {
     fi
 }
 
+# sudo 下 HOME 常为 /root，openclaw 可能装在原用户的 ~/.local/bin 或 npm global prefix，需补全 PATH
+_expand_path_for_openclaw_cli() {
+    export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+    local pfx nd su_home
+    pfx="$(npm config get prefix 2>/dev/null)" || true
+    if [[ -n "$pfx" && -d "$pfx/bin" ]]; then
+        export PATH="$pfx/bin:${PATH:-}"
+    fi
+    if [[ -n "${NODE_BINARY:-}" && -x "${NODE_BINARY}" ]]; then
+        nd="$(dirname "$NODE_BINARY")"
+        export PATH="$nd:${PATH:-}"
+    fi
+    if command -v node &>/dev/null; then
+        nd="$(dirname "$(command -v node)")"
+        export PATH="$nd:${PATH:-}"
+    fi
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        su_home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)" || true
+        if [[ -n "$su_home" ]]; then
+            [[ -d "$su_home/.local/bin" ]] && export PATH="$su_home/.local/bin:${PATH:-}"
+            if [[ -d "$su_home/.nvm/versions/node" ]]; then
+                nd="$(ls -1 "$su_home"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -n1)"
+                [[ -n "$nd" && -d "$nd" ]] && export PATH="$nd:${PATH:-}"
+            fi
+        fi
+    fi
+    hash -r 2>/dev/null || true
+}
+
+# WSL 默认常未启用 systemd，openclaw gateway install 依赖 systemctl --user，会导致服务起不来
+_is_wsl() {
+    [[ -n "${WSL_DISTRO_NAME:-}" ]] || grep -qi microsoft /proc/version 2>/dev/null
+}
+
+# sudo 安装时 OpenClaw 状态目录用「实际用户」的 ~/ ，不用 /root（除非显式 OPENCLAW_STATE_HOME 或真实 root 会话）
+_openclaw_state_home() {
+    if [[ -n "${OPENCLAW_STATE_HOME:-}" ]]; then
+        printf '%s' "${OPENCLAW_STATE_HOME}"
+        return
+    fi
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local h
+        h="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+        if [[ -n "$h" ]]; then
+            printf '%s' "$h"
+            return
+        fi
+    fi
+    if [[ $EUID -eq 0 ]]; then
+        printf '%s' "/root"
+        return
+    fi
+    printf '%s' "${HOME:-}"
+}
+
+_openclaw_run() {
+    local oh="$1"
+    shift
+    [[ -n "$oh" ]] || return 1
+    if [[ $EUID -eq 0 && "$oh" == "/root" ]]; then
+        env HOME=/root PATH="${PATH}" "$@"
+    elif [[ $EUID -eq 0 && -n "${SUDO_USER:-}" && "$oh" != "/root" ]]; then
+        sudo -u "$SUDO_USER" -H env HOME="$oh" PATH="${PATH}" "$@"
+    else
+        env HOME="$oh" PATH="${PATH}" "$@"
+    fi
+}
+
+# 网关仍不监听时：先 start / user systemd，再 nohup（WSL 与「systemd 在但 user 单元未起」均适用）
+step_openclaw_gateway_wsl_fallback() {
+    [[ "$OS_TYPE" == "linux" ]] || return 0
+    _expand_path_for_openclaw_cli
+    if ! command -v openclaw &>/dev/null; then
+        return 0
+    fi
+    local exe gw_port oc_home su_home logf pt
+    exe="$(command -v openclaw)"
+    oc_home="$(_openclaw_state_home)"
+    [[ -n "$oc_home" ]] || {
+        warn "无法确定 OpenClaw 配置家目录（HOME），跳过 8b"
+        return 0
+    }
+    gw_port="${OPENCLAW_GATEWAY_PORT:-$OPENCLAW_DEFAULT_GATEWAY_PORT}"
+    pt="$(_openclaw_run "$oc_home" openclaw config get gateway.port 2>/dev/null | tr -d '\r\n"')" || true
+    [[ "$pt" =~ ^[0-9]+$ ]] && gw_port="$pt"
+
+    if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
+        ok "网关 RPC 已就绪"
+        return 0
+    fi
+    if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
+        ok "网关 HTTP /health 已就绪（${gw_port}）"
+        return 0
+    fi
+
+    info "8b/15 网关未监听 ${gw_port}，尝试 gateway start / systemctl --user …（OpenClaw 状态目录: ${oc_home}/.openclaw）"
+    _openclaw_run "$oc_home" openclaw gateway start 2>&1 || true
+    if [[ "$oc_home" == "/root" ]] && [[ $EUID -eq 0 ]]; then
+        env HOME=/root XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}" systemctl --user start openclaw-gateway.service 2>/dev/null || true
+    elif [[ -n "${SUDO_USER:-}" ]]; then
+        su_home="$oc_home"
+        sudo -u "$SUDO_USER" -H env HOME="$su_home" PATH="${PATH}" XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER" 2>/dev/null)" systemctl --user start openclaw-gateway.service 2>/dev/null || true
+    else
+        systemctl --user start openclaw-gateway.service 2>/dev/null || true
+    fi
+    sleep 4
+    if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
+        ok "网关 RPC 在补启动后就绪"
+        return 0
+    fi
+    if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
+        ok "网关 HTTP /health 在补启动后就绪（${gw_port}）"
+        return 0
+    fi
+
+    su_home="$oc_home"
+    logf="${su_home}/.openclaw/opc200-gateway-nohup.log"
+    if _is_wsl; then
+        warn "WSL：若长期依赖 systemd user，可在 /etc/wsl.conf 设 [boot] systemd=true 后 wsl --shutdown"
+    fi
+    warn "尝试 nohup 后台启动网关（日志: $logf）"
+    mkdir -p "${su_home}/.openclaw" 2>/dev/null || true
+    if [[ "$oc_home" == "/root" ]] && [[ $EUID -eq 0 ]]; then
+        if pgrep -f 'openclaw gateway' >/dev/null 2>&1; then
+            ok "已有 openclaw gateway 进程"
+        else
+            env HOME=/root PATH="${PATH}" bash -c "cd /root && nohup \"${exe}\" gateway --port \"${gw_port}\" >>\"${logf}\" 2>&1 &" || warn "后台启动网关失败"
+        fi
+    elif [[ $EUID -eq 0 && -n "${SUDO_USER:-}" && "$oc_home" != "/root" ]]; then
+        sudo -u "$SUDO_USER" -H bash -c "
+            export HOME=\"${su_home}\"
+            export PATH=\"${PATH}\"
+            cd \"\$HOME\" || exit 1
+            if pgrep -u \"${SUDO_USER}\" -f 'openclaw gateway' >/dev/null 2>&1; then exit 0; fi
+            nohup \"${exe}\" gateway --port \"${gw_port}\" >>\"${logf}\" 2>&1 &
+        " || warn "后台启动网关失败（可手动: nohup openclaw gateway --port ${gw_port} &）"
+    else
+        if pgrep -f 'openclaw gateway' >/dev/null 2>&1; then
+            ok "已有 openclaw gateway 进程"
+        else
+            ( cd "$su_home" && nohup "$exe" gateway --port "$gw_port" >>"$logf" 2>&1 & ) || warn "后台启动网关失败"
+        fi
+    fi
+    sleep 4
+    local i
+    for i in $(seq 1 15); do
+        if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
+            ok "网关 RPC 已就绪"
+            return 0
+        fi
+        if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
+            ok "网关 HTTP /health 已就绪（${gw_port}）"
+            return 0
+        fi
+        sleep 2
+    done
+    warn "网关仍未监听 ${gw_port}。请查看: $logf；并执行: openclaw doctor；openclaw gateway status；openclaw gateway install --port ${gw_port} && openclaw gateway restart"
+}
+
 # ── Step 4: 官方渠道安装 OpenClaw latest ─────────────────────────
 
 step_install_openclaw_official() {
     hash -r 2>/dev/null || true
-    export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+    _expand_path_for_openclaw_cli
     if command -v openclaw &>/dev/null; then
         FRESH_OPENCLAW_CLI=false
         info "5/15 官方渠道安装 OpenClaw latest（已存在 CLI，跳过）"
@@ -405,14 +628,24 @@ step_install_openclaw_official() {
     fi
 
     ok "OpenClaw 官方安装完成"
+    _expand_path_for_openclaw_cli
+    if ! command -v openclaw &>/dev/null; then
+        warn "官方安装已完成，但当前 PATH 仍找不到 openclaw；后续步骤将再尝试补全 PATH。若仍失败请执行: $(command -v npm 2>/dev/null || echo npm) config get prefix，并把该目录下的 bin 加入 PATH"
+    fi
 }
 
 # ── Step 5: 轻预装层（skills + 文档）────────────────────────────
 
 step_preinstall_openclaw_assets() {
     info "7/15 轻预装层（tools + skills + 文档）"
+    _expand_path_for_openclaw_cli
 
-    local profile_dir="${OPENCLAW_PROFILE_DIR:-$OPENCLAW_DEFAULT_PROFILE_DIR}"
+    local profile_dir
+    if [[ -n "${OPENCLAW_PROFILE_DIR:-}" ]]; then
+        profile_dir="$OPENCLAW_PROFILE_DIR"
+    else
+        profile_dir="$(_openclaw_state_home)/.openclaw"
+    fi
     local skills_csv="${OPENCLAW_PREINSTALL_SKILLS:-$OPENCLAW_DEFAULT_SKILLS}"
     local skill_install_cmd="${OPENCLAW_SKILL_INSTALL_CMD:-$OPENCLAW_DEFAULT_SKILL_INSTALL_CMD}"
     local failed=0
@@ -422,8 +655,11 @@ step_preinstall_openclaw_assets() {
     ok "OpenClaw 配置目录: $profile_dir"
 
     if command -v openclaw &>/dev/null; then
+        local oc_home_pre
+        oc_home_pre="$(_openclaw_state_home)"
+        [[ -n "$oc_home_pre" ]] || oc_home_pre="${HOME:-}"
         ok "openclaw config set tools.profile full"
-        if openclaw config set tools.profile full; then
+        if _openclaw_run "$oc_home_pre" openclaw config set tools.profile full; then
             ok "tools.profile=full"
         else
             warn "tools.profile 未写入；可稍后手动: openclaw config set tools.profile full"
@@ -473,6 +709,7 @@ step_openclaw_onboard() {
     fi
 
     info "6/15 OpenClaw 首次配置（官方 onboard --non-interactive）"
+    _expand_path_for_openclaw_cli
     if ! $SILENT; then
         printf "\033[90m  OpenClaw CLI 已就绪。下面采集模型/网关所需最少信息；随后自动执行官方非交互 onboard。\033[0m\n"
     fi
@@ -592,16 +829,38 @@ step_openclaw_onboard() {
     esac
 
     # 官方非交互 onboard 要求显式风险确认，见 https://docs.openclaw.ai/security
+    # --install-daemon 会 systemctl daemon-reload；WSL 未启用 systemd 或 D-Bus 异常时报 Transport endpoint is not connected
+    local use_onboard_daemon=true
+    if [[ "${OPENCLAW_ONBOARD_FORCE_DAEMON:-}" == "1" ]]; then
+        use_onboard_daemon=true
+    elif [[ "${OPENCLAW_ONBOARD_SKIP_DAEMON:-}" == "1" ]]; then
+        use_onboard_daemon=false
+    elif [[ "$OS_TYPE" == "linux" ]]; then
+        if _is_wsl; then
+            use_onboard_daemon=false
+        elif ! command -v systemctl &>/dev/null || ! systemctl is-system-running &>/dev/null; then
+            use_onboard_daemon=false
+        fi
+    fi
+
     local -a oc_args=(
         onboard --non-interactive --accept-risk --mode local
         --auth-choice "$auth"
         --secret-input-mode "$secret_mode"
         --gateway-port "$gw_port"
         --gateway-bind loopback
-        --install-daemon
-        --daemon-runtime node
         --skip-skills
     )
+    if $use_onboard_daemon; then
+        oc_args+=(--install-daemon --daemon-runtime node)
+    else
+        if _is_wsl; then
+            warn "onboard 省略 --install-daemon（WSL 上避免 systemctl；已加 --skip-health）。网关改由后续步骤安装。已启用 systemd 且需 daemon 可设 OPENCLAW_ONBOARD_FORCE_DAEMON=1"
+        else
+            warn "onboard 省略 --install-daemon（未检测到可用 systemd；已加 --skip-health）。可设 OPENCLAW_ONBOARD_FORCE_DAEMON=1 强制"
+        fi
+        oc_args+=(--skip-health)
+    fi
     if [[ "$auth" == "custom-api-key" ]]; then
         if $SILENT; then
             oc_args+=(--custom-base-url "$OPENCLAW_CUSTOM_BASE_URL" --custom-model-id "$OPENCLAW_CUSTOM_MODEL_ID")
@@ -611,10 +870,15 @@ step_openclaw_onboard() {
         oc_args+=(--custom-compatibility "${OPENCLAW_CUSTOM_COMPATIBILITY:-openai}")
         [[ -n "${OPENCLAW_CUSTOM_PROVIDER_ID:-}" ]] && oc_args+=(--custom-provider-id "$OPENCLAW_CUSTOM_PROVIDER_ID")
     fi
-    ok "执行 openclaw onboard --non-interactive（auth=$auth gatewayPort=$gw_port secret=$secret_mode）"
+    ok "执行 openclaw onboard --non-interactive（auth=$auth gatewayPort=$gw_port secret=$secret_mode installDaemon=$use_onboard_daemon）"
 
     local ob_deadline="${OPENCLAW_ONBOARD_TIMEOUT_SEC:-600}"
-    local exit_code=0
+    local ob_log exit_code=0 oc_home_ob
+    oc_home_ob="$(_openclaw_state_home)"
+    [[ -n "$oc_home_ob" ]] || oc_home_ob="${HOME:-}"
+    ob_log="$(mktemp /tmp/opc200-openclaw-onboard-XXXXXX.log)"
+    ok "onboard 完整日志: $ob_log"
+    set +e
     (
         [[ -n "$v_anth" ]] && export ANTHROPIC_API_KEY="$v_anth"
         [[ -n "$v_openai" ]] && export OPENAI_API_KEY="$v_openai"
@@ -625,24 +889,30 @@ step_openclaw_onboard() {
             export OPENCLAW_CUSTOM_MODEL_ID="$v_custom_model"
         fi
         if command -v timeout &>/dev/null; then
-            exec timeout "$ob_deadline" openclaw "${oc_args[@]}"
+            _openclaw_run "$oc_home_ob" timeout "$ob_deadline" openclaw "${oc_args[@]}"
         else
-            exec openclaw "${oc_args[@]}"
+            _openclaw_run "$oc_home_ob" openclaw "${oc_args[@]}"
         fi
-    ) || exit_code=$?
+    ) 2>&1 | tee "$ob_log"
+    exit_code=${PIPESTATUS[0]}
+    set -e
 
     if [[ "$exit_code" -eq 124 ]]; then
         if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
             fail $E002 "E002: openclaw onboard 超时（>${ob_deadline}s）。可运行 openclaw doctor"
         fi
         warn "openclaw onboard 超时，已非严格继续。设置 OPENCLAW_ONBOARD_STRICT=1 可中止安装。"
+        warn "onboard 日志末尾:"
+        tail -n 40 "$ob_log" >&2 || true
         return 0
     fi
     if [[ "$exit_code" -ne 0 ]]; then
         if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
-            fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor"
+            fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor；完整日志: $ob_log"
         fi
-        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。"
+        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。常见原因：密钥无效/网络、WSL 下 daemon 安装受限；可设 OPENCLAW_SKIP_ONBOARD=1 跳过本步后手动 onboard。"
+        warn "onboard 日志末尾（完整见 $ob_log）:"
+        tail -n 50 "$ob_log" >&2 || true
         return 0
     fi
 
@@ -687,9 +957,11 @@ step_openclaw_onboard() {
 _set_openclaw_gateway_port_env() {
     local exe_hint="$1"
     local gw_hint="$2"
+    local oc_home="${3:-}"
+    [[ -n "$oc_home" ]] || oc_home="$(_openclaw_state_home)"
     local gp="$gw_hint"
     local pt
-    pt="$(openclaw config get gateway.port 2>/dev/null | tr -d '\r\n"')" || true
+    pt="$(_openclaw_run "$oc_home" openclaw config get gateway.port 2>/dev/null | tr -d '\r\n"')" || true
     if [[ "$pt" =~ ^[0-9]+$ ]]; then
         gp="$pt"
     else
@@ -710,9 +982,10 @@ _gateway_installed_heuristic() {
 
 step_openclaw_gateway_doctor_only() {
     local exe="$1"
+    local oc_home="${2:-$(_openclaw_state_home)}"
     info "9/15 OpenClaw doctor 复查"
     local code=0
-    openclaw doctor --non-interactive 2>&1 || code=$?
+    _openclaw_run "$oc_home" openclaw doctor --non-interactive 2>&1 || code=$?
     if [[ "$code" -ne 0 ]]; then
         warn "openclaw doctor 返回非零（$code）；仍将继续安装 OPC200 Agent"
     else
@@ -723,13 +996,15 @@ step_openclaw_gateway_doctor_only() {
 step_openclaw_gateway_part2() {
     info "8/15 OpenClaw 网关配置"
     local rc=0
-    hash -r 2>/dev/null || true
-    export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+    _expand_path_for_openclaw_cli
     if ! command -v openclaw &>/dev/null; then
-        fail $E002 "E002: 第二部分需要 openclaw CLI，但未找到。请先完成官方安装或检查 PATH。"
+        warn "仍找不到 openclaw。若使用 sudo，可尝试: sudo env PATH=\"\$PATH\" NODE_BINARY=\"${NODE_BINARY:-}\" ./install.sh …"
+        fail $E002 'E002: 第二部分需要 openclaw CLI，但未找到。请先完成官方安装或检查 PATH（npm 全局前缀下的 bin、~/.local/bin）。'
     fi
-    local exe
+    local exe oc_home
     exe="$(command -v openclaw)"
+    oc_home="$(_openclaw_state_home)"
+    [[ -n "$oc_home" ]] || fail $E002 "E002: 无法确定 OpenClaw 配置家目录（HOME）"
     local gw_port="$OPENCLAW_DEFAULT_GATEWAY_PORT"
     if [[ "${OPENCLAW_GATEWAY_PORT:-}" =~ ^[0-9]+$ ]]; then
         gw_port="$OPENCLAW_GATEWAY_PORT"
@@ -739,15 +1014,15 @@ step_openclaw_gateway_part2() {
         ok "本次为新安装 openclaw CLI；优先 RPC 探测，未就绪时再区分未安装/需修复。"
     fi
 
-    if openclaw gateway status --json --require-rpc &>/dev/null; then
-        _set_openclaw_gateway_port_env "$exe" "$gw_port"
+    if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
+        _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
         ok "网关 RPC 探测正常，跳过安装/配置/启动"
         return 0
     fi
 
     warn "网关 RPC 未就绪；将检查 gateway 是否已安装"
     local st_json=""
-    st_json="$(openclaw gateway status --json --no-probe 2>/dev/null)" || true
+    st_json="$(_openclaw_run "$oc_home" openclaw gateway status --json --no-probe 2>/dev/null)" || true
     local installed=false
     if _gateway_installed_heuristic "$st_json"; then
         installed=true
@@ -758,32 +1033,32 @@ step_openclaw_gateway_part2() {
     if $installed; then
         warn "服务已登记但 RPC 异常，将尝试配置并启动"
         ok "配置网关：gateway.mode=local"
-        openclaw config set gateway.mode local || fail $E002 "E002: openclaw config set gateway.mode local 失败"
-        openclaw config set gateway.tls.enabled false 2>/dev/null || warn "未能写入 gateway.tls.enabled=false（可忽略）"
+        _openclaw_run "$oc_home" openclaw config set gateway.mode local || fail $E002 "E002: openclaw config set gateway.mode local 失败"
+        _openclaw_run "$oc_home" openclaw config set gateway.tls.enabled false 2>/dev/null || warn "未能写入 gateway.tls.enabled=false（可忽略）"
         ok "应用网关：openclaw gateway restart"
         local rc=0
-        openclaw gateway restart 2>&1 || rc=$?
+        _openclaw_run "$oc_home" openclaw gateway restart 2>&1 || rc=$?
         if [[ "$rc" -ne 0 ]]; then
             warn "gateway restart 返回 $rc；尝试 gateway start"
-            openclaw gateway start 2>&1 || warn "gateway start 仍失败"
+            _openclaw_run "$oc_home" openclaw gateway start 2>&1 || warn "gateway start 仍失败"
         fi
         sleep 2
         local i
         for i in $(seq 1 "$OPENCLAW_GATEWAY_WARMUP_MAX_TRIES"); do
-            if openclaw gateway status --json --require-rpc &>/dev/null; then
+            if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
                 ok "网关 RPC 探测就绪（第 ${i}/${OPENCLAW_GATEWAY_WARMUP_MAX_TRIES} 次）"
-                _set_openclaw_gateway_port_env "$exe" "$gw_port"
+                _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
                 return 0
             fi
             if command -v curl &>/dev/null && curl -sf --connect-timeout 3 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
                 ok "网关 HTTP /health 就绪（第 ${i}/${OPENCLAW_GATEWAY_WARMUP_MAX_TRIES} 次）"
-                _set_openclaw_gateway_port_env "$exe" "$gw_port"
+                _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
                 return 0
             fi
             sleep "$OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC"
         done
-        step_openclaw_gateway_doctor_only "$exe"
-        _set_openclaw_gateway_port_env "$exe" "$gw_port"
+        step_openclaw_gateway_doctor_only "$exe" "$oc_home"
+        _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
         return 0
     fi
 
@@ -792,7 +1067,7 @@ step_openclaw_gateway_part2() {
     while [[ "$attempt" -le "$OPENCLAW_GW_INSTALL_MAX_RETRY" ]]; do
         ok "安装 gateway 服务（第 ${attempt}/${OPENCLAW_GW_INSTALL_MAX_RETRY}）：openclaw gateway install --port ${gw_port}"
         gi=0
-        openclaw gateway install --port "$gw_port" 2>&1 || gi=$?
+        _openclaw_run "$oc_home" openclaw gateway install --port "$gw_port" 2>&1 || gi=$?
         if [[ "$gi" -eq 0 ]]; then
             ok "gateway install 成功"
             break
@@ -803,30 +1078,30 @@ step_openclaw_gateway_part2() {
     [[ "$gi" -eq 0 ]] || fail $E002 "E002: gateway install 在 ${OPENCLAW_GW_INSTALL_MAX_RETRY} 次重试后仍失败"
 
     ok "配置网关：gateway.mode=local"
-    openclaw config set gateway.mode local || fail $E002 "E002: config set gateway.mode 失败"
-    openclaw config set gateway.tls.enabled false 2>/dev/null || true
+    _openclaw_run "$oc_home" openclaw config set gateway.mode local || fail $E002 "E002: config set gateway.mode 失败"
+    _openclaw_run "$oc_home" openclaw config set gateway.tls.enabled false 2>/dev/null || true
     ok "应用网关：openclaw gateway restart"
     rc=0
-    openclaw gateway restart 2>&1 || rc=$?
+    _openclaw_run "$oc_home" openclaw gateway restart 2>&1 || rc=$?
     if [[ "$rc" -ne 0 ]]; then
-        openclaw gateway start 2>&1 || warn "gateway start 失败"
+        _openclaw_run "$oc_home" openclaw gateway start 2>&1 || warn "gateway start 失败"
     fi
     sleep 2
     for i in $(seq 1 "$OPENCLAW_GATEWAY_WARMUP_MAX_TRIES"); do
-        if openclaw gateway status --json --require-rpc &>/dev/null; then
+        if _openclaw_run "$oc_home" openclaw gateway status --json --require-rpc &>/dev/null; then
             ok "网关 RPC 就绪"
-            _set_openclaw_gateway_port_env "$exe" "$gw_port"
+            _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
             return 0
         fi
         if command -v curl &>/dev/null && curl -sf --connect-timeout 3 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
             ok "网关 HTTP 就绪"
-            _set_openclaw_gateway_port_env "$exe" "$gw_port"
+            _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
             return 0
         fi
         sleep "$OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC"
     done
-    step_openclaw_gateway_doctor_only "$exe"
-    _set_openclaw_gateway_port_env "$exe" "$gw_port"
+    step_openclaw_gateway_doctor_only "$exe" "$oc_home"
+    _set_openclaw_gateway_port_env "$exe" "$gw_port" "$oc_home"
 }
 
 _write_doc_template_from_file() {
@@ -1202,6 +1477,7 @@ main() {
     step_openclaw_onboard
     step_preinstall_openclaw_assets
     step_openclaw_gateway_part2
+    step_openclaw_gateway_wsl_fallback
     step_opc200_platform_config
     step_download
     step_install

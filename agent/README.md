@@ -248,11 +248,10 @@ sudo env \
   OPENCLAW_CUSTOM_BASE_URL="https://your-llm.example/v1" \
   OPENCLAW_CUSTOM_MODEL_ID="your-model-id" \
   CUSTOM_API_KEY="sk-your-inference-key" \
-
-./install.sh --silent --openclaw-onboard \
-	--opc200-platform-url "https://platform.opc200.co" \
-	--opc200-tenant-id "your-tenant-id" \
-	--opc200-api-key "your-opc200-platform-key"
+  ./install.sh --silent --openclaw-onboard \
+  --opc200-platform-url "https://platform.opc200.co" \
+  --opc200-tenant-id "your-tenant-id" \
+  --opc200-api-key "your-opc200-platform-key"
 ```
 
 可选：`OPENCLAW_CUSTOM_COMPATIBILITY=openai`、`OPENCLAW_CUSTOM_PROVIDER_ID=...`；严格失败可再加 `OPENCLAW_ONBOARD_STRICT=1`。
@@ -313,13 +312,13 @@ Invoke-WebRequest -Uri "https://github.com/coidea-ai/OPC200/releases/latest/down
 
 ```bash
 # 创建文件夹 /data/opc200
-mkdir -p /data/opc200
+mkdir -p ~/data/opc200
 
 # 从 GitHub 下载安装脚本，保存到 /data/opc200 目录
-curl -fsSL -o /data/opc200/opc200-install.sh "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.sh"
+curl -fsSL -o ~/data/opc200/opc200-install.sh "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.sh"
 
 # 给脚本添加 “可执行权限”
-chmod +x /data/opc200/opc200-install.sh
+chmod +x ~/data/opc200/opc200-install.sh
 ```
 
 注意：URL 中的 `coidea-ai/OPC200` 指仓库的地址，需要与第二步命令里的 **`-GitHubRepo` / `--github-repo`** 要一致。
@@ -350,14 +349,14 @@ chmod +x /data/opc200/opc200-install.sh
    ```powershell
    # 进入刚才创建的 D:\OPC200 文件夹
    cd D:\OPC200
-
+   
    # OpenClaw custom 端点（须先于同一 PowerShell 会话中设置，再调用引导脚本）
    $env:OPENCLAW_CUSTOM_BASE_URL = "https://your-llm.example/v1"
    $env:OPENCLAW_CUSTOM_MODEL_ID = "your-model-id"
    $env:CUSTOM_API_KEY = "sk-your-inference-key"
    # 可选：$env:OPENCLAW_CUSTOM_COMPATIBILITY = "openai"
    # 可选：$env:OPENCLAW_CUSTOM_PROVIDER_ID = "my-provider"
-
+   
    powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 `
      -GitHubRepo "coidea-ai/OPC200" `
      -Version latest `
@@ -372,7 +371,43 @@ chmod +x /data/opc200/opc200-install.sh
 
 #### Linux / macOS
 
-todo
+1. 在终端中操作（**Linux**：引导脚本可在非 root 下执行，检测到需写 systemd 时会对第二阶段 `install.sh` 自动 `sudo -E` 以继承当前 shell 中的 `OPENCLAW_*` 等变量；**macOS**：一般直接执行 `bash`，无需对引导脚本本身 `sudo`）。
+
+2. **交互式引导安装**（与 Windows「下载到同一文件夹 + `ExtractParent`」一致：下面以 `/data/opc200` 为例，请与第一步下载目录一致）
+
+   ```bash
+   cd ~/data/opc200
+
+   bash ./opc200-install.sh \
+     --github-repo "coidea-ai/OPC200" \
+     --version latest \
+     --extract-parent "~/data/opc200"
+   ```
+
+3. **静默安装**（示例：**静默 + OpenClaw onboard + `custom-api-key`**）
+
+   `custom-api-key` 时，**兼容 OpenAI 的 base URL、模型 ID、推理用 API Key** 须通过环境变量 **`OPENCLAW_CUSTOM_BASE_URL`**、**`OPENCLAW_CUSTOM_MODEL_ID`**、**`CUSTOM_API_KEY`** 提供（与 Windows / 上方 `install.sh` 说明一致）。请替换占位符，**勿将密钥写入版本库**。
+
+   ```bash
+   cd /data/opc200
+   
+   export OPENCLAW_AUTH_CHOICE=custom-api-key
+   export OPENCLAW_CUSTOM_BASE_URL="https://your-llm.example/v1"
+   export OPENCLAW_CUSTOM_MODEL_ID="your-model-id"
+   export CUSTOM_API_KEY="sk-your-inference-key"
+   # 可选：export OPENCLAW_CUSTOM_COMPATIBILITY=openai
+   # 可选：export OPENCLAW_CUSTOM_PROVIDER_ID=my-provider
+   
+   bash ./opc200-install.sh \
+     --github-repo "coidea-ai/OPC200" \
+     --version latest \
+     --extract-parent "/data/opc200" \
+     --silent \
+     --openclaw-onboard \
+     --opc200-platform-url "https://platform.opc200.co" \
+     --opc200-tenant-id "your-tenant-id" \
+     --opc200-api-key "your-opc200-platform-key"
+   ```
 
 #### 命令常用参数含义
 
@@ -385,11 +420,39 @@ todo
 
 第二阶段安装（静默、租户、OpenClaw 等）的参数与下文 **「安装」** 小节中 `install.ps1` / `install.sh` 一致；Bootstrap 会把多余参数**原样传给**第二阶段。
 
+### 第三步，卸载
+
+**Windows**
+
+```powershell
+# 进入刚才创建的 D:\OPC200\agent\scripts 文件夹
+cd D:\OPC200\agent\scripts
+
+# 执行卸载脚本
+.\uninstall.ps1
+```
+
+#### Linux / macOS
+
+解压目录与第一步一致（示例 **`/data/opc200`**）时，进入其中的 `agent/scripts` 再执行卸载（与 Windows `D:\OPC200\agent\scripts` 对应）：
+
+```bash
+cd /data/opc200/agent/scripts
+
+# Linux（须 root / sudo 写 systemd 与清理目录）
+sudo ./uninstall.sh
+
+# macOS（视安装目录与 launchd 权限，无写权限时再使用 sudo）
+# ./uninstall.sh
+```
+
+若安装时使用了非默认路径，将 `/data/opc200` 换成你的 **`-ExtractParent` / `--extract-parent`** 目录。
+
 ### FAQ
 
 #### 固定某一版本（不用 `latest`）
 
-将 `-Version` / `--version` 设为 **语义化版本号，不带 `v` 前缀**（例如 `2.5.1`），且该版本在 GitHub 上已存在对应 **tag** 与 **Release**。
+将 `-Version` / `--version` 设为 **语义化版本号，不带 `v` 前缀**（例如 `2.5.0`），且该版本在 GitHub 上已存在对应 **tag** 与 **Release**。
 
 #### 安装完成后如何确认「跑通」
 

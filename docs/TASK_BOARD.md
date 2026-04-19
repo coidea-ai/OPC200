@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-19（AGENT-009：`opc200-install.ps1` 引导传参修复；Release **v2.5.1**）
+**最后更新**: 2026-04-21（TASK_BOARD / `PREINSTALLED_LOBSTER_ROADMAP`：进度对齐；Linux `install.sh` sudo 下 OpenClaw `~/.openclaw` 与 Roadmap §2.9 Bootstrap 勾选）
 
 ---
 
@@ -76,31 +76,29 @@
 >
 #### PLAT-001: 搭建 Prometheus + Pushgateway 本地环境
 
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成（Phase 1 归档）
 - **负责人**: @fairy-kimi
 - **协作方**: 无
 - **预计 AI 工时**: 30min
-- **截止**: Day 1 上午
 - **产出**:
-  - `platform/docker-compose.yml`（Prometheus + Pushgateway 基础版）
-  - 本地可运行 `docker-compose up`
-  - Pushgateway 可接收测试推送
-- **描述**:
-  使用标准镜像快速搭建，配置基础 scraping。
+  - ✅ `platform/docker-compose.yml`（Prometheus + Pushgateway 基础版）
+  - ✅ 本地可运行 `docker-compose up`
+  - ✅ Pushgateway 可接收测试推送
+- **归档**: [phase-1-mvp.md](archive/phase-1-mvp.md)
 
 ---
 
 #### PLAT-002: 配置 Grafana 基础 Dashboard
 
-- **状态**: 📥 待领取
+- **状态**: ✅ 已完成（Phase 1 归档）
 - **负责人**: @fairy-kimi
 - **协作方**: 无
 - **预计 AI 工时**: 1h
-- **截止**: Day 1 上午
 - **产出**:
-  - `platform/grafana/provisioning/dashboards/` 基础面板
-  - 可查看 Pushgateway 接收的原始指标
-- **依赖**: PLAT-001
+  - ✅ `platform/grafana/provisioning/dashboards/` 基础面板
+  - ✅ 可查看 Pushgateway 接收的原始指标
+- **依赖**: PLAT-001 ✅
+- **归档**: [phase-1-mvp.md](archive/phase-1-mvp.md)
 
 ---
 
@@ -313,7 +311,8 @@
   - [x] M1 官方渠道安装最新版：安装脚本默认通过 OpenClaw 官方渠道安装全量 latest（官方入口 + https + 官方域名白名单）
   - [x] M2 轻预装层：通过 OpenClaw 自带插件机制安装 skills，投放 `SOUL.md`/`IDENTITY.md`/`AGENTS.md`（skills 失败仅告警继续；文档存在写 `.new`）
   - [x] M3 exporter 打通 openclaw health：`agent_health` 默认探测 `http://127.0.0.1:18789/health` + 本进程存活；详见 `docs/METRICS_PROTOCOL.md`（端到端联调见 Roadmap §2.7 末项）
-- **详细计划文档**: `docs/PREINSTALLED_LOBSTER_ROADMAP.md`
+- **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
+- **补充**（2026-04-21）：Linux `install.sh` 在 `sudo` 下将 OpenClaw 状态目录对齐 **`SUDO_USER` 的 `~/.openclaw`**，支持 **`OPENCLAW_STATE_HOME`**；`gateway`/`onboard`/8b 补启统一 `HOME`，避免 **`Missing HOME`** 与 `/root` 错位（见 Roadmap §2.8）。
 
 #### AGENT-008: OpenClaw 开箱即用配置自动化（免手动 setup）
 
@@ -469,6 +468,16 @@
 
 ## 📝 任务变更日志
 
+### 2026-04-21
+
+- **对齐**: `PLAT-001`、`PLAT-002` 与 [Phase 1 归档](archive/phase-1-mvp.md) 一致，标记为 ✅ 已完成。
+- **Roadmap**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md` — §2.8 增补 Linux `sudo` 下 `~/.openclaw` / `OPENCLAW_STATE_HOME` / `_openclaw_run`（§2.9.2 Bootstrap 入口勾选）。
+- **安装脚本**: `agent/scripts/install.sh` — `sudo` 安装时 OpenClaw 默认使用调用用户家目录，非 `/root`；网关 part2 / 8b / onboard / 轻预装目录与之一致。
+
+### 2026-04-20
+
+- **文档**: 对照 `install.sh` / `opc200-install.sh` / `uninstall.sh` 与 Windows 交付物，`agent/README.md`「用户使用」补全 Linux/macOS 第二步（交互 / 静默 custom-api-key）与第三步卸载路径；开发小节修正 `sudo env … ./install.sh` 续行示例。
+
 ### 2026-04-17
 
 - **推进**: AGENT-009 **M3** — `opc200-install.sh`、`release-opc-agent.yml` 附带；`INSTALL_SCRIPT_SPEC` §9、`README`；`test_agent009_bootstrap_bash.py`
@@ -601,6 +610,8 @@
 
 ## ✅ 最近完成任务
 
+- **AGENT-007/008 补充**（2026-04-21）：Linux `install.sh` — `sudo` 下 OpenClaw 状态目录对齐 `~/.openclaw`（`SUDO_USER`）、`OPENCLAW_STATE_HOME`、统一 `HOME` 执行 CLI（与 Roadmap §2.8 一致）
+- **docs**: `agent/README.md` 用户使用（Linux/macOS 引导安装与卸载说明对齐 Windows）（2026-04-20）
 - **AGENT-008**: OpenClaw 可选非交互 onboard + 网关健康验证（2026-04-16）
 - **AGENT-007**: OpenClaw 官方安装 + 轻预装 + `agent_health` 网关探测打通（2026-04-15）
 - **AGENT-003**: v2 重写 Mac/Linux 安装脚本（2026-04-12）

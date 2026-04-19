@@ -230,6 +230,9 @@ class TestOpenClawOfficialInstall:
         assert "OPENCLAW_MIN_NODE_MAJOR=22" in install_sh
         assert "step_prepare_node_runtime" in install_sh
         assert "install_node_linux_from_official" in install_sh
+        assert "_get_node_executable" in install_sh
+        assert "_expand_path_for_openclaw_cli" in install_sh
+        assert "step_openclaw_gateway_wsl_fallback" in install_sh
 
     def test_official_install_url_configurable(self, install_sh):
         assert "OPENCLAW_INSTALL_URL" in install_sh
