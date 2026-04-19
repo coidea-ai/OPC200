@@ -140,7 +140,25 @@ try {
         exit 0
     }
 
-    & $installPs1 -RepoRoot $repoRootResolved @InstallPassthrough
+    # 使用 -File 子进程传递剩余参数，避免在 5.1 下对脚本直接 `& script @stringArray`
+    # 时，剩余项被当作位置参数绑定到 OPC200PlatformUrl…OPC200Port（见 OPC200Port 收到 "-OPC200PlatformUrl"）。
+    $pwsh = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -LiteralPath $pwsh)) {
+        $pwsh = 'powershell.exe'
+    }
+    $argList = [System.Collections.Generic.List[string]]::new()
+    [void]$argList.AddRange([string[]]@(
+            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', $installPs1,
+            '-RepoRoot', $repoRootResolved
+        ))
+    if ($InstallPassthrough -and $InstallPassthrough.Count -gt 0) {
+        foreach ($t in $InstallPassthrough) { [void]$argList.Add($t) }
+    }
+    $p = Start-Process -FilePath $pwsh -ArgumentList @($argList.ToArray()) -NoNewWindow -PassThru -Wait
+    $code = 0
+    if ($null -ne $p.ExitCode) { $code = [int]$p.ExitCode }
+    exit $code
 }
 catch {
     Write-Error $_
