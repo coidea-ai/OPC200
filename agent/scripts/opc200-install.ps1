@@ -142,10 +142,22 @@ try {
 
     # 使用 -File 子进程传递剩余参数，避免在 5.1 下对脚本直接 `& script @stringArray`
     # 时，剩余项被当作位置参数绑定到 OPC200PlatformUrl…OPC200Port（见 OPC200Port 收到 "-OPC200PlatformUrl"）。
-    $pwsh = Join-Path $PSHOME 'powershell.exe'
-    if (-not (Test-Path -LiteralPath $pwsh)) {
-        $pwsh = 'powershell.exe'
+    # 解析 powershell.exe：避免仅依赖 $PSHOME（部分宿主未设置 $PSHOME 时 StrictMode 下会失败）。
+    $pwshResolved = $null
+    $sysPs = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if ($env:SystemRoot -and (Test-Path -LiteralPath $sysPs)) {
+        $pwshResolved = $sysPs
     }
+    else {
+        $cmdPs = Get-Command powershell.exe -ErrorAction SilentlyContinue
+        if ($cmdPs -and $cmdPs.Source) {
+            $pwshResolved = $cmdPs.Source
+        }
+    }
+    if (-not $pwshResolved) {
+        $pwshResolved = 'powershell.exe'
+    }
+
     $argList = [System.Collections.Generic.List[string]]::new()
     [void]$argList.AddRange([string[]]@(
             '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -155,12 +167,12 @@ try {
     if ($InstallPassthrough -and $InstallPassthrough.Count -gt 0) {
         foreach ($t in $InstallPassthrough) { [void]$argList.Add($t) }
     }
-    $p = Start-Process -FilePath $pwsh -ArgumentList @($argList.ToArray()) -NoNewWindow -PassThru -Wait
+    $p = Start-Process -FilePath $pwshResolved -ArgumentList @($argList.ToArray()) -NoNewWindow -PassThru -Wait
     $code = 0
-    if ($null -ne $p.ExitCode) { $code = [int]$p.ExitCode }
+    if ($null -ne $p -and $null -ne $p.ExitCode) { $code = [int]$p.ExitCode }
     exit $code
 }
 catch {
-    Write-Error $_
+    Write-Error $_.Exception.Message
     exit $script:E004
 }
