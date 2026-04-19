@@ -292,3 +292,113 @@ launchctl unload ~/Library/LaunchAgents/co.opc200.agent.plist 2>/dev/null
 launchctl load ~/Library/LaunchAgents/co.opc200.agent.plist
 tail -f ~/.opc200/logs/agent.log
 ```
+
+## 用户使用
+
+### 第一步，下载引导脚本
+
+从 GitHub **Release** 下载引导脚本。
+
+**Windows（PowerShell）**
+
+```powershell
+# 在 D 盘创建一个名为 OPC200 的文件夹
+New-Item -ItemType Directory -Force -Path "D:\OPC200" | Out-Null
+
+# 从 GitHub 下载 PowerShell 安装脚本，保存到刚才创建的 D:\OPC200 文件夹里。
+Invoke-WebRequest -Uri "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.ps1" -OutFile "D:\OPC200\opc200-install.ps1"
+```
+
+**Linux / macOS**
+
+```bash
+# 创建文件夹 /data/opc200
+mkdir -p /data/opc200
+
+# 从 GitHub 下载安装脚本，保存到 /data/opc200 目录
+curl -fsSL -o /data/opc200/opc200-install.sh "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.sh"
+
+# 给脚本添加 “可执行权限”
+chmod +x /data/opc200/opc200-install.sh
+```
+
+注意：URL 中的 `coidea-ai/OPC200` 指仓库的地址，需要与第二步命令里的 **`-GitHubRepo` / `--github-repo`** 要一致。
+
+### 第二步，执行安装脚本
+
+#### Windows
+
+1. 管理员身份打开 powershell。
+
+2. 用户交互式引导安装
+
+   ```powershell
+   # 进入刚才创建的 D:\OPC200 文件夹
+   cd D:\OPC200
+   
+   # 会询问用户并让用户输入相关信息
+   powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 `
+     -GitHubRepo "coidea-ai/OPC200" `
+     -Version latest `
+     -ExtractParent "D:\OPC200"
+   ```
+
+3. 如果不想交互式安装，可以选择静默安装（示例：**静默 + OpenClaw onboard + `custom-api-key`**）
+
+   `custom-api-key` 时，**兼容 OpenAI 的 base URL、模型 ID、推理用 API Key** 须通过环境变量 **`OPENCLAW_CUSTOM_BASE_URL`**、**`OPENCLAW_CUSTOM_MODEL_ID`**、**`CUSTOM_API_KEY`** 提供（安装脚本静默路径从环境读取，与下方 `install.ps1` 参数表一致）。请把占位符换成你的真实值，**勿将密钥写入版本库**。
+
+   ```powershell
+   # 进入刚才创建的 D:\OPC200 文件夹
+   cd D:\OPC200
+
+   # OpenClaw custom 端点（须先于同一 PowerShell 会话中设置，再调用引导脚本）
+   $env:OPENCLAW_CUSTOM_BASE_URL = "https://your-llm.example/v1"
+   $env:OPENCLAW_CUSTOM_MODEL_ID = "your-model-id"
+   $env:CUSTOM_API_KEY = "sk-your-inference-key"
+   # 可选：$env:OPENCLAW_CUSTOM_COMPATIBILITY = "openai"
+   # 可选：$env:OPENCLAW_CUSTOM_PROVIDER_ID = "my-provider"
+
+   powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 `
+     -GitHubRepo "coidea-ai/OPC200" `
+     -Version latest `
+     -ExtractParent "D:\OPC200" `
+     -Silent `
+     -OpenClawOnboard `
+     -OpenClawAuthChoice "custom-api-key" `
+     -OPC200PlatformUrl "https://platform.opc200.co" `
+     -OPC200TenantId "your-tenant-id" `
+     -OPC200ApiKey "your-opc200-platform-key"
+   ```
+
+#### Linux / macOS
+
+todo
+
+#### 命令常用参数含义
+
+| Windows (`opc200-install.ps1`) | Linux/macOS (`opc200-install.sh`) | 含义                                                         |
+| ------------------------------ | --------------------------------- | ------------------------------------------------------------ |
+| `-GitHubRepo`                  | `--github-repo`                   | **必填（若未设环境变量）**：Release 所在仓库，格式 `owner/repo`。 |
+| `-Version`                     | `--version`                       | 要装的版本：`latest`（默认跟最新 Release）或 **不带 `v` 的语义化版本**（如 `2.5.0`）。 |
+| `-ExtractParent`               | `--extract-parent`                | **可选**：下载的 zip、`SHA256SUMS` 与解压目录的根路径。不设则默认在用户主目录下 `.opc200\agent-bundle\<版本>`（Windows）或 `$HOME/.opc200/agent-bundle/<版本>`（Linux/macOS）。若希望**所有文件落在同一个自选文件夹**（例如整盘不用 C:），把脚本与 `-ExtractParent` 指到**同一目录**即可。 |
+| `-DownloadOnly`                | `--download-only`                 | 仅下载并校验，不执行第二阶段的 `install.ps1` / `install.sh`。 |
+
+第二阶段安装（静默、租户、OpenClaw 等）的参数与下文 **「安装」** 小节中 `install.ps1` / `install.sh` 一致；Bootstrap 会把多余参数**原样传给**第二阶段。
+
+### FAQ
+
+#### 固定某一版本（不用 `latest`）
+
+将 `-Version` / `--version` 设为 **语义化版本号，不带 `v` 前缀**（例如 `2.5.0`），且该版本在 GitHub 上已存在对应 **tag** 与 **Release**。
+
+#### 安装完成后如何确认「跑通」
+
+- Bootstrap 阶段无「找不到 Release」「SHA256 校验失败」等错误。
+- 第二阶段终端中 **`[STEP]`** 流程能走完。
+- Agent **健康检查**（默认端口见安装参数 **`-OPC200Port` / `--opc200-port`**，常为 `8080`）：例如 `http://127.0.0.1:8080/health`（以你本机配置为准）。
+
+服务查看方式：**Windows** 见下文「重启 OPC200-Agent 服务」计划任务；**Linux** 见 `systemctl status opc200-agent`。
+
+#### 可选：私有仓库或 API 限流
+
+若 Release 在**私有仓库**或访问 GitHub API 受限，可设置环境变量 **`GITHUB_TOKEN`**（有读 Release 权限的 token），再执行上述命令；Bootstrap 会把 token 用于 API 请求。
