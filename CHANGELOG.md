@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.1] - 2026-04-19
+
+### Fixed
+- **Bootstrap (`opc200-install.ps1`)**: invoke `install.ps1` via `powershell.exe -File` so passthrough arguments bind as named switches in PowerShell 5.1 (fixes mistaken positional binding to `OPC200Port`).
+
+---
+
 ## [2.5.0] - 2026-04-13
 
 ### Changed (Breaking)

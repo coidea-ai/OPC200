@@ -8,7 +8,7 @@ set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────
 
-AGENT_VERSION="2.5.0"
+AGENT_VERSION="2.5.1"
 DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VERSION}"
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="https://platform.opc200.co"

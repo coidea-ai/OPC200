@@ -12,7 +12,7 @@
 
 **项目**: OPC200 Push 架构改造  
 **分支**: `feat/push-architecture`  
-**最后更新**: 2026-04-17（AGENT-009：M3 `opc200-install.sh` + Release 附带；M5 VM 验收仍待办）
+**最后更新**: 2026-04-19（AGENT-009：`opc200-install.ps1` 引导传参修复；Release **v2.5.1**）
 
 ---
 
@@ -472,7 +472,7 @@
 ### 2026-04-17
 
 - **推进**: AGENT-009 **M3** — `opc200-install.sh`、`release-opc-agent.yml` 附带；`INSTALL_SCRIPT_SPEC` §9、`README`；`test_agent009_bootstrap_bash.py`
-- **推进**: AGENT-009（Windows）— `opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`；`install.ps1` 与根 `VERSION` 对齐 `AGENT_VERSION=2.5.0`；`INSTALL_SCRIPT_SPEC` §9、`README`、`PREINSTALLED_LOBSTER_ROADMAP` §2.9；`test_agent009_release_bundle.py`
+- **推进**: AGENT-009（Windows）— `opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`；`install.ps1` 与根 `VERSION` 对齐 `AGENT_VERSION=2.5.1`；`INSTALL_SCRIPT_SPEC` §9、`README`、`PREINSTALLED_LOBSTER_ROADMAP` §2.9；`test_agent009_release_bundle.py`
 
 ### 2026-04-16
 

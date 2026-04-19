@@ -45,7 +45,7 @@ Workflow：`.github/workflows/release-opc-agent.yml`（`on.push.tags: v*`）。T
 | 仓库根版本文件 | `VERSION` |
 | Windows 第二阶段安装脚本 | `agent/scripts/install.ps1` 内 `AGENT_VERSION` |
 | Linux 第二阶段安装脚本 | `agent/scripts/install.sh` 内 `AGENT_VERSION` |
-| Git tag | `v<semver>`，例如 `VERSION` 为 `2.5.0` → tag **`v2.5.0`** |
+| Git tag | `v<semver>`，例如 `VERSION` 为 `2.5.1` → tag **`v2.5.1`** |
 | 制品 zip 名 | `opc200-agent-<semver>.zip`（由 workflow 从 tag 解析） |
 
 若仅改文档、未改版本却需**重新发同一版本**，须用团队策略处理（例如撤包、新 patch 版本）；**禁止**在同一 tag 上重复 `git push` 期望覆盖 Release（通常需新 tag）。

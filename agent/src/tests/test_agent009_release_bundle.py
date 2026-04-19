@@ -4,7 +4,7 @@ import hashlib
 
 
 def test_sha256sums_two_space_format():
-    name = "opc200-agent-2.5.0.zip"
+    name = "opc200-agent-2.5.1.zip"
     payload = b"test-bytes"
     digest = hashlib.sha256(payload).hexdigest()
     line = f"{digest}  {name}\n"

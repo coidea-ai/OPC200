@@ -20,8 +20,8 @@
 - 示例：
 
 ```bash
-git tag v2.5.0
-git push origin v2.5.0
+git tag v2.5.1
+git push origin v2.5.1
 ```
 
 - 在 GitHub **Actions** 中确认 **`release-opc-agent`**（或当前 workflow 名称）对该 tag **执行成功**。
