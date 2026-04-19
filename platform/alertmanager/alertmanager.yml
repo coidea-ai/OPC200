@@ -1,0 +1,71 @@
+# OPC200 Alertmanager 配置
+# 功能：离线告警通知（邮件为主，飞书后续扩展）
+# 固定通知人：rem02
+
+global:
+  # QQ 邮件 SMTP 配置
+  smtp_smarthost: 'smtp.qq.com:587'
+  smtp_from: '957763931@qq.com'
+  smtp_auth_username: '957763931@qq.com'
+  smtp_auth_password: 'rwpabvxxlldubede'
+  smtp_require_tls: true
+
+# 路由配置
+templates:
+- '/etc/alertmanager/*.tmpl'
+
+route:
+  group_by: ['alertname', 'job']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 0s  # 告警只通知一次，不重复发送
+  receiver: 'opc200-email'
+  
+  routes:
+    - match:
+        severity: critical
+      receiver: 'opc200-email-p0'
+      group_wait: 10s
+      continue: true
+    
+    - match:
+        severity: warning
+      receiver: 'opc200-email-p1'
+      continue: true
+
+# 接收者配置
+receivers:
+  # P0 告警：邮件
+  - name: 'opc200-email-p0'
+    email_configs:
+      - to: '957763931@qq.com'
+        send_resolved: true
+        headers:
+          Subject: '[P0] OPC200 Alert: {{ .GroupLabels.alertname }}'
+        html: '<h2>OPC200 P0 告警</h2><pre>{{ .CommonAnnotations.summary }}</pre><p>{{ .CommonAnnotations.description }}</p>'
+
+  # P1 告警：邮件
+  - name: 'opc200-email-p1'
+    email_configs:
+      - to: '957763931@qq.com'
+        send_resolved: true
+        headers:
+          Subject: '[P1] OPC200 Alert: {{ .GroupLabels.alertname }}'
+        html: '<h2>OPC200 P1 告警</h2><pre>{{ .CommonAnnotations.summary }}</pre><p>{{ .CommonAnnotations.description }}</p>'
+
+  # 默认接收者：邮件
+  - name: 'opc200-email'
+    email_configs:
+      - to: '957763931@qq.com'
+        send_resolved: true
+        headers:
+          Subject: 'OPC200 Alert: {{ .GroupLabels.alertname }}'
+        html: '<h2>OPC200 告警</h2><pre>{{ .CommonAnnotations.summary }}</pre><p>{{ .CommonAnnotations.description }}</p>'
+
+# 抑制规则
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['job']

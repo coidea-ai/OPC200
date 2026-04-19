@@ -1,0 +1,220 @@
+# 预装版小龙虾（OpenClaw）交付路线图
+
+> **用途**：后续预装版安装、打包、观测相关工作以此文档为单一事实来源；完成项及时勾选，并在文末更新「变更记录」。  
+> **最后更新**：2026-04-17（§2.9 Windows：Bootstrap + Release 制品 + CI）
+
+---
+
+## 0. 目标与边界
+
+### 0.1 目标
+
+- 用户执行**一条安装命令**（或等价脚本），即可安装**开箱即用**的小龙虾：预置 `SOUL.md`、`IDENTITY.md`、`AGENTS.md`、`skills/` 等默认配置。
+- 与 `opc-agent` 服务协同：在合适阶段将 **`agent-health` 指标语义**对齐为「**预装小龙虾整体健康**」（含网关等关键依赖），而非泛化或未定义的「Agent」含义。
+
+### 0.2 产品定位硬约束（必须满足）
+
+- **非深度定制**：不做 OpenClaw 私有分叉，不改 OpenClaw 内核逻辑，不交付“魔改发行版”。
+- **官方渠道安装**：用户执行本项目脚本时，底层必须调用 OpenClaw 官方安装渠道，并默认安装**全量 latest**。
+- **仅做轻预装层**：在官方安装完成后，自动完成（脚本侧）：  
+  1) 通过 OpenClaw 自带插件机制（如 clawhub / 原生命令）安装 skills；  
+  2) 投放预置文档（`SOUL.md`、`IDENTITY.md`、`AGENTS.md` 等）；  
+  3) 执行 **`openclaw config set tools.profile full`**（失败仅告警，不阻断安装）。
+
+### 0.3 分期依赖关系
+
+- **先做**预装版的最小可运行面（路径、服务/进程形态、网关监听等尽量稳定），**再做** `agent-health` 采集重构，可减少返工。
+- `agent-health` 的接口（指标名、标签、0/1 规则）可在第二期初与「小龙虾可观测面」一起冻结。
+
+### 0.4 文档维护约定
+
+- [ ] 每完成一条可验收子项，将对应 `- [ ]` 改为 `- [x]`。
+- [ ] 合并较大里程碑时，在文末「变更记录」追加一行（日期 + 摘要）。
+- [ ] 若计划项增删或档期调整，同步修改对应分期并记一条变更记录。
+
+---
+
+## 第一期：Demo（能演示「一键装 + 开箱即用」）
+
+### 1.1 安装入口与产物
+
+- [x] 提供 Windows（PowerShell）与 Linux/macOS（bash）**至少一种**可跑通的安装入口（另一种可标为后续）。
+- [x] 安装脚本先通过 **OpenClaw 官方渠道**安装全量 latest，再执行本项目轻预装动作。
+- [x] 轻预装产物包含：预置 `SOUL.md`、`IDENTITY.md`、`AGENTS.md`、`skills/` 落盘到**约定目录**。
+- [x] 安装后用户能完成一次**核心演示流程**（与产品定义的「龙虾默认任务」一致）。
+
+### 1.2 最低限度体验
+
+- [ ] 下载/解压/权限等失败时有**明确报错**与**非零退出**（退出码细分可在第二期）。
+- [ ] 文档中写明：安装命令、默认目录、如何卸载（允许第一期为「手动删除目录」级说明）。
+
+### 1.3 本期明确不做（避免范围膨胀）
+
+- [ ] 记录本期**刻意不包含**项（例如：完整 SHA256 链、企业离线包、完整回滚），避免与第二期混淆。
+
+---
+
+## 第二期：最小可交付 MVP（含强烈建议 + `agent-health` 对齐小龙虾）
+
+> **交付含义**：可给外部用户**反复安装/升级**而不易翻车；`opc-agent` 的 `agent-health` 在本期完成语义与采集重构。
+
+### 2.1 发布与完整性（强烈建议）
+
+- [ ] 发布物附带**校验信息**（至少 SHA256；与 `INSTALL_SCRIPT_SPEC` 或现有 Release 流程对齐）。
+- [ ] 安装脚本在解压/执行前完成**校验失败则中止**并清理临时文件。
+- [x] 脚本中对 OpenClaw 安装步骤保持“官方 latest + 官方渠道”策略，不引入私有 fork 下载源。
+
+### 2.2 幂等与版本
+
+- [ ] 重复安装：不重复污染 `PATH` / shell profile 注入块。
+- [ ] 同版本重复执行：行为明确（快速退出或提示「已安装」）。
+- [ ] 分别记录**程序版本**与**预置包（preset）版本**（便于排障与对账）。
+
+### 2.3 预置文件升级策略（强烈建议）
+
+- [x] 首次安装：写入默认 `SOUL.md`、`IDENTITY.md`、`AGENTS.md`、`skills/`。
+- [x] 升级：区分用户是否改动；未改动可覆盖；已改动**不直接覆盖**（如生成 `*.new` 或跳过并提示）。
+
+### 2.4 原子安装与卸载
+
+- [ ] 先写入临时目录，成功后再切换到正式目录（或等价原子策略）。
+- [ ] 失败后可**再次运行**恢复到一致状态（无半截不可用残留）。
+- [ ] 提供卸载路径：移除注入块、主程序目录；**用户数据目录**策略明确（默认保留或可选 `--purge`）。
+
+### 2.5 参数与非交互
+
+- [ ] 支持最小参数集：`--yes`、`-y`、`--preset`（若多预设）、`--install-dir` / `--data-dir`（按实际需要裁剪）。
+- [ ] `--help` / `--version` 行为明确。
+
+### 2.6 最小测试矩阵
+
+- [ ] 干净环境首次安装。
+- [ ] 同版本重复安装。
+- [ ] 跨版本升级 + 用户已改过预置文件。
+- [ ] 卸载后重装。
+
+### 2.7 `opc-agent`：`agent-health` 采集重构（本期完成）
+
+> **语义**：`agent-health` 表示**预装小龙虾的运行健康**（例如：龙虾核心是否正常工作、**网关是否正常**等）；实现前须与第一期/本期初冻结的**可观测面**（进程名、服务名、端口、配置路径）对齐。
+
+- [x] 梳理现有代码中所有与 `agent-health` 相关的定义、采集、标签与上报路径（单一清单，避免遗漏）：实现位于 `agent/src/exporter/collector.py`，推送仍为 `MetricsCollector` → `MetricsPusher`。
+- [x] 与产品/架构对齐：**健康判定规则**（必选项：本进程存活 + 网关 HTTP 2xx）已文档化至 `docs/METRICS_PROTOCOL.md`「`agent_health` 判定规则」小节。
+- [x] **单一配置源**：默认 `OPENCLAW_GATEWAY_HEALTH_URL=http://127.0.0.1:18789/health`，与文档/编排中网关端口约定一致；可通过环境变量覆盖，与安装脚本 `OPENCLAW_*` 命名一致。
+- [x] 未安装小龙虾或依赖未就绪时：`agent_health` 为 **`0`**（网关探测失败）；纯 Agent 场景可设 `OPENCLAW_GATEWAY_HEALTH_PROBE=0` 跳过网关探测。
+- [x] 单元测试：`agent/src/tests/test_agent004_exporter.py` 覆盖网关成功/失败/连接错误、探测关闭、进程僵尸、采集异常路径。
+- [ ] 与现有 `MetricsCollector` / 推送链路集成验收（本地或联调环境一次端到端）。
+
+### 2.8 OpenClaw 开箱即用配置自动化（新增）
+
+> **目标**：用户执行安装脚本后即可直接使用 OpenClaw，不再依赖手动执行 `openclaw dashboard` / `openclaw setup` 完成首次配置。
+
+- [x] 冻结最小可用配置集：`OPENCLAW_AUTH_CHOICE` 支持 `apiKey` / `openai-api-key` / `gemini-api-key` / `custom-api-key`（须配置模型密钥，不支持 `skip`）；网关端口 `OPENCLAW_GATEWAY_PORT`（默认 18789）；自定义端点 `OPENCLAW_CUSTOM_*` / `CUSTOM_API_KEY`；与官方文档 `openclaw onboard --non-interactive` 对齐。
+- [x] 安装脚本交互采集配置：非静默模式问答输入（Windows + Linux），敏感字段 `SecureString` / `read -rsp`；执行参数日志不打印密钥。
+- [x] 静默模式参数化：`OPENCLAW_AUTH_CHOICE` + 对应 provider 环境变量；Windows 增加 `-OpenClawOnboard` / `-OpenClawAuthChoice` / `-SkipOpenClawOnboard`；Linux 增加 `--openclaw-onboard` / `--skip-openclaw-onboard`；**交互安装默认执行 onboard**；**静默**须 `OPENCLAW_ONBOARD=1`（或 CLI 开关）才跑 onboard，避免无密钥 CI 误跑；`OPENCLAW_ONBOARD=0` 或 `Skip` 可显式跳过。
+- [x] 配置落地策略：优先官方 `openclaw onboard --non-interactive`（见 https://docs.openclaw.ai/start/wizard-cli-automation ）；**直接写 `openclaw.json` 的 fallback 仍列为后续**（schema 随版本变化，避免脚本侧误写）。
+- [x] 成功判定与兜底：`OPENCLAW_GATEWAY_HEALTH_URL` 或默认 `http://127.0.0.1:<port>/health` 轮询；`OPENCLAW_ONBOARD_STRICT=1` 时 onboard 或健康失败则中止安装；否则告警继续并完成 opc-agent 安装。
+- [x] 网关段优化：优先 `gateway status --require-rpc`，避免 onboard 已装 daemon 后重复 `gateway install`；仅在 RPC 未就绪时再区分未安装/需修复；`doctor` 仅在重启仍失败路径触发。
+- [x] 轻预装写入 `tools.profile=full`：`install.ps1` / `install.sh` 在 skills 与文档前执行（CLI 不可用时跳过并告警）。
+
+### 2.9 无仓库一键安装：官方引导脚本 + 版本化制品包（Bootstrap + Release Bundle）
+
+> **目标**：用户在**无 Git、无整仓克隆**的机器上，通过**一条命令**（或等价）获取 OPC200 安装所需的最小目录树（含 `agent/`、`install.ps1` / `install.sh`、`requirements-agent-runtime.txt` 等），再执行与仓库内一致的安装流程；与 OpenClaw「官方 URL + 管道执行」的体验对齐，但 **OPC200 侧大内容走制品包**，避免「单巨型脚本内嵌全部文件」。
+
+#### 2.9.1 选型结论（归档）
+
+| 方案 | 结论 |
+|------|------|
+| **Bootstrap（小脚本）+ Release 制品（zip/tar）+ 校验** | **采用**。与 kubectl/terraform 等常见 CLI 分发一致：脚本负责版本、下载、校验、解压；业务代码在制品内。 |
+| 单文件二进制 / MSI 为主交付物 | **本期不作为主路径**；成本高，与当前「venv + 源码」主线不一致，可作为第三期增强。 |
+| 仅文档要求用户 `git clone` | **不采用**；不满足生产用户「无仓库」诉求。 |
+| 单脚本内嵌/拼接整仓 | **不采用**；难审计、难签名、管道劫持风险高。 |
+
+#### 2.9.2 交付物定义（需在本期落地）
+
+- [ ] **Bootstrap 入口**（可二选一或并存）：  
+  - Windows：`opc200-install.ps1`（仓库 `agent/scripts/opc200-install.ps1`；Release 同 tag 附带同名文件）→ 亦可托管于 **HTTPS 固定域名**（如 `https://install.opc200.co/...`），文档给出 `Invoke-RestMethod` / `iex` 示例（并提示校验来源）。  
+  - Linux/macOS：`opc200-install.sh`（仓库 `agent/scripts/opc200-install.sh`；Release 附带），文档给出下载后 `bash opc200-install.sh ...` 示例（`README` / `INSTALL_SCRIPT_SPEC` §9）。
+- [x] **版本化制品包**（每 Agent 版本一次构建）：`opc200-agent-<semver>.zip` 内含 `agent/`（`src/opc_agent`、`src/exporter`、`scripts/` 等；`agent/src/__init__.py` 在打包时为 stub，避免依赖整仓 `src.*`）；`RepoRoot` 指向含 `agent/` 的目录根（与现有 `install.ps1` 一致）。
+- [x] **完整性文件**：同 Release 发布 **`SHA256SUMS`**（GNU `sha256sum` 两行格式：`hash␠␠filename`）；Bootstrap **默认校验**，失败则中止并退出码 4。
+- [x] **版本对齐**：`install.ps1` 内 **`AGENT_VERSION`** 与根目录 **`VERSION`**、制品 zip 名一致；Bootstrap 支持 **`-Version`** / **`OPC200_INSTALL_VERSION`**（默认 **`latest`**）、**`-GitHubRepo`** / **`OPC200_GITHUB_REPO`**（`owner/repo`）。
+
+#### 2.9.3 Bootstrap 行为（实现大纲）
+
+- [x] 解析参数：`latest` 或显式 semver；`-DownloadOnly`；`-ExtractParent`（否则默认 `%USERPROFILE%\.opc200\agent-bundle\<ver>`，**解压后保留**，供 `PYTHONPATH` 指向的源码树使用）。
+- [x] 从 **GitHub Release**（`OPC200_GITHUB_REPO`）下载 **`SHA256SUMS` + `opc200-agent-<ver>.zip`**；可选 `GITHUB_TOKEN` 提升 API 限额。
+- [x] 校验：哈希一致后再解压覆盖 `agent\`。
+- [x] 调用**第二阶段**：`install.ps1 -RepoRoot <解压根>`，其余参数透传。
+- [x] 错误处理：校验失败等 **exit 4**（与 `install.ps1` 中 `E004` 一致）。
+- [ ] 安全说明入文档：仅从官方域名下载；可选 **发布签名**（第三期 §3.2 可衔接）。
+
+#### 2.9.4 构建与发布流水线（实现大纲）
+
+- [x] CI：`.github/workflows/release-opc-agent.yml`，`push` tag `v*` → `build-agent-bundle.sh` → zip + `sha256sum` → `softprops/action-gh-release` 上传 `opc200-agent-<ver>.zip`、`SHA256SUMS`、`opc200-install.ps1`、`opc200-install.sh`。
+- [x] 本地打包：`agent/scripts/pack-agent-release.ps1`（Windows）与 `agent/scripts/build-agent-bundle.sh`（与 CI 同源树）。
+- [x] Bootstrap：**GitHub repo** 由环境变量/参数指定（`OPC200_GITHUB_REPO`），无单一硬编码域名。
+- [x] 与 `docs/INSTALL_SCRIPT_SPEC.md` §9、`agent/README.md` **无仓库安装** 交叉引用。
+
+#### 2.9.5 验收标准（第二期收口）
+
+- [ ] 在 **无 Git、无先验仓库** 的干净 VM 上：仅执行官方文档中的 **一条 Bootstrap 命令**，能完成 OpenClaw（若本期仍包含）+ OPC200 Agent 安装至可 **`/health`** 或等价验证。
+- [ ] 故意篡改制品包字节：Bootstrap **必须失败**并清晰报错（脚本已在校验阶段失败；待 VM 上复现记录）。
+- [x] 文档中用户可见命令与内部流水线产物 **版本号一致**（`VERSION` / `AGENT_VERSION` / tag `v*`）。
+
+> **说明**：企业离线包、多通道（stable/beta）、签名与 SBOM 等可与 **第三期 §3.1–3.2** 衔接；本期以「HTTPS + SHA256 + 固定域名」为最低门槛。
+
+---
+
+## 第三期：可长期分发（规模化 / 企业化 / 长期维护）
+
+### 3.1 发布与渠道
+
+- [ ] `stable` / `beta`（或等价）渠道与版本策略。
+- [ ] 变更日志、破坏性变更说明、弃用周期（如适用）。
+
+### 3.2 升级、回滚与供应链
+
+- [ ] 保留上一版本；失败回退或一键回滚策略。
+- [ ] 签名验证（如 cosign/minisign 等）与发布门禁对齐。
+- [ ] 合规需要时：SBOM、漏洞响应流程简述或链到 `SECURITY.md`。
+
+### 3.3 企业场景
+
+- [ ] 离线/内网安装包与镜像源说明。
+- [ ] 代理、MDM/组策略类分发说明（按目标客群裁剪）。
+
+### 3.4 可观测与运维
+
+- [ ] 结构化日志、诊断打包命令、常见故障 playbook。
+- [ ] `agent-health` 与多实例/多租户场景下的标签规范（若适用），与 `METRICS_PROTOCOL.md` 统一。
+
+### 3.5 质量门禁
+
+- [ ] CI：构建、测试、lint、发布物校验生成、安装脚本 dry-run（按仓库现有 CI 能力裁剪）。
+
+---
+
+## 变更记录
+
+| 日期 | 摘要 |
+|------|------|
+| 2026-04-17 | §2.9 Linux/macOS：`opc200-install.sh` + Release 附带；CI 上传 `opc200-install.sh` |
+| 2026-04-17 | §2.9 Windows：`opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`（tag `v*`）；制品 `opc200-agent-<ver>.zip` + `SHA256SUMS`；`INSTALL_SCRIPT_SPEC` §9 / `README` 互链 |
+| 2026-04-16 | 第二期新增 **§2.9**：无仓库一键安装 — **Bootstrap + 版本化制品包（zip/tar + SHA256SUMS）** 选型、交付物、Bootstrap 行为、CI 发布与验收标准；与第三期企业化衔接说明 |
+| 2026-04-16 | Windows `install.ps1`：`Main` 全量三段（环境 → OpenClaw → OPC200 Agent）；onboard 后轻预装（含 `tools.profile=full`）；网关 RPC 优先探测；平台三件套在 Agent 段采集；轻预装/`uninstall.ps1`（`-KeepOpenClaw`）与单测、README 同步 |
+| 2026-04-16 | 交互安装默认执行 OpenClaw onboard；静默仍须 `OPENCLAW_ONBOARD=1`；支持 `OPENCLAW_ONBOARD=0` / Skip 显式关闭 |
+| 2026-04-16 | §2.8 落地：`install.ps1` / `install.sh` 可选 `openclaw onboard --non-interactive` + 网关 HTTP 健康检查；单测 `test_agent008_openclaw_onboard_install.py` |
+| 2026-04-15 | 新增第二期 §2.8：OpenClaw 开箱即用配置自动化（最小配置集、交互采集、静默参数、配置落地与验证兜底） |
+| 2026-04-15 | AGENT-007：Windows/Linux 卸载脚本交互对齐（确认是否卸载 OpenClaw + 卸载进度提示 + CLI 手动清理提醒） |
+| 2026-04-15 | 第二期 §2.7：`agent_health` 改为 OpenClaw 网关 HTTP 探测 + 本进程存活；协议与单测已更新（端到端联调待办） |
+| 2026-04-15 | 第一期 §1.1：核心演示流程已走通并完成勾选（安装入口 + 官方 OpenClaw + 轻预装 + 默认任务演示） |
+| 2026-04-15 | AGENT-007：Linux 安装脚本在 OpenClaw 官方安装前补齐 Node v22+ 前置检测与自动安装兜底 |
+| 2026-04-14 | 初版：三期计划 + 第二期纳入 `agent-health` 对齐小龙虾 |
+| 2026-04-14 | 明确硬约束：非深度定制、官方渠道安装全量 latest、仅做轻预装层 |
+
+---
+
+## 相关文档
+
+- `docs/INSTALL_SCRIPT_SPEC.md` — 安装目录与脚本约定  
+- `docs/METRICS_PROTOCOL.md` — 指标与推送协议（若扩展 `agent-health` 需同步）  
+- `agent/README.md` — `opc-agent` 构建与安装说明  

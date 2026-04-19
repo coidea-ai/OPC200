@@ -1,0 +1,35 @@
+# OPC200 Exporter Docker 镜像
+# 指标采集与推送服务
+
+FROM python:3.11-slim-bookworm
+
+LABEL maintainer="coidea.ai"
+LABEL version="0.2.0"
+LABEL description="OPC200 Metrics Exporter"
+
+# 安装依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
+RUN pip install --no-cache-dir requests psutil
+
+# 创建非 root 用户
+RUN groupadd -r opc200 && useradd -r -g opc200 -s /bin/false opc200
+
+# 创建目录
+RUN mkdir -p /app /data/exporter && chown -R opc200:opc200 /app /data
+
+# 复制代码
+COPY --chown=opc200:opc200 agent/src/exporter /app/exporter
+
+# 设置工作目录
+WORKDIR /app
+
+# 切换到非 root 用户
+USER opc200
+
+# 启动 exporter
+CMD ["python", "-c", "from exporter.pusher import MetricsPusher; MetricsPusher().push_loop()"]

@@ -1,0 +1,304 @@
+"""AGENT-002 单元测试: Windows 安装/卸载脚本与 AGENT-001 规范一致性检查"""
+
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCRIPTS_DIR = REPO_ROOT / "agent" / "scripts"
+SPEC_PATH = REPO_ROOT / "docs" / "INSTALL_SCRIPT_SPEC.md"
+
+
+@pytest.fixture(scope="module")
+def install_ps1():
+    return (SCRIPTS_DIR / "install.ps1").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def uninstall_ps1():
+    return (SCRIPTS_DIR / "uninstall.ps1").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def spec_md():
+    return SPEC_PATH.read_text(encoding="utf-8")
+
+
+# ── 文件存在性 ────────────────────────────────────────────────────
+
+class TestFilesExist:
+    def test_install_script_exists(self):
+        assert (SCRIPTS_DIR / "install.ps1").is_file()
+
+    def test_uninstall_script_exists(self):
+        assert (SCRIPTS_DIR / "uninstall.ps1").is_file()
+
+    def test_spec_exists(self):
+        assert SPEC_PATH.is_file()
+
+
+# ── install.ps1 参数声明 ─────────────────────────────────────────
+
+class TestInstallParams:
+    REQUIRED_PARAMS = ["OPC200PlatformUrl", "OPC200TenantId", "OPC200ApiKey", "InstallDir", "OPC200Port", "Silent"]
+
+    @pytest.mark.parametrize("param", REQUIRED_PARAMS)
+    def test_param_declared(self, install_ps1, param):
+        assert param in install_ps1
+
+    def test_requires_ps51(self, install_ps1):
+        assert "#Requires -Version 5.1" in install_ps1
+
+
+# ── 7 步流程函数 ─────────────────────────────────────────────────
+
+class TestInstallSteps:
+    STEP_FUNCTIONS = [
+        "Test-Environment",
+        "Initialize-InstallPaths",
+        "Ensure-OpenClawNodeRuntime",
+        "Test-OpenClawNetworkReady",
+        "Install-OpenClawOfficial",
+        "Install-OpenClawOnboardIfRequested",
+        "Install-OpenClawPreload",
+        "Ensure-OpenClawCliPresentOrInstall",
+        "Invoke-OpenClawPart2InstallAndGateway",
+        "Get-OpcAgentPlatformConfig",
+        "Get-AgentBinary",
+        "Install-Agent",
+        "Register-Service",
+        "Start-AndVerify",
+        "Show-Summary",
+    ]
+
+    @pytest.mark.parametrize("func", STEP_FUNCTIONS)
+    def test_step_function_defined(self, install_ps1, func):
+        assert f"function {func}" in install_ps1
+
+
+# ── 错误码 (AGENT-001 §6.1) ─────────────────────────────────────
+
+class TestErrorCodes:
+    CODES = {
+        "E001": "权限不足",
+        "E002": "网络连接失败",
+        "E003": "端口占用",
+        "E004": "校验失败",
+        "E005": "服务注册失败",
+    }
+
+    @pytest.mark.parametrize("code", CODES.keys())
+    def test_error_code_present(self, install_ps1, code):
+        assert code in install_ps1
+
+
+# ── 目录结构 (AGENT-001 §3.1) ───────────────────────────────────
+
+class TestDirectoryStructure:
+    SPEC_DIRS = ["bin", "config", "data", "journal", "exporter", "logs"]
+
+    @pytest.mark.parametrize("d", SPEC_DIRS)
+    def test_dir_in_script(self, install_ps1, d):
+        assert d in install_ps1
+
+    def test_default_install_dir(self, install_ps1):
+        assert ".opc200" in install_ps1
+
+
+# ── config.yml 模板 ──────────────────────────────────────────────
+
+class TestConfigTemplate:
+    def _extract_yaml_block(self, ps1_text: str) -> str:
+        match = re.search(
+            r'\$configYml\s*=\s*@"(.*?)"@',
+            ps1_text,
+            re.DOTALL,
+        )
+        assert match, "未找到 config.yml 模板"
+        return match.group(1).strip()
+
+    def test_yaml_parseable(self, install_ps1):
+        raw = self._extract_yaml_block(install_ps1)
+        raw = re.sub(r'\$\([^)]+\)', 'placeholder', raw)
+        cfg = yaml.safe_load(raw)
+        assert cfg is not None
+
+    def test_contains_required_sections(self, install_ps1):
+        raw = self._extract_yaml_block(install_ps1)
+        for section in ("platform:", "customer:", "agent:", "gateway:", "journal:", "logging:"):
+            assert section in raw
+
+
+# ── .env 与安全 ──────────────────────────────────────────────────
+
+class TestSecurity:
+    def test_env_file_written(self, install_ps1):
+        assert ".env" in install_ps1
+
+    def test_acl_set(self, install_ps1):
+        assert "Set-Acl" in install_ps1
+
+    def test_api_key_secure_input(self, install_ps1):
+        assert "AsSecureString" in install_ps1
+
+
+class TestVenvInstall:
+    def test_venv_and_pip(self, install_ps1):
+        assert "python.exe" in install_ps1
+        assert "pip install" in install_ps1
+
+
+class TestOpenClawNodePrerequisite:
+    def test_node_major_constant(self, install_ps1):
+        assert "OPENCLAW_MIN_NODE_MAJOR" in install_ps1
+        assert "nodejs.org/dist/index.json" in install_ps1
+
+    def test_ensure_node_runtime_function(self, install_ps1):
+        assert "function Ensure-OpenClawNodeRuntime" in install_ps1
+        assert "function Install-NodeJsWinMsiFromDist" in install_ps1
+        assert "Sync-SessionPathFromRegistry" in install_ps1
+
+
+class TestOpenClawNetworkCheck:
+    def test_network_check_function(self, install_ps1):
+        assert "function Test-OpenClawNetworkReady" in install_ps1
+
+    def test_network_check_hosts(self, install_ps1):
+        assert "OPENCLAW_NET_CHECK_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+        assert "registry.npmmirror.com" in install_ps1
+        assert "github.com" in install_ps1
+
+    def test_network_check_called_in_main(self, install_ps1):
+        assert "Test-OpenClawNetworkReady" in install_ps1
+
+
+class TestOpenClawNpmAcceleration:
+    def test_default_registry_is_npmmirror(self, install_ps1):
+        assert "registry.npmmirror.com" in install_ps1
+        assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
+
+    def test_registry_uses_script_default_only(self, install_ps1):
+        assert "$npmRegistry = $script:OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
+
+    def test_npm_fetch_timeout_set(self, install_ps1):
+        assert "NPM_CONFIG_FETCH_TIMEOUT" in install_ps1
+        assert "NPM_CONFIG_FETCH_RETRIES" in install_ps1
+
+
+class TestOpenClawInstallObservability:
+    def test_log_file_created(self, install_ps1):
+        assert "opc200-openclaw-install-" in install_ps1
+
+    def test_timeout_constant(self, install_ps1):
+        assert "OPENCLAW_INSTALL_TIMEOUT_SEC" in install_ps1
+        assert "900" in install_ps1
+
+    def test_timeout_enforced(self, install_ps1):
+        assert "deadline" in install_ps1
+        assert "超时" in install_ps1
+
+    def test_realtime_output(self, install_ps1):
+        assert "Get-Content" in install_ps1
+        assert "openclaw]" in install_ps1
+
+    def test_exit_code_checked(self, install_ps1):
+        assert "ExitCode" in install_ps1
+
+    def test_log_path_shown_on_failure(self, install_ps1):
+        assert "日志:" in install_ps1
+
+
+class TestOpenClawOfficialInstall:
+    def test_official_install_url_configurable(self, install_ps1):
+        assert "OPENCLAW_INSTALL_URL" in install_ps1
+
+    def test_official_channel_defaults_latest(self, install_ps1):
+        assert "OPENCLAW_CHANNEL" in install_ps1
+        assert '"latest"' in install_ps1
+
+    def test_official_host_whitelist(self, install_ps1):
+        assert "OPENCLAW_ALLOWED_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+
+    def test_official_install_uses_subprocess(self, install_ps1):
+        assert "Install-OpenClawOfficial" in install_ps1
+        assert "Start-Process" in install_ps1
+        assert "HasExited" in install_ps1
+
+
+class TestOpenClawPreload:
+    def test_preload_doc_templates(self, install_ps1):
+        assert "SOUL.md" in install_ps1
+        assert "IDENTITY.md" in install_ps1
+        assert "AGENTS.md" in install_ps1
+        assert "openclaw-templates" in install_ps1
+
+    def test_preload_skill_fail_non_blocking(self, install_ps1):
+        assert "skills 安装失败（已忽略）" in install_ps1
+        assert "Write-Warn" in install_ps1
+
+
+# ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
+
+class TestRollback:
+    def test_rollback_function(self, install_ps1):
+        assert "Invoke-Rollback" in install_ps1
+
+    def test_register_rollback(self, install_ps1):
+        assert "Register-Rollback" in install_ps1
+
+
+# ── 服务注册 ─────────────────────────────────────────────────────
+
+class TestServiceRegistration:
+    def test_service_name(self, install_ps1):
+        assert "OPC200-Agent" in install_ps1
+
+    def test_sc_create(self, install_ps1):
+        assert "Register-ScheduledTask" in install_ps1
+
+    def test_auto_start(self, install_ps1):
+        assert "New-ScheduledTaskTrigger -AtLogOn" in install_ps1
+
+
+# ── uninstall.ps1 ────────────────────────────────────────────────
+
+class TestUninstall:
+    def test_requires_ps51(self, uninstall_ps1):
+        assert "#Requires -Version 5.1" in uninstall_ps1
+
+    def test_service_removal(self, uninstall_ps1):
+        assert "sc.exe delete" in uninstall_ps1
+
+    def test_keep_data_option(self, uninstall_ps1):
+        assert "KeepData" in uninstall_ps1
+
+    def test_silent_mode(self, uninstall_ps1):
+        assert "Silent" in uninstall_ps1
+
+    def test_admin_check(self, uninstall_ps1):
+        assert "Administrator" in uninstall_ps1
+
+    def test_keep_openclaw_switch(self, uninstall_ps1):
+        assert "KeepOpenClaw" in uninstall_ps1
+        assert "Resolve-KeepOpenClawChoice" in uninstall_ps1
+
+    def test_openclaw_official_uninstall_invoked(self, uninstall_ps1):
+        assert "openclaw uninstall --all --yes --non-interactive" in uninstall_ps1
+
+
+# ── 与 AGENT-001 SPEC 一致性 ────────────────────────────────────
+
+class TestSpecConsistency:
+    def test_three_config_items(self, install_ps1):
+        for item in ("PLATFORM_URL", "OPC200_TENANT_ID", "API_KEY"):
+            assert item.lower().replace("_", "") in install_ps1.lower().replace("_", "")
+
+    def test_health_endpoint(self, install_ps1):
+        assert "/health" in install_ps1
+
+    def test_default_port_8080(self, install_ps1):
+        assert "8080" in install_ps1

@@ -1,16 +1,30 @@
 #!/usr/bin/env bash
 # AGENT-003: OPC200 Agent Mac/Linux 安装脚本 (v2)
 # 按 AGENT-001 (docs/INSTALL_SCRIPT_SPEC.md) 规范实现
-# 流程: 环境检查 → 配置获取 → 下载 Agent → 安装部署 → 注册服务 → 启动验证 → 完成输出
+# 流程: 环境检查 → 安装目录 → OpenClaw（官方/onboard/轻预装/网关）→ OPC200 Agent（venv/服务）→ 验证
+# 与 install.ps1 分段与语义对齐（Mac/Linux）
 
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────
 
-AGENT_VERSION="2.3.0"
+AGENT_VERSION="2.5.0"
 DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VERSION}"
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="https://platform.opc200.co"
+OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
+OPENCLAW_MIN_NODE_MAJOR=22
+OPENCLAW_DEFAULT_NPM_REGISTRY="https://registry.npmmirror.com/"
+OPENCLAW_INSTALL_TIMEOUT_SEC=900
+OPENCLAW_NET_CHECK_HOSTS=("openclaw.ai" "registry.npmmirror.com" "github.com")
+OPENCLAW_DEFAULT_PROFILE_DIR="$HOME/.openclaw"
+OPENCLAW_DEFAULT_SKILLS="skill-vetter"
+OPENCLAW_DEFAULT_SKILL_INSTALL_CMD="openclaw skills install"
+OPENCLAW_DEFAULT_GATEWAY_PORT=18789
+OPENCLAW_ONBOARD_TIMEOUT_SEC=600
+OPENCLAW_GW_INSTALL_MAX_RETRY=3
+OPENCLAW_GATEWAY_WARMUP_MAX_TRIES=25
+OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC=2
 DEFAULT_PORT=8080
 MIN_DISK_MB=1024
 
@@ -24,7 +38,7 @@ E005=5  # 服务注册失败
 # ── 运行时变量 ────────────────────────────────────────────────────
 
 PLATFORM_URL=""
-CUSTOMER_ID=""
+TENANT_ID=""
 API_KEY=""
 INSTALL_DIR=""
 PORT="${DEFAULT_PORT}"
@@ -32,7 +46,15 @@ SILENT=false
 OS_TYPE=""       # linux / darwin
 ARCH=""          # amd64 / arm64
 AGENT_BINARY=""
+LOCAL_BINARY=""
+USE_PYTHON=true
+REPO_ROOT=""
+SCRIPT_DIR=""
+FULL_RUNTIME_DEPS=false
 ROLLBACK_ITEMS=()
+OPENCLAW_ONBOARD_CLI=false
+OPENCLAW_SKIP_ONBOARD_CLI=false
+FRESH_OPENCLAW_CLI=false
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
 
@@ -77,7 +99,7 @@ detect_pkg_manager() {
 # ── Step 1: 环境检查 ─────────────────────────────────────────────
 
 step_check_env() {
-    info "1/7 环境检查"
+    info "1/15 环境检查"
 
     # root / sudo
     if [[ $EUID -ne 0 ]]; then
@@ -120,7 +142,23 @@ step_check_env() {
     esac
     ok "架构: $ARCH"
 
-    AGENT_BINARY="opc-agent-${OS_TYPE}-${ARCH}"
+    if ! $USE_PYTHON || [[ -n "$LOCAL_BINARY" ]]; then
+        AGENT_BINARY="opc-agent-${OS_TYPE}-${ARCH}"
+    fi
+
+    if $USE_PYTHON && [[ -z "$LOCAL_BINARY" ]]; then
+        [[ -f "$REPO_ROOT/agent/src/opc_agent/cli.py" ]] || fail $E001 "E001: 非 OPC200 仓库根目录: $REPO_ROOT（请使用 --repo-root 或在克隆仓库内执行本脚本）"
+        local pyexe=python3
+        command -v "$pyexe" &>/dev/null || pyexe=python
+        command -v "$pyexe" &>/dev/null || fail $E001 "E001: 未找到 python3/python"
+        local pmaj pmin
+        pmaj="$("$pyexe" -c 'import sys; print(sys.version_info[0])')"
+        pmin="$("$pyexe" -c 'import sys; print(sys.version_info[1])')"
+        if [[ "$pmaj" -lt 3 ]] || { [[ "$pmaj" -eq 3 ]] && [[ "$pmin" -lt 10 ]]; }; then
+            fail $E001 "E001: 需要 Python 3.10+（当前 $("$pyexe" -V 2>&1)）"
+        fi
+        ok "Python: $("$pyexe" -V 2>&1)；源码: $REPO_ROOT"
+    fi
 
     # 磁盘
     local free_mb
@@ -149,43 +187,697 @@ step_check_env() {
     detect_pkg_manager
 }
 
-# ── Step 2: 获取配置 ─────────────────────────────────────────────
+# ── Step 2: 安装目录（与 install.ps1 Initialize-InstallPaths 对齐）──
 
-step_get_config() {
-    info "2/7 获取配置"
+step_initialize_paths() {
+    info "2/15 安装目录"
+    [[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.opc200"
+    ok "InstallRoot: $INSTALL_DIR"
+}
+
+# ── Step 10: 平台与租户（第三部分；与 Get-OpcAgentPlatformConfig 对齐）──
+
+step_opc200_platform_config() {
+    info "10/15 平台与租户 (OPC200 Agent)"
 
     if $SILENT; then
-        [[ -z "$PLATFORM_URL" ]] && PLATFORM_URL="$DEFAULT_URL"
-        [[ -z "$CUSTOMER_ID" ]] && fail $E001 "E001: 静默模式必须提供 --customer-id"
-        [[ -z "$API_KEY" ]]     && fail $E001 "E001: 静默模式必须提供 --api-key"
+        if [[ -n "${OPC200_PLATFORM_URL:-}" ]]; then
+            PLATFORM_URL="$OPC200_PLATFORM_URL"
+        fi
+        if [[ -z "$PLATFORM_URL" ]]; then
+            PLATFORM_URL="$DEFAULT_URL"
+        fi
+        local tid="${TENANT_ID:-}"
+        [[ -z "$tid" && -n "${OPC200_TENANT_ID:-}" ]] && tid="$OPC200_TENANT_ID"
+        [[ -z "$tid" ]] && fail $E001 "E001: 静默须 --opc200-tenant-id 或环境变量 OPC200_TENANT_ID"
+        TENANT_ID="$tid"
+        if [[ -z "${API_KEY:-}" ]]; then
+            if [[ -n "${OPC200_API_KEY:-}" ]]; then
+                API_KEY="$OPC200_API_KEY"
+            elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+                API_KEY="$ANTHROPIC_API_KEY"
+            elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+                API_KEY="$OPENAI_API_KEY"
+            elif [[ -n "${GEMINI_API_KEY:-}" ]]; then
+                API_KEY="$GEMINI_API_KEY"
+            elif [[ -n "${CUSTOM_API_KEY:-}" ]]; then
+                API_KEY="$CUSTOM_API_KEY"
+            else
+                fail $E001 "E001: 静默须 OPC200 平台 ApiKey：OPC200_API_KEY，或 OpenClaw 模型密钥环境变量"
+            fi
+        fi
     else
         local input
         read -rp "平台地址 [${DEFAULT_URL}]: " input
         PLATFORM_URL="${input:-$DEFAULT_URL}"
-
-        while [[ -z "$CUSTOMER_ID" ]]; do
-            read -rp "Customer ID (必需): " CUSTOMER_ID
-            [[ -z "$CUSTOMER_ID" ]] && err "Customer ID 不能为空"
+        while [[ -z "${TENANT_ID:-}" ]]; do
+            read -rp "租户 ID (Tenant ID，必需): " TENANT_ID
+            [[ -z "$TENANT_ID" ]] && err "不能为空"
         done
-
-        while [[ -z "$API_KEY" ]]; do
-            read -rsp "API Key (必需): " API_KEY
+        if [[ -z "${API_KEY:-}" ]]; then
+            [[ -n "${ANTHROPIC_API_KEY:-}" ]] && API_KEY="$ANTHROPIC_API_KEY"
+            [[ -z "${API_KEY:-}" && -n "${OPENAI_API_KEY:-}" ]] && API_KEY="$OPENAI_API_KEY"
+            [[ -z "${API_KEY:-}" && -n "${GEMINI_API_KEY:-}" ]] && API_KEY="$GEMINI_API_KEY"
+            [[ -z "${API_KEY:-}" && -n "${CUSTOM_API_KEY:-}" ]] && API_KEY="$CUSTOM_API_KEY"
+        fi
+        if [[ -z "${API_KEY:-}" ]]; then
+            read -rsp "平台 API Key (OpenClaw 未采集密钥时必填): " API_KEY
             echo
-            [[ -z "$API_KEY" ]] && err "API Key 不能为空"
-        done
+            [[ -z "$API_KEY" ]] && fail $E001 "E001: 平台 API Key 不能为空"
+        else
+            ok "已复用 OpenClaw 阶段的密钥作为平台 ApiKey"
+        fi
     fi
-
-    [[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.opc200"
-
-    ok "平台: $PLATFORM_URL"
-    ok "用户: $CUSTOMER_ID"
-    ok "目录: $INSTALL_DIR"
+    ok "平台: $PLATFORM_URL | Tenant: $TENANT_ID"
 }
 
-# ── Step 3: 下载 Agent ───────────────────────────────────────────
+# ── Step 3: 准备 Node.js（Linux）──────────────────────────────────
+
+get_node_major_version() {
+    if ! command -v node &>/dev/null; then
+        echo "0"
+        return
+    fi
+    local ver
+    ver="$(node -v 2>/dev/null || true)"
+    if [[ "$ver" =~ ^v([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+    fi
+    echo "0"
+}
+
+install_node_linux_from_official() {
+    local node_arch
+    case "$(uname -m)" in
+        x86_64|amd64) node_arch="x64" ;;
+        aarch64|arm64) node_arch="arm64" ;;
+        *) fail $E002 "E002: Node 官方包不支持当前架构: $(uname -m)" ;;
+    esac
+
+    local page tarball url tmpdir extracted
+    page="$(curl -fsSL "https://nodejs.org/dist/latest-v22.x/" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 22）"
+    tarball="$(printf '%s\n' "$page" | sed -n "s/.*href=\"\\(node-v22[^\"]*-linux-${node_arch}\\.tar\\.xz\\)\".*/\\1/p" | head -n1)"
+    [[ -n "$tarball" ]] || fail $E002 "E002: 未找到 Node 22 Linux 安装包（架构 ${node_arch}）"
+    url="https://nodejs.org/dist/latest-v22.x/${tarball}"
+
+    tmpdir="$(mktemp -d)"
+    register_rollback "rm -rf '${tmpdir}'"
+    ok "下载 Node.js: $url"
+    curl -fsSL "$url" -o "${tmpdir}/node.tar.xz" || fail $E002 "E002: 下载 Node 22 失败"
+    tar -xJf "${tmpdir}/node.tar.xz" -C "$tmpdir" || fail $E002 "E002: 解压 Node 22 失败"
+    extracted="$(ls -d "${tmpdir}"/node-v22* 2>/dev/null | head -n1)"
+    [[ -n "$extracted" ]] || fail $E002 "E002: Node 22 解压目录异常"
+
+    cp -f "${extracted}/bin/node" /usr/local/bin/node || fail $E002 "E002: 安装 node 失败"
+    cp -f "${extracted}/bin/npm" /usr/local/bin/npm || true
+    cp -f "${extracted}/bin/npx" /usr/local/bin/npx || true
+    rm -rf /usr/local/lib/node_modules
+    mkdir -p /usr/local/lib/node_modules
+    cp -a "${extracted}/lib/node_modules/." /usr/local/lib/node_modules/ || fail $E002 "E002: 安装 node_modules 失败"
+    ok "Node.js 22 已安装到 /usr/local/bin"
+}
+
+step_prepare_node_runtime() {
+    info "3/15 准备 Node.js（OpenClaw 需要 v${OPENCLAW_MIN_NODE_MAJOR}+）"
+
+    if [[ "$OS_TYPE" != "linux" ]]; then
+        ok "当前非 Linux，跳过 Node.js 预安装步骤"
+        return
+    fi
+
+    local major
+    major="$(get_node_major_version)"
+    if [[ "$major" -ge "$OPENCLAW_MIN_NODE_MAJOR" ]]; then
+        ok "Node.js 主版本 ${major} 已满足要求"
+        return
+    fi
+
+    if [[ "$major" -gt 0 ]]; then
+        warn "当前 Node.js 主版本 ${major}，需要 ${OPENCLAW_MIN_NODE_MAJOR}+，将自动安装 Node 22"
+    else
+        warn "未检测到 Node.js，将自动安装 Node 22"
+    fi
+
+    install_node_linux_from_official
+    hash -r
+    major="$(get_node_major_version)"
+    [[ "$major" -ge "$OPENCLAW_MIN_NODE_MAJOR" ]] || fail $E002 "E002: Node.js 版本仍低于 ${OPENCLAW_MIN_NODE_MAJOR}+"
+    ok "Node.js 主版本 ${major} 已就绪"
+}
+
+# ── 网络预检 ─────────────────────────────────────────────────────
+
+step_network_check() {
+    info "4/15 网络连通性预检"
+    local all_ok=true
+    for h in "${OPENCLAW_NET_CHECK_HOSTS[@]}"; do
+        if command -v nc &>/dev/null; then
+            nc -z -w 5 "$h" 443 &>/dev/null && ok "可达: $h" || { warn "不可达: $h（安装可能变慢或失败）"; all_ok=false; }
+        elif command -v curl &>/dev/null; then
+            curl -sf --connect-timeout 5 "https://$h" -o /dev/null &>/dev/null && ok "可达: $h" || { warn "不可达: $h（安装可能变慢或失败）"; all_ok=false; }
+        else
+            warn "无 nc/curl，跳过 $h 连通性检测"
+        fi
+    done
+    if ! $all_ok; then
+        warn "部分主机不可达；若安装超时，请检查网络或稍后重试"
+    fi
+}
+
+# ── Step 4: 官方渠道安装 OpenClaw latest ─────────────────────────
+
+step_install_openclaw_official() {
+    hash -r 2>/dev/null || true
+    export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+    if command -v openclaw &>/dev/null; then
+        FRESH_OPENCLAW_CLI=false
+        info "5/15 官方渠道安装 OpenClaw latest（已存在 CLI，跳过）"
+        ok "已检测到 openclaw CLI"
+        return 0
+    fi
+    FRESH_OPENCLAW_CLI=true
+    info "5/15 官方渠道安装 OpenClaw latest"
+
+    # 允许环境变量覆写安装入口，但仅允许官方域名，避免被导向私有或恶意源。
+    local install_url="${OPENCLAW_INSTALL_URL:-$OPENCLAW_DEFAULT_INSTALL_URL}"
+    local channel="${OPENCLAW_CHANNEL:-latest}"
+    local host
+    host="$(printf '%s' "$install_url" | sed -E 's#^https?://([^/]+).*$#\1#' | tr '[:upper:]' '[:lower:]')"
+
+    [[ "$install_url" == https://* ]] || fail $E002 "E002: OPENCLAW_INSTALL_URL 必须使用 https: $install_url"
+    case "$host" in
+        openclaw.ai|www.openclaw.ai) ;;
+        *) fail $E002 "E002: OPENCLAW_INSTALL_URL 非官方域名: $host" ;;
+    esac
+    if [[ "$channel" != "latest" ]]; then
+        warn "OPENCLAW_CHANNEL=$channel；当前策略要求 latest，继续按 latest 执行"
+        channel="latest"
+    fi
+
+    # npm registry：固定使用脚本内默认（npmmirror）
+    local npm_registry="$OPENCLAW_DEFAULT_NPM_REGISTRY"
+
+    ok "OpenClaw 安装源: $install_url"
+    ok "OpenClaw 渠道: $channel"
+    ok "npm registry: $npm_registry"
+
+    # 实时输出 + 超时控制：通过 tee 落日志，timeout 命令限制最长执行时间
+    local log_file
+    log_file="$(mktemp /tmp/opc200-openclaw-install-XXXXXX.log)"
+    ok "安装日志: $log_file"
+
+    local exit_code=0
+    NPM_CONFIG_REGISTRY="$npm_registry" \
+    NPM_CONFIG_FETCH_RETRIES="3" \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="10000" \
+    NPM_CONFIG_FETCH_TIMEOUT="60000" \
+    NODE_LLAMA_CPP_SKIP_DOWNLOAD="1" \
+    OPENCLAW_NO_ONBOARD="1" \
+        timeout "$OPENCLAW_INSTALL_TIMEOUT_SEC" \
+        bash -c "curl -fsSL '$install_url' | bash" \
+        2>&1 | tee "$log_file" || exit_code=${PIPESTATUS[0]}
+
+    if [[ "$exit_code" -eq 124 ]]; then
+        fail $E002 "E002: OpenClaw 官方安装超时（>${OPENCLAW_INSTALL_TIMEOUT_SEC}s）。日志: $log_file"
+    elif [[ "$exit_code" -ne 0 ]]; then
+        fail $E002 "E002: OpenClaw 官方安装失败（退出码 ${exit_code}）。日志: $log_file"
+    fi
+
+    ok "OpenClaw 官方安装完成"
+}
+
+# ── Step 5: 轻预装层（skills + 文档）────────────────────────────
+
+step_preinstall_openclaw_assets() {
+    info "7/15 轻预装层（tools + skills + 文档）"
+
+    local profile_dir="${OPENCLAW_PROFILE_DIR:-$OPENCLAW_DEFAULT_PROFILE_DIR}"
+    local skills_csv="${OPENCLAW_PREINSTALL_SKILLS:-$OPENCLAW_DEFAULT_SKILLS}"
+    local skill_install_cmd="${OPENCLAW_SKILL_INSTALL_CMD:-$OPENCLAW_DEFAULT_SKILL_INSTALL_CMD}"
+    local failed=0
+    local templates_dir="$SCRIPT_DIR/openclaw-templates"
+
+    mkdir -p "$profile_dir"
+    ok "OpenClaw 配置目录: $profile_dir"
+
+    if command -v openclaw &>/dev/null; then
+        ok "openclaw config set tools.profile full"
+        if openclaw config set tools.profile full; then
+            ok "tools.profile=full"
+        else
+            warn "tools.profile 未写入；可稍后手动: openclaw config set tools.profile full"
+        fi
+    else
+        warn "未找到 openclaw，跳过 tools.profile"
+    fi
+
+    # skills 安装失败按策略仅告警，不中断安装流程。
+    if [[ -n "$skills_csv" ]]; then
+        IFS=',' read -r -a skills <<< "$skills_csv"
+        for skill in "${skills[@]}"; do
+            skill="$(printf '%s' "$skill" | xargs)"
+            [[ -z "$skill" ]] && continue
+            if eval "$skill_install_cmd \"$skill\""; then
+                ok "skills 已安装: $skill"
+            else
+                warn "skills 安装失败（已忽略）: $skill"
+                failed=1
+            fi
+        done
+    else
+        warn "未配置 OPENCLAW_PREINSTALL_SKILLS，跳过 skills 安装"
+    fi
+
+    # 模板文件采用“存在则写 .new”的策略，避免覆盖用户自定义内容。
+    _write_doc_template_from_file "$templates_dir/SOUL.md" "$profile_dir/SOUL.md"
+    _write_doc_template_from_file "$templates_dir/IDENTITY.md" "$profile_dir/IDENTITY.md"
+    _write_doc_template_from_file "$templates_dir/AGENTS.md" "$profile_dir/AGENTS.md"
+
+    if [[ "$failed" -eq 1 ]]; then
+        warn "部分 skills 安装失败，已按策略继续安装"
+    fi
+}
+
+step_openclaw_onboard() {
+    if $OPENCLAW_SKIP_ONBOARD_CLI || [[ "${OPENCLAW_SKIP_ONBOARD:-}" == "1" ]]; then
+        return 0
+    fi
+    if [[ "${OPENCLAW_ONBOARD:-}" == "0" ]]; then
+        return 0
+    fi
+    if $SILENT; then
+        if ! $OPENCLAW_ONBOARD_CLI && [[ "${OPENCLAW_ONBOARD:-}" != "1" ]]; then
+            return 0
+        fi
+    fi
+
+    info "6/15 OpenClaw 首次配置（官方 onboard --non-interactive）"
+    if ! $SILENT; then
+        printf "\033[90m  OpenClaw CLI 已就绪。下面采集模型/网关所需最少信息；随后自动执行官方非交互 onboard。\033[0m\n"
+    fi
+
+    if ! command -v openclaw &>/dev/null; then
+        warn "未找到 openclaw（PATH 未刷新或安装未完成），跳过 onboard。请新开 shell 后执行: openclaw onboard --non-interactive ..."
+        return 0
+    fi
+
+    local gw_port="${OPENCLAW_GATEWAY_PORT:-$OPENCLAW_DEFAULT_GATEWAY_PORT}"
+    local auth="${OPENCLAW_AUTH_CHOICE:-}"
+    auth="$(printf '%s' "$auth" | xargs)"
+
+    if $SILENT; then
+        [[ -n "$auth" ]] || fail $E001 "E001: 静默安装且启用 OpenClaw onboard 时必须设置 OPENCLAW_AUTH_CHOICE"
+    elif [[ -z "$auth" ]]; then
+        echo ""
+        echo "OpenClaw 模型认证（输入序号）:"
+        echo "  1) Anthropic API Key (apiKey)"
+        echo "  2) OpenAI API Key (openai-api-key)"
+        echo "  3) Google Gemini API Key (gemini-api-key)"
+        echo "  4) OpenAI 兼容自定义端点 (custom-api-key)"
+        local pick=""
+        read -rp "选择 [1-4]: " pick || true
+        case "$(printf '%s' "$pick" | xargs)" in
+            1) auth="apiKey" ;;
+            2) auth="openai-api-key" ;;
+            3) auth="gemini-api-key" ;;
+            4) auth="custom-api-key" ;;
+            *) fail $E001 "E001: 无效选择（请输入 1-4）" ;;
+        esac
+    fi
+
+    [[ "$auth" != "skip" ]] || fail $E001 "E001: 已不再支持 skip（跳过密钥）；请使用 apiKey、openai-api-key、gemini-api-key 或 custom-api-key，并配置对应密钥"
+
+    local secret_mode="${OPENCLAW_SECRET_INPUT_MODE:-plaintext}"
+    secret_mode="$(printf '%s' "$secret_mode" | xargs)"
+    [[ "$secret_mode" == "plaintext" || "$secret_mode" == "ref" ]] || fail $E001 "E001: OPENCLAW_SECRET_INPUT_MODE 仅支持 plaintext 或 ref"
+
+    local v_anth="" v_openai="" v_gemini="" v_custom_key="" v_custom_url="" v_custom_model=""
+    if ! $SILENT; then
+        local line=""
+        case "$auth" in
+            apiKey)
+                read -rsp "Anthropic API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_anth="$line"
+                ;;
+            openai-api-key)
+                read -rsp "OpenAI API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_openai="$line"
+                ;;
+            gemini-api-key)
+                read -rsp "Gemini API Key: " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_gemini="$line"
+                ;;
+            custom-api-key)
+                local bu="" mid=""
+                read -rp "自定义 Base URL (OPENAI 兼容 v1): " bu || true
+                read -rp "模型 ID (custom-model-id): " mid || true
+                [[ -n "$bu" && -n "$mid" ]] || fail $E001 "E001: custom 需要 base_url 与 model_id"
+                read -rsp "API Key (CUSTOM_API_KEY): " line || true
+                echo "" >&2
+                [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
+                v_custom_url="$bu"
+                v_custom_model="$mid"
+                v_custom_key="$line"
+                ;;
+        esac
+    fi
+
+    case "$auth" in
+        apiKey)
+            if [[ "$secret_mode" == "ref" ]]; then
+                [[ -n "${ANTHROPIC_API_KEY:-}" ]] || fail $E001 "E001: ref 模式需在环境中设置 ANTHROPIC_API_KEY"
+            else
+                if $SILENT; then
+                    [[ -n "${ANTHROPIC_API_KEY:-}" ]] || fail $E001 "E001: 需提供 ANTHROPIC_API_KEY（静默）"
+                else
+                    [[ -n "$v_anth" ]] || fail $E001 "E001: 需提供 ANTHROPIC_API_KEY（交互）"
+                fi
+            fi
+            ;;
+        openai-api-key)
+            if $SILENT; then
+                [[ -n "${OPENAI_API_KEY:-}" ]] || fail $E001 "E001: 需提供 OPENAI_API_KEY"
+            else
+                [[ -n "$v_openai" ]] || fail $E001 "E001: 需提供 OPENAI_API_KEY"
+            fi
+            ;;
+        gemini-api-key)
+            if $SILENT; then
+                [[ -n "${GEMINI_API_KEY:-}" ]] || fail $E001 "E001: 需提供 GEMINI_API_KEY"
+            else
+                [[ -n "$v_gemini" ]] || fail $E001 "E001: 需提供 GEMINI_API_KEY"
+            fi
+            ;;
+        custom-api-key)
+            if $SILENT; then
+                [[ -n "${OPENCLAW_CUSTOM_BASE_URL:-}" && -n "${OPENCLAW_CUSTOM_MODEL_ID:-}" ]] || fail $E001 "E001: custom-api-key 需 OPENCLAW_CUSTOM_BASE_URL 与 OPENCLAW_CUSTOM_MODEL_ID"
+                if [[ "$secret_mode" == "plaintext" ]]; then
+                    [[ -n "${CUSTOM_API_KEY:-}" ]] || fail $E001 "E001: custom-api-key plaintext 需 CUSTOM_API_KEY"
+                fi
+            else
+                [[ -n "$v_custom_url" && -n "$v_custom_model" ]] || fail $E001 "E001: custom-api-key 需 base_url 与 model_id"
+                if [[ "$secret_mode" == "plaintext" ]]; then
+                    [[ -n "$v_custom_key" ]] || fail $E001 "E001: custom-api-key plaintext 需 API Key"
+                fi
+            fi
+            ;;
+        *) fail $E001 "E001: 不支持的 OPENCLAW_AUTH_CHOICE: $auth（支持 apiKey|openai-api-key|gemini-api-key|custom-api-key）" ;;
+    esac
+
+    # 官方非交互 onboard 要求显式风险确认，见 https://docs.openclaw.ai/security
+    local -a oc_args=(
+        onboard --non-interactive --accept-risk --mode local
+        --auth-choice "$auth"
+        --secret-input-mode "$secret_mode"
+        --gateway-port "$gw_port"
+        --gateway-bind loopback
+        --install-daemon
+        --daemon-runtime node
+        --skip-skills
+    )
+    if [[ "$auth" == "custom-api-key" ]]; then
+        if $SILENT; then
+            oc_args+=(--custom-base-url "$OPENCLAW_CUSTOM_BASE_URL" --custom-model-id "$OPENCLAW_CUSTOM_MODEL_ID")
+        else
+            oc_args+=(--custom-base-url "$v_custom_url" --custom-model-id "$v_custom_model")
+        fi
+        oc_args+=(--custom-compatibility "${OPENCLAW_CUSTOM_COMPATIBILITY:-openai}")
+        [[ -n "${OPENCLAW_CUSTOM_PROVIDER_ID:-}" ]] && oc_args+=(--custom-provider-id "$OPENCLAW_CUSTOM_PROVIDER_ID")
+    fi
+    ok "执行 openclaw onboard --non-interactive（auth=$auth gatewayPort=$gw_port secret=$secret_mode）"
+
+    local ob_deadline="${OPENCLAW_ONBOARD_TIMEOUT_SEC:-600}"
+    local exit_code=0
+    (
+        [[ -n "$v_anth" ]] && export ANTHROPIC_API_KEY="$v_anth"
+        [[ -n "$v_openai" ]] && export OPENAI_API_KEY="$v_openai"
+        [[ -n "$v_gemini" ]] && export GEMINI_API_KEY="$v_gemini"
+        [[ -n "$v_custom_key" ]] && export CUSTOM_API_KEY="$v_custom_key"
+        if ! $SILENT && [[ "$auth" == "custom-api-key" ]]; then
+            export OPENCLAW_CUSTOM_BASE_URL="$v_custom_url"
+            export OPENCLAW_CUSTOM_MODEL_ID="$v_custom_model"
+        fi
+        if command -v timeout &>/dev/null; then
+            exec timeout "$ob_deadline" openclaw "${oc_args[@]}"
+        else
+            exec openclaw "${oc_args[@]}"
+        fi
+    ) || exit_code=$?
+
+    if [[ "$exit_code" -eq 124 ]]; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: openclaw onboard 超时（>${ob_deadline}s）。可运行 openclaw doctor"
+        fi
+        warn "openclaw onboard 超时，已非严格继续。设置 OPENCLAW_ONBOARD_STRICT=1 可中止安装。"
+        return 0
+    fi
+    if [[ "$exit_code" -ne 0 ]]; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor"
+        fi
+        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。"
+        return 0
+    fi
+
+    local health_url="${OPENCLAW_GATEWAY_HEALTH_URL:-http://127.0.0.1:${gw_port}/health}"
+    ok "探测网关健康: $health_url"
+    local ok_health=false
+    local i
+    for i in $(seq 1 30); do
+        if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "$health_url" &>/dev/null; then
+            ok_health=true
+            break
+        fi
+        if command -v wget &>/dev/null && wget -q --timeout=2 -O /dev/null "$health_url" 2>/dev/null; then
+            ok_health=true
+            break
+        fi
+        sleep 2
+    done
+    if ! $ok_health; then
+        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
+            fail $E002 "E002: onboard 后网关健康检查失败。检查 OPENCLAW_GATEWAY_HEALTH_URL 或网关服务"
+        fi
+        warn "网关 HTTP 健康检查未在约 60s 内通过；可稍后排查或设 OPENCLAW_GATEWAY_HEALTH_PROBE=0"
+    else
+        ok "OpenClaw 网关健康检查通过"
+    fi
+
+    if ! $SILENT; then
+        case "$auth" in
+            apiKey)       [[ -n "${v_anth:-}" ]] && export ANTHROPIC_API_KEY="$v_anth" ;;
+            openai-api-key) [[ -n "${v_openai:-}" ]] && export OPENAI_API_KEY="$v_openai" ;;
+            gemini-api-key) [[ -n "${v_gemini:-}" ]] && export GEMINI_API_KEY="$v_gemini" ;;
+            custom-api-key)
+                export OPENCLAW_CUSTOM_BASE_URL="$v_custom_url"
+                export OPENCLAW_CUSTOM_MODEL_ID="$v_custom_model"
+                [[ -n "${v_custom_key:-}" ]] && export CUSTOM_API_KEY="$v_custom_key"
+                ;;
+        esac
+    fi
+}
+
+_set_openclaw_gateway_port_env() {
+    local exe_hint="$1"
+    local gw_hint="$2"
+    local gp="$gw_hint"
+    local pt
+    pt="$(openclaw config get gateway.port 2>/dev/null | tr -d '\r\n"')" || true
+    if [[ "$pt" =~ ^[0-9]+$ ]]; then
+        gp="$pt"
+    else
+        warn "gateway.port 读取结果非数字（${pt:-空}），回退端口 $gw_hint"
+    fi
+    export OPENCLAW_GATEWAY_PORT="$gp"
+    export OPENCLAW_GATEWAY_HEALTH_URL="http://127.0.0.1:${gp}/health"
+    ok "已记录 gateway 端口 $gp（OPENCLAW_GATEWAY_PORT / OPENCLAW_GATEWAY_HEALTH_URL，供 opc-agent agent_health）"
+}
+
+_gateway_installed_heuristic() {
+    local json="$1"
+    [[ -z "$json" ]] && return 1
+    if echo "$json" | grep -qiE '"installed"[[:space:]]*:[[:space:]]*true'; then return 0; fi
+    if echo "$json" | grep -qiE 'not[[:space:]_-]*installed|not installed'; then return 1; fi
+    return 0
+}
+
+step_openclaw_gateway_doctor_only() {
+    local exe="$1"
+    info "9/15 OpenClaw doctor 复查"
+    local code=0
+    openclaw doctor --non-interactive 2>&1 || code=$?
+    if [[ "$code" -ne 0 ]]; then
+        warn "openclaw doctor 返回非零（$code）；仍将继续安装 OPC200 Agent"
+    else
+        ok "openclaw doctor 完成"
+    fi
+}
+
+step_openclaw_gateway_part2() {
+    info "8/15 OpenClaw 网关配置"
+    local rc=0
+    hash -r 2>/dev/null || true
+    export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+    if ! command -v openclaw &>/dev/null; then
+        fail $E002 "E002: 第二部分需要 openclaw CLI，但未找到。请先完成官方安装或检查 PATH。"
+    fi
+    local exe
+    exe="$(command -v openclaw)"
+    local gw_port="$OPENCLAW_DEFAULT_GATEWAY_PORT"
+    if [[ "${OPENCLAW_GATEWAY_PORT:-}" =~ ^[0-9]+$ ]]; then
+        gw_port="$OPENCLAW_GATEWAY_PORT"
+    fi
+
+    if $FRESH_OPENCLAW_CLI; then
+        ok "本次为新安装 openclaw CLI；优先 RPC 探测，未就绪时再区分未安装/需修复。"
+    fi
+
+    if openclaw gateway status --json --require-rpc &>/dev/null; then
+        _set_openclaw_gateway_port_env "$exe" "$gw_port"
+        ok "网关 RPC 探测正常，跳过安装/配置/启动"
+        return 0
+    fi
+
+    warn "网关 RPC 未就绪；将检查 gateway 是否已安装"
+    local st_json=""
+    st_json="$(openclaw gateway status --json --no-probe 2>/dev/null)" || true
+    local installed=false
+    if _gateway_installed_heuristic "$st_json"; then
+        installed=true
+    else
+        warn "gateway status --no-probe 不可用或解析失败，按未安装 gateway 服务处理"
+    fi
+
+    if $installed; then
+        warn "服务已登记但 RPC 异常，将尝试配置并启动"
+        ok "配置网关：gateway.mode=local"
+        openclaw config set gateway.mode local || fail $E002 "E002: openclaw config set gateway.mode local 失败"
+        openclaw config set gateway.tls.enabled false 2>/dev/null || warn "未能写入 gateway.tls.enabled=false（可忽略）"
+        ok "应用网关：openclaw gateway restart"
+        local rc=0
+        openclaw gateway restart 2>&1 || rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            warn "gateway restart 返回 $rc；尝试 gateway start"
+            openclaw gateway start 2>&1 || warn "gateway start 仍失败"
+        fi
+        sleep 2
+        local i
+        for i in $(seq 1 "$OPENCLAW_GATEWAY_WARMUP_MAX_TRIES"); do
+            if openclaw gateway status --json --require-rpc &>/dev/null; then
+                ok "网关 RPC 探测就绪（第 ${i}/${OPENCLAW_GATEWAY_WARMUP_MAX_TRIES} 次）"
+                _set_openclaw_gateway_port_env "$exe" "$gw_port"
+                return 0
+            fi
+            if command -v curl &>/dev/null && curl -sf --connect-timeout 3 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
+                ok "网关 HTTP /health 就绪（第 ${i}/${OPENCLAW_GATEWAY_WARMUP_MAX_TRIES} 次）"
+                _set_openclaw_gateway_port_env "$exe" "$gw_port"
+                return 0
+            fi
+            sleep "$OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC"
+        done
+        step_openclaw_gateway_doctor_only "$exe"
+        _set_openclaw_gateway_port_env "$exe" "$gw_port"
+        return 0
+    fi
+
+    local attempt=1
+    local gi=1
+    while [[ "$attempt" -le "$OPENCLAW_GW_INSTALL_MAX_RETRY" ]]; do
+        ok "安装 gateway 服务（第 ${attempt}/${OPENCLAW_GW_INSTALL_MAX_RETRY}）：openclaw gateway install --port ${gw_port}"
+        gi=0
+        openclaw gateway install --port "$gw_port" 2>&1 || gi=$?
+        if [[ "$gi" -eq 0 ]]; then
+            ok "gateway install 成功"
+            break
+        fi
+        warn "gateway install 失败（退出码 $gi），将重试"
+        attempt=$((attempt + 1))
+    done
+    [[ "$gi" -eq 0 ]] || fail $E002 "E002: gateway install 在 ${OPENCLAW_GW_INSTALL_MAX_RETRY} 次重试后仍失败"
+
+    ok "配置网关：gateway.mode=local"
+    openclaw config set gateway.mode local || fail $E002 "E002: config set gateway.mode 失败"
+    openclaw config set gateway.tls.enabled false 2>/dev/null || true
+    ok "应用网关：openclaw gateway restart"
+    rc=0
+    openclaw gateway restart 2>&1 || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        openclaw gateway start 2>&1 || warn "gateway start 失败"
+    fi
+    sleep 2
+    for i in $(seq 1 "$OPENCLAW_GATEWAY_WARMUP_MAX_TRIES"); do
+        if openclaw gateway status --json --require-rpc &>/dev/null; then
+            ok "网关 RPC 就绪"
+            _set_openclaw_gateway_port_env "$exe" "$gw_port"
+            return 0
+        fi
+        if command -v curl &>/dev/null && curl -sf --connect-timeout 3 "http://127.0.0.1:${gw_port}/health" &>/dev/null; then
+            ok "网关 HTTP 就绪"
+            _set_openclaw_gateway_port_env "$exe" "$gw_port"
+            return 0
+        fi
+        sleep "$OPENCLAW_GATEWAY_WARMUP_SLEEP_SEC"
+    done
+    step_openclaw_gateway_doctor_only "$exe"
+    _set_openclaw_gateway_port_env "$exe" "$gw_port"
+}
+
+_write_doc_template_from_file() {
+    local source="$1"
+    local target="$2"
+    [[ -f "$source" ]] || fail $E001 "E001: 模板文件不存在: $source"
+    if [[ -f "$target" ]]; then
+        cp "$source" "${target}.new"
+        warn "已存在，写入增量文件: ${target}.new"
+    else
+        cp "$source" "$target"
+        ok "已写入模板: $target"
+    fi
+}
+
+# ── Step 5: 下载 Agent ───────────────────────────────────────────
 
 step_download() {
-    info "3/7 下载 Agent"
+    if [[ -n "$LOCAL_BINARY" ]]; then
+        info "11/15 使用本地二进制"
+        [[ -f "$LOCAL_BINARY" ]] || fail $E001 "E001: 本地二进制不存在: $LOCAL_BINARY"
+        TMP_BINARY="$LOCAL_BINARY"
+        ok "使用本地二进制: $LOCAL_BINARY"
+        return
+    fi
+
+    if $USE_PYTHON; then
+        local reqfile="requirements-agent-runtime.txt"
+        if $FULL_RUNTIME_DEPS; then
+            reqfile="requirements-agent-runtime-full.txt"
+            info "11/15 Python 运行环境 (venv + pip，完整依赖，体积大、耗时长)"
+        else
+            info "11/15 Python 运行环境 (venv + pip，精简依赖)"
+        fi
+        [[ -f "$REPO_ROOT/agent/scripts/$reqfile" ]] || fail $E001 "E001: 缺少 $reqfile（$REPO_ROOT）"
+        local pyexe=python3
+        command -v "$pyexe" &>/dev/null || pyexe=python
+        mkdir -p "$INSTALL_DIR"
+        local venv="$INSTALL_DIR/venv"
+        "$pyexe" -m venv "$venv" || fail $E001 "E001: 无法创建 venv"
+        "$venv/bin/pip" install -q -U pip || fail $E002 "E002: pip 升级失败"
+        "$venv/bin/pip" install -q -r "$REPO_ROOT/agent/scripts/$reqfile" || {
+            rm -rf "$INSTALL_DIR"
+            fail $E002 "E002: pip 安装依赖失败"
+        }
+        ok "已安装运行时依赖 → $venv"
+        TMP_BINARY=""
+        return
+    fi
+
+    info "11/15 下载 Agent"
 
     local bin_url="${DOWNLOAD_BASE}/${AGENT_BINARY}"
     local sha_url="${DOWNLOAD_BASE}/SHA256SUMS"
@@ -245,13 +937,13 @@ step_download() {
     TMP_BINARY="$bin_dest"
 }
 
-# ── Step 4: 安装部署 ─────────────────────────────────────────────
+# ── Step 6: 安装部署 ─────────────────────────────────────────────
 
 step_install() {
-    info "4/7 安装部署"
+    info "12/15 安装部署"
 
     local root="$INSTALL_DIR"
-    local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/exporter" "$root/logs")
+    local dirs=("$root" "$root/bin" "$root/config" "$root/data" "$root/data/journal" "$root/data/exporter" "$root/logs")
 
     for d in "${dirs[@]}"; do
         mkdir -p "$d"
@@ -259,9 +951,25 @@ step_install() {
     register_rollback "rm -rf '$root'"
     ok "目录结构已创建"
 
-    cp "$TMP_BINARY" "$root/bin/opc-agent"
-    chmod +x "$root/bin/opc-agent"
-    ok "Agent 二进制已部署"
+    if [[ -n "$LOCAL_BINARY" ]] || ! $USE_PYTHON; then
+        cp "$TMP_BINARY" "$root/bin/opc-agent"
+        chmod +x "$root/bin/opc-agent"
+        ok "Agent 二进制已部署"
+    else
+        printf 'PYTHONPATH=%s\n' "$REPO_ROOT" >"$root/runtime.env"
+        chmod 644 "$root/runtime.env"
+        cat >"$root/bin/opc-agent" << 'EOS'
+#!/usr/bin/env sh
+set -eu
+_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC1090
+. "$_ROOT/runtime.env"
+export PYTHONPATH
+exec "$_ROOT/venv/bin/python" -m agent.src.opc_agent.cli "$@"
+EOS
+        chmod +x "$root/bin/opc-agent"
+        ok "已部署 Python 启动脚本（PYTHONPATH=$REPO_ROOT）"
+    fi
 
     # config.yml (AGENT-001 §3.2)
     cat > "$root/config/config.yml" <<YAML
@@ -270,7 +978,7 @@ platform:
   metrics_endpoint: "/metrics/job"
 
 customer:
-  id: "${CUSTOMER_ID}"
+  id: "${TENANT_ID}"
 
 agent:
   version: "${AGENT_VERSION}"
@@ -281,6 +989,9 @@ gateway:
   host: "127.0.0.1"
   port: ${PORT}
 
+journal:
+  storage_path: "${root}/data/journal"
+  max_size: "1GB"
 
 logging:
   level: "info"
@@ -296,10 +1007,10 @@ YAML
     ok ".env 已写入（权限 600）"
 }
 
-# ── Step 5: 注册系统服务 ─────────────────────────────────────────
+# ── Step 7: 注册系统服务 ─────────────────────────────────────────
 
 step_register_service() {
-    info "5/7 注册系统服务"
+    info "13/15 注册系统服务"
 
     local agent_bin="${INSTALL_DIR}/bin/opc-agent"
     local config_yml="${INSTALL_DIR}/config/config.yml"
@@ -323,7 +1034,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${agent_bin} --config ${config_yml} service run
+ExecStart=${agent_bin} --config ${config_yml} run
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${INSTALL_DIR}/logs/agent.log
@@ -377,10 +1088,10 @@ PLIST
     ok "launchd plist 已写入（${plist_path}）"
 }
 
-# ── Step 6: 启动验证 ─────────────────────────────────────────────
+# ── Step 8: 启动验证 ─────────────────────────────────────────────
 
 step_start_verify() {
-    info "6/7 启动验证"
+    info "14/15 启动验证"
 
     if [[ "$OS_TYPE" == "linux" ]]; then
         systemctl start "$SERVICE_NAME" || fail $E005 "E005: 服务启动失败"
@@ -414,10 +1125,10 @@ step_start_verify() {
     fi
 }
 
-# ── Step 7: 完成输出 ─────────────────────────────────────────────
+# ── Step 9: 完成输出 ─────────────────────────────────────────────
 
 step_summary() {
-    info "7/7 安装完成"
+    info "15/15 安装完成"
 
     echo ""
     echo "  安装目录 : $INSTALL_DIR"
@@ -442,14 +1153,30 @@ step_summary() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --platform-url)  PLATFORM_URL="$2"; shift 2 ;;
-            --customer-id)   CUSTOMER_ID="$2"; shift 2 ;;
-            --api-key)       API_KEY="$2"; shift 2 ;;
-            --install-dir)   INSTALL_DIR="$2"; shift 2 ;;
-            --port)          PORT="$2"; shift 2 ;;
-            --silent)        SILENT=true; shift ;;
+            --opc200-platform-url) PLATFORM_URL="$2"; shift 2 ;;
+            --opc200-tenant-id)   TENANT_ID="$2"; shift 2 ;;
+            --opc200-api-key)      API_KEY="$2"; shift 2 ;;
+            --opc200-port)         PORT="$2"; shift 2 ;;
+            --platform-url)        PLATFORM_URL="$2"; shift 2 ;;
+            --customer-id)         TENANT_ID="$2"; shift 2 ;;
+            --api-key)             API_KEY="$2"; shift 2 ;;
+            --install-dir)         INSTALL_DIR="$2"; shift 2 ;;
+            --port)                PORT="$2"; shift 2 ;;
+            --local-binary)        LOCAL_BINARY="$2"; USE_PYTHON=false; shift 2 ;;
+            --repo-root)           REPO_ROOT="$2"; shift 2 ;;
+            --binary)              USE_PYTHON=false; shift ;;
+            --full-runtime-deps)   FULL_RUNTIME_DEPS=true; shift ;;
+            --openclaw-onboard)    OPENCLAW_ONBOARD_CLI=true; shift ;;
+            --skip-openclaw-onboard) OPENCLAW_SKIP_ONBOARD_CLI=true; shift ;;
+            --silent)              SILENT=true; shift ;;
             -h|--help)
-                echo "用法: $0 [--platform-url URL] [--customer-id ID] [--api-key KEY] [--install-dir DIR] [--port PORT] [--silent]"
+                echo "用法: $0 [选项]"
+                echo "  OPC200 段: --opc200-platform-url URL | --opc200-tenant-id ID | --opc200-api-key KEY | --opc200-port N"
+                echo "  兼容旧名: --platform-url | --customer-id | --api-key | --port"
+                echo "  目录/仓库: --install-dir DIR | --repo-root DIR"
+                echo "  OpenClaw: --openclaw-onboard | --skip-openclaw-onboard | 环境变量 OPENCLAW_*（见 install.ps1 / README）"
+                echo "  其他: --silent | --binary | --local-binary PATH | --full-runtime-deps"
+                echo "默认: Python venv + 仓库源码；与 Windows install.ps1 分段一致。"
                 exit 0
                 ;;
             *) err "未知参数: $1"; exit 1 ;;
@@ -464,8 +1191,18 @@ main() {
     echo "OPC200 Agent Installer v${AGENT_VERSION} (Mac/Linux)"
     echo ""
 
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    [[ -z "$REPO_ROOT" ]] && REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+    step_initialize_paths
     step_check_env
-    step_get_config
+    step_prepare_node_runtime
+    step_network_check
+    step_install_openclaw_official
+    step_openclaw_onboard
+    step_preinstall_openclaw_assets
+    step_openclaw_gateway_part2
+    step_opc200_platform_config
     step_download
     step_install
     step_register_service

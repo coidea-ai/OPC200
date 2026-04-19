@@ -42,7 +42,7 @@ class TestFilesExist:
 # ── install.ps1 参数声明 ─────────────────────────────────────────
 
 class TestInstallParams:
-    REQUIRED_PARAMS = ["PlatformUrl", "CustomerId", "ApiKey", "InstallDir", "Port", "Silent"]
+    REQUIRED_PARAMS = ["OPC200PlatformUrl", "OPC200TenantId", "OPC200ApiKey", "InstallDir", "OPC200Port", "Silent"]
 
     @pytest.mark.parametrize("param", REQUIRED_PARAMS)
     def test_param_declared(self, install_ps1, param):
@@ -57,7 +57,15 @@ class TestInstallParams:
 class TestInstallSteps:
     STEP_FUNCTIONS = [
         "Test-Environment",
-        "Get-InstallConfig",
+        "Initialize-InstallPaths",
+        "Ensure-OpenClawNodeRuntime",
+        "Test-OpenClawNetworkReady",
+        "Install-OpenClawOfficial",
+        "Install-OpenClawOnboardIfRequested",
+        "Install-OpenClawPreload",
+        "Ensure-OpenClawCliPresentOrInstall",
+        "Invoke-OpenClawPart2InstallAndGateway",
+        "Get-OpcAgentPlatformConfig",
         "Get-AgentBinary",
         "Install-Agent",
         "Register-Service",
@@ -135,15 +143,138 @@ class TestSecurity:
     def test_api_key_secure_input(self, install_ps1):
         assert "AsSecureString" in install_ps1
 
+    def test_secure_string_to_plain_uses_bstr(self, install_ps1):
+        assert "PtrToStringBSTR" in install_ps1
+        assert "PtrToStringAuto" not in install_ps1
 
-# ── SHA256 校验 ──────────────────────────────────────────────────
+    def test_secret_input_rejects_control_chars(self, install_ps1):
+        assert "Test-SecretPlainLooksValid" in install_ps1
+        assert "IsControl" in install_ps1
 
-class TestChecksum:
-    def test_sha256_check(self, install_ps1):
-        assert "SHA256" in install_ps1
+    def test_read_secure_line_trims_paste_whitespace(self, install_ps1):
+        i = install_ps1.find("function Normalize-SecretPlainLine")
+        assert i >= 0
+        assert ".Trim()" in install_ps1[i : i + 400]
 
-    def test_checksum_file_referenced(self, install_ps1):
-        assert "SHA256SUMS" in install_ps1
+    def test_read_secure_line_offers_plain_and_file_modes(self, install_ps1):
+        assert "回车=2" in install_ps1
+        assert "UTF-8 文本文件" in install_ps1
+
+
+class TestVenvInstall:
+    def test_venv_and_pip(self, install_ps1):
+        assert "python.exe" in install_ps1
+        assert "pip install" in install_ps1
+
+
+class TestOpenClawNodePrerequisite:
+    def test_node_major_constant(self, install_ps1):
+        assert "OPENCLAW_MIN_NODE_MAJOR" in install_ps1
+        assert "nodejs.org/dist/index.json" in install_ps1
+
+    def test_ensure_node_runtime_function(self, install_ps1):
+        assert "function Ensure-OpenClawNodeRuntime" in install_ps1
+        assert "function Install-NodeJsWinMsiFromDist" in install_ps1
+        assert "Sync-SessionPathFromRegistry" in install_ps1
+
+
+class TestOpenClawNetworkCheck:
+    def test_network_check_function(self, install_ps1):
+        assert "function Test-OpenClawNetworkReady" in install_ps1
+
+    def test_network_check_hosts(self, install_ps1):
+        assert "OPENCLAW_NET_CHECK_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+        assert "registry.npmmirror.com" in install_ps1
+        assert "github.com" in install_ps1
+
+    def test_network_check_called_in_main(self, install_ps1):
+        assert "Test-OpenClawNetworkReady" in install_ps1
+
+
+class TestOpenClawNpmAcceleration:
+    def test_default_registry_is_npmmirror(self, install_ps1):
+        assert "registry.npmmirror.com" in install_ps1
+        assert "OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
+
+    def test_registry_uses_script_default_only(self, install_ps1):
+        assert "$npmRegistry = $script:OPENCLAW_DEFAULT_NPM_REGISTRY" in install_ps1
+
+    def test_npm_fetch_timeout_set(self, install_ps1):
+        assert "NPM_CONFIG_FETCH_TIMEOUT" in install_ps1
+        assert "NPM_CONFIG_FETCH_RETRIES" in install_ps1
+
+
+class TestOpenClawInstallObservability:
+    def test_log_file_created(self, install_ps1):
+        assert "opc200-openclaw-install-" in install_ps1
+
+    def test_timeout_constant(self, install_ps1):
+        assert "OPENCLAW_INSTALL_TIMEOUT_SEC" in install_ps1
+        assert "900" in install_ps1
+
+    def test_timeout_enforced(self, install_ps1):
+        assert "deadline" in install_ps1
+        assert "超时" in install_ps1
+
+    def test_realtime_output(self, install_ps1):
+        assert "Get-Content" in install_ps1
+        assert "openclaw]" in install_ps1
+
+    def test_exit_code_checked(self, install_ps1):
+        assert "ExitCode" in install_ps1
+
+    def test_log_path_shown_on_failure(self, install_ps1):
+        assert "日志:" in install_ps1
+
+
+class TestOpenClawOfficialInstall:
+    def test_official_install_url_configurable(self, install_ps1):
+        assert "OPENCLAW_INSTALL_URL" in install_ps1
+
+    def test_official_channel_defaults_latest(self, install_ps1):
+        assert "OPENCLAW_CHANNEL" in install_ps1
+        assert '"latest"' in install_ps1
+
+    def test_official_host_whitelist(self, install_ps1):
+        assert "OPENCLAW_ALLOWED_HOSTS" in install_ps1
+        assert "openclaw.ai" in install_ps1
+
+    def test_official_install_uses_subprocess(self, install_ps1):
+        assert "Install-OpenClawOfficial" in install_ps1
+        assert "Start-Process" in install_ps1
+        assert "HasExited" in install_ps1
+
+
+class TestOpenClawPreload:
+    def test_preload_doc_templates(self, install_ps1):
+        assert "SOUL.md" in install_ps1
+        assert "IDENTITY.md" in install_ps1
+        assert "AGENTS.md" in install_ps1
+        assert "openclaw-templates" in install_ps1
+
+    def test_preload_sets_tools_profile_full(self, install_ps1):
+        i = install_ps1.find("function Install-OpenClawPreload")
+        assert i >= 0
+        block = install_ps1[i : i + 1200]
+        assert "tools.profile" in block
+        assert "full" in block
+        assert "openclaw:tools-profile" in block
+
+    def test_preload_skill_fail_non_blocking(self, install_ps1):
+        assert "skills 安装失败（已忽略）" in install_ps1
+        assert "Write-Warn" in install_ps1
+
+
+class TestOpenClawPart2Gateway:
+    def test_part2_unified_status_probe_no_duplicate_fresh_install(self, install_ps1):
+        i = install_ps1.find("function Invoke-OpenClawPart2InstallAndGateway")
+        assert i >= 0
+        block = install_ps1[i : i + 3600]
+        assert "优先 RPC" in block
+        assert "statusRpcFirst" in block
+        assert "网关 RPC 探测正常" in block
+        assert block.count("Install-OpenClawGatewayWithRetry") == 1
 
 
 # ── 回滚机制 (AGENT-001 §6.2) ───────────────────────────────────
@@ -163,10 +294,10 @@ class TestServiceRegistration:
         assert "OPC200-Agent" in install_ps1
 
     def test_sc_create(self, install_ps1):
-        assert "sc.exe create" in install_ps1
+        assert "Register-ScheduledTask" in install_ps1
 
     def test_auto_start(self, install_ps1):
-        assert "start= auto" in install_ps1
+        assert "New-ScheduledTaskTrigger -AtLogOn" in install_ps1
 
 
 # ── uninstall.ps1 ────────────────────────────────────────────────
@@ -187,12 +318,23 @@ class TestUninstall:
     def test_admin_check(self, uninstall_ps1):
         assert "Administrator" in uninstall_ps1
 
+    def test_keep_openclaw_switch(self, uninstall_ps1):
+        assert "KeepOpenClaw" in uninstall_ps1
+        assert "Resolve-KeepOpenClawChoice" in uninstall_ps1
+
+    def test_openclaw_gateway_stop_before_uninstall(self, uninstall_ps1):
+        assert "gateway stop" in uninstall_ps1
+        assert "Stop-OpenClawGatewayBeforeUninstall" in uninstall_ps1
+
+    def test_openclaw_official_uninstall_invoked(self, uninstall_ps1):
+        assert "openclaw uninstall --all --yes --non-interactive" in uninstall_ps1
+
 
 # ── 与 AGENT-001 SPEC 一致性 ────────────────────────────────────
 
 class TestSpecConsistency:
     def test_three_config_items(self, install_ps1):
-        for item in ("PLATFORM_URL", "CUSTOMER_ID", "API_KEY"):
+        for item in ("PLATFORM_URL", "OPC200_TENANT_ID", "API_KEY"):
             assert item.lower().replace("_", "") in install_ps1.lower().replace("_", "")
 
     def test_health_endpoint(self, install_ps1):

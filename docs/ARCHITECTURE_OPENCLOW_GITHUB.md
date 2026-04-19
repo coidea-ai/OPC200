@@ -188,7 +188,7 @@ metadata:
   requires:
     env:
       - OPC200_API_KEY
-      - CUSTOMER_ID
+      - OPC200_TENANT_ID
     bins:
       - python3
     skills:

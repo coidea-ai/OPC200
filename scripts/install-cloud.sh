@@ -14,7 +14,7 @@ NC='\033[0m'
 # 参数
 GATEWAY_URL=""
 TOKEN=""
-CUSTOMER_ID=""
+TENANT_ID=""
 
 # 打印函数
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
@@ -33,13 +33,13 @@ OPC200 云端部署脚本
 选项:
   --gateway-url URL    Gateway URL (必需)
   --token TOKEN        认证 Token (必需)
-  --customer-id ID     客户 ID (必需)
+  --tenant-id ID       租户 ID (必需)
   -h, --help           显示帮助
 
 示例:
   bash install-cloud.sh --gateway-url "https://opc-151.opc200.co" \
                         --token "xxx" \
-                        --customer-id "OPC-151"
+                        --tenant-id "OPC-151"
 EOF
 }
 
@@ -55,8 +55,8 @@ parse_args() {
                 TOKEN="$2"
                 shift 2
                 ;;
-            --customer-id)
-                CUSTOMER_ID="$2"
+            --tenant-id)
+                TENANT_ID="$2"
                 shift 2
                 ;;
             -h|--help)
@@ -72,7 +72,7 @@ parse_args() {
     done
     
     # 验证必需参数
-    if [[ -z "$GATEWAY_URL" || -z "$TOKEN" || -z "$CUSTOMER_ID" ]]; then
+    if [[ -z "$GATEWAY_URL" || -z "$TOKEN" || -z "$TENANT_ID" ]]; then
         print_error "缺少必需参数"
         show_help
         exit 1
@@ -132,7 +132,7 @@ setup_environment() {
     cat > ~/.openclaw/opc200/.env <> EOF
 OPC200_GATEWAY_URL=${GATEWAY_URL}
 OPC200_TOKEN=${TOKEN}
-OPC200_CUSTOMER_ID=${CUSTOMER_ID}
+OPC200_TENANT_ID=${TENANT_ID}
 OPC200_MODE=cloud
 EOF
     
@@ -171,7 +171,7 @@ show_completion() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     echo "📋 信息:"
-    echo "   客户 ID: $CUSTOMER_ID"
+    echo "   租户 ID: $TENANT_ID"
     echo "   Gateway: $GATEWAY_URL"
     echo ""
     echo "🚀 开始使用:"

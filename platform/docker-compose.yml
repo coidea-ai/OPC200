@@ -1,7 +1,7 @@
 version: '3.8'
 
 # OPC200 平台侧监控栈
-# Push 架构：接收用户端推送的指标
+# Push 架构：接收用户端推送的指标 + 告警通知
 
 services:
   # Pushgateway - 接收所有 Agent 推送的指标
@@ -19,7 +19,7 @@ services:
       - opc200-platform
     restart: unless-stopped
 
-  # Prometheus - 统一时序存储
+  # Prometheus - 统一时序存储 + 告警规则评估
   prometheus:
     image: prom/prometheus:v2.49.1
     container_name: opc200-prometheus
@@ -27,17 +27,37 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
       - '--web.enable-lifecycle'
+      - '--alertmanager.url=http://opc200-alertmanager:9093'
     networks:
       - opc200-platform
     restart: unless-stopped
     depends_on:
       - pushgateway
+      - alertmanager
+
+  # Alertmanager - 告警路由和通知
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: opc200-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://100.74.18.112:9093'
+    networks:
+      - opc200-platform
+    restart: unless-stopped
 
   # Grafana - 可视化仪表盘
   grafana:
@@ -63,6 +83,7 @@ volumes:
   pushgateway-data:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
 
 networks:
   opc200-platform:

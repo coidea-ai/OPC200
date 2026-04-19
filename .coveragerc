@@ -1,6 +1,9 @@
 [run]
-source = skills/opc-journal
-omit =  
+source = 
+    skills/opc-journal-suite
+    agent/src
+    src
+omit = 
     */tests/*
     */__pycache__/*
     */venv/*
@@ -8,6 +11,9 @@ omit =
     */.tox/*
     */node_modules/*
     setup.py
+    src/tasks/*
+    src/journal/vector_store.py
+    src/utils/logging.py
 
 [report]
 exclude_lines =

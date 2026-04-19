@@ -112,10 +112,20 @@ metric_name{label1="value1",label2="value2"} value timestamp
 
 | 指标名 | 类型 | 单位 | 说明 | 示例 |
 |--------|------|------|------|------|
-| `agent_health` | Gauge | 0/1 | Agent 健康状态（1=健康） | `1` |
+| `agent_health` | Gauge | 0/1 | **OpenClaw（小龙虾）网关可观测健康**（见下节）；`0` 表示网关不可达或非 2xx / 本进程异常 | `1` |
 | `cpu_usage` | Gauge | percent | CPU 使用率 | `45.5` |
 | `memory_usage` | Gauge | percent | 内存使用率 | `78.2` |
 | `disk_usage` | Gauge | percent | 磁盘使用率 | `65.0` |
+
+#### `agent_health` 判定规则（与 `PREINSTALLED_LOBSTER_ROADMAP` §2.7 对齐）
+
+- **必选**：`opc-agent` 采集进程自身为存活、非僵尸；且（默认开启时）对 OpenClaw **网关 HTTP 健康端点**发起探测，响应码为 **2xx** 则记 `1`，否则记 `0`。
+- **默认探测 URL**：`http://127.0.0.1:18789/health`（与仓库内网关端口约定一致，见 `docs/SINGLE_DEPLOYMENT.md`）。
+- **环境变量（单一配置源，与安装脚本 `OPENCLAW_*` 命名一致）**：
+  - `OPENCLAW_GATEWAY_HEALTH_URL`：覆盖默认健康 URL（含路径）。
+  - `OPENCLAW_GATEWAY_HEALTH_PROBE`：设为 `0` / `false` / `off` 时**跳过**网关 HTTP 探测，仅依据本进程存活则上报 `1`（适用于未部署 OpenClaw 的纯 Agent 环境或排障）。
+
+未安装 OpenClaw 或网关未监听时：探测失败 → **`agent_health` 为 `0`**（明确“小龙虾侧不健康”，而非 opc-agent HTTP `/health`）。
 
 ### 指标示例
 
