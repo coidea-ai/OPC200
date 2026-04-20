@@ -311,10 +311,10 @@ Invoke-WebRequest -Uri "https://github.com/coidea-ai/OPC200/releases/latest/down
 **Linux / macOS**
 
 ```bash
-# 创建文件夹 /data/opc200
+# 创建文件夹 ~/data/opc200
 mkdir -p ~/data/opc200
 
-# 从 GitHub 下载安装脚本，保存到 /data/opc200 目录
+# 从 GitHub 下载安装脚本，保存到 ~/data/opc200 目录
 curl -fsSL -o ~/data/opc200/opc200-install.sh "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.sh"
 
 # 给脚本添加 “可执行权限”
@@ -373,7 +373,7 @@ chmod +x ~/data/opc200/opc200-install.sh
 
 1. 在终端中操作（**Linux**：引导脚本可在非 root 下执行，检测到需写 systemd 时会对第二阶段 `install.sh` 自动 `sudo -E` 以继承当前 shell 中的 `OPENCLAW_*` 等变量；**macOS**：一般直接执行 `bash`，无需对引导脚本本身 `sudo`）。
 
-2. **交互式引导安装**（与 Windows「下载到同一文件夹 + `ExtractParent`」一致：下面以 `/data/opc200` 为例，请与第一步下载目录一致）
+2. **交互式引导安装**（与 Windows「下载到同一文件夹 + `ExtractParent`」一致：下面以 `~/data/opc200` 为例，请与第一步下载目录一致）
 
    ```bash
    cd ~/data/opc200
@@ -389,7 +389,7 @@ chmod +x ~/data/opc200/opc200-install.sh
    `custom-api-key` 时，**兼容 OpenAI 的 base URL、模型 ID、推理用 API Key** 须通过环境变量 **`OPENCLAW_CUSTOM_BASE_URL`**、**`OPENCLAW_CUSTOM_MODEL_ID`**、**`CUSTOM_API_KEY`** 提供（与 Windows / 上方 `install.sh` 说明一致）。请替换占位符，**勿将密钥写入版本库**。
 
    ```bash
-   cd /data/opc200
+   cd ~/data/opc200
    
    export OPENCLAW_AUTH_CHOICE=custom-api-key
    export OPENCLAW_CUSTOM_BASE_URL="https://your-llm.example/v1"
@@ -401,7 +401,7 @@ chmod +x ~/data/opc200/opc200-install.sh
    bash ./opc200-install.sh \
      --github-repo "coidea-ai/OPC200" \
      --version latest \
-     --extract-parent "/data/opc200" \
+     --extract-parent "~/data/opc200" \
      --silent \
      --openclaw-onboard \
      --opc200-platform-url "https://platform.opc200.co" \
@@ -434,10 +434,10 @@ cd D:\OPC200\agent\scripts
 
 #### Linux / macOS
 
-解压目录与第一步一致（示例 **`/data/opc200`**）时，进入其中的 `agent/scripts` 再执行卸载（与 Windows `D:\OPC200\agent\scripts` 对应）：
+解压目录与第一步一致（示例 **`~/data/opc200`**）时，进入其中的 `agent/scripts` 再执行卸载（与 Windows `D:\OPC200\agent\scripts` 对应）：
 
 ```bash
-cd /data/opc200/agent/scripts
+cd ~/data/opc200/agent/scripts
 
 # Linux（须 root / sudo 写 systemd 与清理目录）
 sudo ./uninstall.sh
@@ -446,7 +446,7 @@ sudo ./uninstall.sh
 # ./uninstall.sh
 ```
 
-若安装时使用了非默认路径，将 `/data/opc200` 换成你的 **`-ExtractParent` / `--extract-parent`** 目录。
+若安装时使用了非默认路径，将 `~/data/opc200` 换成你的 **`-ExtractParent` / `--extract-parent`** 目录。
 
 ### FAQ
 
