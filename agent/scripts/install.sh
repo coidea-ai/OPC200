@@ -605,21 +605,60 @@ step_install_openclaw_official() {
     ok "OpenClaw 渠道: $channel"
     ok "npm registry: $npm_registry"
 
-    # 实时输出 + 超时控制：通过 tee 落日志，timeout 命令限制最长执行时间
+    # 实时输出 + 超时控制 + 心跳：若长时间无新日志，每 15s 提示一次运行状态
     local log_file
     log_file="$(mktemp /tmp/opc200-openclaw-install-XXXXXX.log)"
     ok "安装日志: $log_file"
+    printf "\033[90m  [i] 下方 [openclaw] 为实时输出；若暂时无输出，将每 15s 提示已运行时长与日志末行。\033[0m\n"
 
     local exit_code=0
-    NPM_CONFIG_REGISTRY="$npm_registry" \
-    NPM_CONFIG_FETCH_RETRIES="3" \
-    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="10000" \
-    NPM_CONFIG_FETCH_TIMEOUT="60000" \
-    NODE_LLAMA_CPP_SKIP_DOWNLOAD="1" \
-    OPENCLAW_NO_ONBOARD="1" \
-        timeout "$OPENCLAW_INSTALL_TIMEOUT_SEC" \
-        bash -c "curl -fsSL '$install_url' | bash" \
-        2>&1 | tee "$log_file" || exit_code=${PIPESTATUS[0]}
+    local cmd_start now elapsed last_hb=0 cursor=0 line last_line=""
+    local run_cmd=(
+        timeout "$OPENCLAW_INSTALL_TIMEOUT_SEC"
+        bash -c "curl -fsSL '$install_url' | bash"
+    )
+    (
+        NPM_CONFIG_REGISTRY="$npm_registry" \
+        NPM_CONFIG_FETCH_RETRIES="3" \
+        NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="10000" \
+        NPM_CONFIG_FETCH_TIMEOUT="60000" \
+        NODE_LLAMA_CPP_SKIP_DOWNLOAD="1" \
+        OPENCLAW_NO_ONBOARD="1" \
+            "${run_cmd[@]}"
+    ) >"$log_file" 2>&1 &
+    local install_pid=$!
+    cmd_start="$(date +%s)"
+
+    while kill -0 "$install_pid" 2>/dev/null; do
+        if [[ -f "$log_file" ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                printf '  [openclaw] %s\n' "$line"
+                last_line="$line"
+            done < <(tail -n +"$((cursor + 1))" "$log_file" 2>/dev/null || true)
+            cursor="$(wc -l <"$log_file" 2>/dev/null || echo "$cursor")"
+        fi
+
+        now="$(date +%s)"
+        elapsed=$((now - cmd_start))
+        if (( now - last_hb >= 15 )); then
+            if [[ -n "$last_line" ]]; then
+                printf "\033[90m  [openclaw] 仍在安装（已运行 %ss），最新输出：%s\033[0m\n" "$elapsed" "$last_line"
+            else
+                printf "\033[90m  [openclaw] 仍在安装（已运行 %ss），末行尚空（npm 可能仍在缓冲）\033[0m\n" "$elapsed"
+            fi
+            last_hb="$now"
+        fi
+        sleep 0.5
+    done
+
+    wait "$install_pid" || exit_code=$?
+    if [[ -f "$log_file" ]]; then
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            printf '  [openclaw] %s\n' "$line"
+        done < <(tail -n +"$((cursor + 1))" "$log_file" 2>/dev/null || true)
+    fi
 
     if [[ "$exit_code" -eq 124 ]]; then
         fail $E002 "E002: OpenClaw 官方安装超时（>${OPENCLAW_INSTALL_TIMEOUT_SEC}s）。日志: $log_file"
