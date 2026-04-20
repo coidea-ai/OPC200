@@ -72,6 +72,21 @@ fail() {
 
 register_rollback() { ROLLBACK_ITEMS+=("$1"); }
 
+# WSL/终端粘贴时 read -s 无回显；提示说明 + 回车后仅报告长度，不泄露密钥
+read_secret_line() {
+    local __dst="$1"
+    local __prompt="$2"
+    local __v=""
+    printf '%s' "$__prompt" >&2
+    printf '\033[90m（不回显；粘贴后按回车）\033[0m\n' >&2
+    IFS= read -rs __v || true
+    printf '\n' >&2
+    if [[ -n "$__v" ]]; then
+        ok "已录入 ${#__v} 个字符（内容已隐藏）"
+    fi
+    printf -v "$__dst" %s "$__v"
+}
+
 rollback() {
     [[ ${#ROLLBACK_ITEMS[@]} -eq 0 ]] && return
     warn "正在回滚..."
@@ -241,8 +256,7 @@ step_opc200_platform_config() {
             [[ -z "${API_KEY:-}" && -n "${CUSTOM_API_KEY:-}" ]] && API_KEY="$CUSTOM_API_KEY"
         fi
         if [[ -z "${API_KEY:-}" ]]; then
-            read -rsp "平台 API Key (OpenClaw 未采集密钥时必填): " API_KEY
-            echo
+            read_secret_line API_KEY "平台 API Key (OpenClaw 未采集密钥时必填): "
             [[ -z "$API_KEY" ]] && fail $E001 "E001: 平台 API Key 不能为空"
         else
             ok "已复用 OpenClaw 阶段的密钥作为平台 ApiKey"
@@ -438,9 +452,64 @@ _expand_path_for_openclaw_cli() {
     hash -r 2>/dev/null || true
 }
 
-# WSL 默认常未启用 systemd，openclaw gateway install 依赖 systemctl --user，会导致服务起不来
+# WSL 未启用 systemd 时 user 服务不可用；onboard 与 gateway install 均依赖 systemctl（见 _assert_linux_systemd_ready_for_onboard_daemon）
 _is_wsl() {
     [[ -n "${WSL_DISTRO_NAME:-}" ]] || grep -qi microsoft /proc/version 2>/dev/null
+}
+
+_opc200_msg_user_systemd_required() {
+    local uname="${1:-}"
+    local bus="${2:-}"
+    printf '%s\n' "" >&2
+    err "【第 6 步已中止】OpenClaw 需要使用「用户级 systemd」安装网关守护进程（--install-daemon），当前环境不满足。"
+    err "原因：用户 ${uname:-?} 没有可用的 user@ 会话（D-Bus：${bus:-未就绪}）。仅用 sudo、无登录会话时常见。"
+    err "请自行完成以下一项或多项后，再重新运行本安装脚本："
+    err "  1) 以该用户登录一次（本地桌面 / SSH），确保存在 /run/user/<uid>/bus；"
+    err "  2) 以 root 执行：loginctl enable-linger ${uname:-<用户名>}，然后注销该用户或 wsl --shutdown 后重进；"
+    err "  3) WSL：确认 /etc/wsl.conf 中 [boot] systemd=true，并在 Windows 执行 wsl --shutdown 后重开发行版。"
+    err "若你明确不装用户级守护进程，须先导出 OPENCLAW_ONBOARD_SKIP_DAEMON=1 再运行安装（网关改由后续步骤处理，非默认）。"
+    err "完整说明亦见 agent/README.md（Linux 环境变量）。"
+    printf '%s\n' "" >&2
+}
+
+_assert_linux_user_systemd_session_for_openclaw() {
+    local uid uname bus
+    if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        uname="$SUDO_USER"
+    else
+        uname="$(id -un)"
+    fi
+    uid="$(id -u "$uname" 2>/dev/null)" || fail $E001 "E001: 无法解析用户 $uname"
+    bus="/run/user/${uid}/bus"
+    if [[ ! -S "$bus" ]]; then
+        _opc200_msg_user_systemd_required "$uname" "$bus"
+        fail $E001 "E001: 缺少用户 D-Bus 套接字，无法继续第 6 步 onboard（--install-daemon）。"
+    fi
+    if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        sudo -u "$SUDO_USER" -H env \
+            XDG_RUNTIME_DIR="/run/user/${uid}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}" \
+            systemctl --user is-system-running &>/dev/null \
+            || { _opc200_msg_user_systemd_required "$uname" "$bus"; fail $E001 "E001: systemctl --user 不可用，无法继续第 6 步 onboard（--install-daemon）。"; }
+    else
+        systemctl --user is-system-running &>/dev/null \
+            || { _opc200_msg_user_systemd_required "$uname" "$bus"; fail $E001 "E001: systemctl --user 不可用，无法继续第 6 步 onboard（--install-daemon）。"; }
+    fi
+}
+
+_assert_linux_systemd_ready_for_onboard_daemon() {
+    if ! command -v systemctl &>/dev/null; then
+        fail $E001 "E001: 未找到 systemctl，无法为 OpenClaw onboard 安装网关用户服务。请使用带 systemd 的 Linux，或显式设置 OPENCLAW_ONBOARD_SKIP_DAEMON=1（不推荐）。"
+    fi
+    local st=""
+    st="$(systemctl is-system-running 2>/dev/null || true)"
+    if ! systemctl is-system-running &>/dev/null; then
+        if _is_wsl; then
+            fail $E001 "E001: WSL 上 systemd 未就绪（systemctl is-system-running: ${st:-错误}）。请在 /etc/wsl.conf 添加 [boot] 段并设置 systemd=true；在 Windows PowerShell 执行 wsl --shutdown 后重新打开本发行版，再运行安装。若暂无法启用 systemd，可显式设置 OPENCLAW_ONBOARD_SKIP_DAEMON=1（不推荐）。"
+        fi
+        fail $E001 "E001: systemd 未就绪（systemctl is-system-running: ${st:-错误}）。请修复系统初始化后重试，或显式设置 OPENCLAW_ONBOARD_SKIP_DAEMON=1（不推荐）。"
+    fi
+    _assert_linux_user_systemd_session_for_openclaw
 }
 
 # sudo 安装时 OpenClaw 状态目录用「实际用户」的 ~/ ，不用 /root（除非显式 OPENCLAW_STATE_HOME 或真实 root 会话）
@@ -468,12 +537,32 @@ _openclaw_run() {
     local oh="$1"
     shift
     [[ -n "$oh" ]] || return 1
+    local -a runenv=(HOME="$oh" PATH="${PATH}")
+    if [[ "${OS_TYPE:-}" == "linux" ]]; then
+        local u uid bus
+        if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" && "$oh" != "/root" ]]; then
+            u="$SUDO_USER"
+        elif [[ $EUID -eq 0 && "$oh" == "/root" ]]; then
+            u="root"
+        else
+            u="$(id -un 2>/dev/null || true)"
+        fi
+        if [[ -n "$u" ]]; then
+            uid="$(id -u "$u" 2>/dev/null)" || uid=""
+            if [[ -n "$uid" ]]; then
+                bus="/run/user/${uid}/bus"
+                if [[ -S "$bus" ]]; then
+                    runenv+=(XDG_RUNTIME_DIR="/run/user/${uid}" DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}")
+                fi
+            fi
+        fi
+    fi
     if [[ $EUID -eq 0 && "$oh" == "/root" ]]; then
-        env HOME=/root PATH="${PATH}" "$@"
+        env "${runenv[@]}" "$@"
     elif [[ $EUID -eq 0 && -n "${SUDO_USER:-}" && "$oh" != "/root" ]]; then
-        sudo -u "$SUDO_USER" -H env HOME="$oh" PATH="${PATH}" "$@"
+        sudo -u "$SUDO_USER" -H env "${runenv[@]}" "$@"
     else
-        env HOME="$oh" PATH="${PATH}" "$@"
+        env "${runenv[@]}" "$@"
     fi
 }
 
@@ -713,7 +802,15 @@ step_preinstall_openclaw_assets() {
         for skill in "${skills[@]}"; do
             skill="$(printf '%s' "$skill" | xargs)"
             [[ -z "$skill" ]] && continue
-            if eval "$skill_install_cmd \"$skill\""; then
+            oc_home_pre="$(_openclaw_state_home)"
+            [[ -n "$oc_home_pre" ]] || oc_home_pre="${HOME:-}"
+            local sk_ok=1
+            if [[ "$skill_install_cmd" == "$OPENCLAW_DEFAULT_SKILL_INSTALL_CMD" ]]; then
+                _openclaw_run "$oc_home_pre" openclaw skills install "$skill" && sk_ok=0
+            else
+                _openclaw_run "$oc_home_pre" bash -lc "$(printf '%q ' $skill_install_cmd)$(printf '%q' "$skill")" && sk_ok=0
+            fi
+            if [[ "$sk_ok" -eq 0 ]]; then
                 ok "skills 已安装: $skill"
             else
                 warn "skills 安装失败（已忽略）: $skill"
@@ -793,20 +890,17 @@ step_openclaw_onboard() {
         local line=""
         case "$auth" in
             apiKey)
-                read -rsp "Anthropic API Key: " line || true
-                echo "" >&2
+                read_secret_line line "Anthropic API Key: "
                 [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
                 v_anth="$line"
                 ;;
             openai-api-key)
-                read -rsp "OpenAI API Key: " line || true
-                echo "" >&2
+                read_secret_line line "OpenAI API Key: "
                 [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
                 v_openai="$line"
                 ;;
             gemini-api-key)
-                read -rsp "Gemini API Key: " line || true
-                echo "" >&2
+                read_secret_line line "Gemini API Key: "
                 [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
                 v_gemini="$line"
                 ;;
@@ -815,8 +909,7 @@ step_openclaw_onboard() {
                 read -rp "自定义 Base URL (OPENAI 兼容 v1): " bu || true
                 read -rp "模型 ID (custom-model-id): " mid || true
                 [[ -n "$bu" && -n "$mid" ]] || fail $E001 "E001: custom 需要 base_url 与 model_id"
-                read -rsp "API Key (CUSTOM_API_KEY): " line || true
-                echo "" >&2
+                read_secret_line line "API Key (CUSTOM_API_KEY): "
                 [[ -n "$line" ]] || fail $E001 "E001: API Key 不能为空"
                 v_custom_url="$bu"
                 v_custom_model="$mid"
@@ -868,18 +961,14 @@ step_openclaw_onboard() {
     esac
 
     # 官方非交互 onboard 要求显式风险确认，见 https://docs.openclaw.ai/security
-    # --install-daemon 会 systemctl daemon-reload；WSL 未启用 systemd 或 D-Bus 异常时报 Transport endpoint is not connected
+    # Linux 默认 --install-daemon：须先有可用 systemd（WSL 需在 wsl.conf 启用）；否则 fail 或显式 OPENCLAW_ONBOARD_SKIP_DAEMON=1
     local use_onboard_daemon=true
-    if [[ "${OPENCLAW_ONBOARD_FORCE_DAEMON:-}" == "1" ]]; then
-        use_onboard_daemon=true
-    elif [[ "${OPENCLAW_ONBOARD_SKIP_DAEMON:-}" == "1" ]]; then
+    if [[ "${OPENCLAW_ONBOARD_SKIP_DAEMON:-}" == "1" ]]; then
         use_onboard_daemon=false
+    elif [[ "${OPENCLAW_ONBOARD_FORCE_DAEMON:-}" == "1" ]]; then
+        [[ "$OS_TYPE" == "linux" ]] && _assert_linux_systemd_ready_for_onboard_daemon
     elif [[ "$OS_TYPE" == "linux" ]]; then
-        if _is_wsl; then
-            use_onboard_daemon=false
-        elif ! command -v systemctl &>/dev/null || ! systemctl is-system-running &>/dev/null; then
-            use_onboard_daemon=false
-        fi
+        _assert_linux_systemd_ready_for_onboard_daemon
     fi
 
     local -a oc_args=(
@@ -893,11 +982,7 @@ step_openclaw_onboard() {
     if $use_onboard_daemon; then
         oc_args+=(--install-daemon --daemon-runtime node)
     else
-        if _is_wsl; then
-            warn "onboard 省略 --install-daemon（WSL 上避免 systemctl；已加 --skip-health）。网关改由后续步骤安装。已启用 systemd 且需 daemon 可设 OPENCLAW_ONBOARD_FORCE_DAEMON=1"
-        else
-            warn "onboard 省略 --install-daemon（未检测到可用 systemd；已加 --skip-health）。可设 OPENCLAW_ONBOARD_FORCE_DAEMON=1 强制"
-        fi
+        warn "onboard 使用 --skip-health（已设 OPENCLAW_ONBOARD_SKIP_DAEMON=1，未安装网关守护进程）；网关由后续步骤处理。"
         oc_args+=(--skip-health)
     fi
     if [[ "$auth" == "custom-api-key" ]]; then
@@ -946,37 +1031,19 @@ step_openclaw_onboard() {
         return 0
     fi
     if [[ "$exit_code" -ne 0 ]]; then
+        if $use_onboard_daemon && [[ -f "$ob_log" ]] && grep -qiE 'systemd user services are unavailable|user services are not reachable|Gateway service install is unavailable.*systemd user|skipping service install' "$ob_log"; then
+            _opc200_msg_user_systemd_required "${SUDO_USER:-$(id -un)}" "/run/user/$(id -u "${SUDO_USER:-$(id -un)}" 2>/dev/null)/bus"
+            err "openclaw 报告（退出码 ${exit_code}），完整日志: $ob_log"
+            tail -n 30 "$ob_log" >&2 || true
+            fail $E001 "E001: 第 6 步 onboard 因用户级 systemd 不可用而失败，安装中止。"
+        fi
         if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
             fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor；完整日志: $ob_log"
         fi
-        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。常见原因：密钥无效/网络、WSL 下 daemon 安装受限；可设 OPENCLAW_SKIP_ONBOARD=1 跳过本步后手动 onboard。"
+        warn "openclaw onboard 失败（退出码 ${exit_code}），已非严格继续。常见原因：密钥无效/网络；可设 OPENCLAW_SKIP_ONBOARD=1 跳过本步后手动 onboard。"
         warn "onboard 日志末尾（完整见 $ob_log）:"
         tail -n 50 "$ob_log" >&2 || true
         return 0
-    fi
-
-    local health_url="${OPENCLAW_GATEWAY_HEALTH_URL:-http://127.0.0.1:${gw_port}/health}"
-    ok "探测网关健康: $health_url"
-    local ok_health=false
-    local i
-    for i in $(seq 1 30); do
-        if command -v curl &>/dev/null && curl -sf --connect-timeout 2 "$health_url" &>/dev/null; then
-            ok_health=true
-            break
-        fi
-        if command -v wget &>/dev/null && wget -q --timeout=2 -O /dev/null "$health_url" 2>/dev/null; then
-            ok_health=true
-            break
-        fi
-        sleep 2
-    done
-    if ! $ok_health; then
-        if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
-            fail $E002 "E002: onboard 后网关健康检查失败。检查 OPENCLAW_GATEWAY_HEALTH_URL 或网关服务"
-        fi
-        warn "网关 HTTP 健康检查未在约 60s 内通过；可稍后排查或设 OPENCLAW_GATEWAY_HEALTH_PROBE=0"
-    else
-        ok "OpenClaw 网关健康检查通过"
     fi
 
     if ! $SILENT; then

@@ -1426,27 +1426,6 @@ function Install-OpenClawOnboardIfRequested {
         Write-Warn "openclaw onboard 失败（退出码 $code），已按非严格策略继续。设置 OPENCLAW_ONBOARD_STRICT=1 可在失败时中止安装。"
         return
     }
-
-    $healthUrl = if ($env:OPENCLAW_GATEWAY_HEALTH_URL) { $env:OPENCLAW_GATEWAY_HEALTH_URL } else { "http://127.0.0.1:$gwPort/health" }
-    Write-Ok "探测网关健康: $healthUrl"
-    $okHealth = $false
-    for ($i = 0; $i -lt 30; $i++) {
-        try {
-            $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
-            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { $okHealth = $true; break }
-        }
-        catch { }
-        Start-Sleep -Seconds 2
-    }
-    if (-not $okHealth) {
-        if ($env:OPENCLAW_ONBOARD_STRICT -eq "1") {
-            Fail $script:E002 "E002: onboard 后网关健康检查失败。请确认计划任务/服务已拉起网关或检查 OPENCLAW_GATEWAY_HEALTH_URL"
-        }
-        Write-Warn "网关 HTTP 健康检查未在约 60s 内通过；opc-agent 仍会继续安装。可稍后重试网关或设置 OPENCLAW_GATEWAY_HEALTH_PROBE=0（仅 Agent 指标场景）"
-    }
-    else {
-        Write-Ok "OpenClaw 网关健康检查通过"
-    }
 }
 
 function Get-AgentBinary {
