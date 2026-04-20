@@ -164,7 +164,8 @@ class TestSecurity:
         assert "chmod 600" in install_sh
 
     def test_api_key_read_silent(self, install_sh):
-        assert "read -rsp" in install_sh
+        assert "read_secret_line" in install_sh
+        assert "read -rs" in install_sh
 
 
 # ── SHA256 校验 ──────────────────────────────────────────────────

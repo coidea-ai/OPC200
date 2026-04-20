@@ -42,3 +42,7 @@ def test_install_sh_openclaw_onboard_step():
     assert "if $SILENT; then" in s
     assert "use_onboard_daemon" in s
     assert "OPENCLAW_ONBOARD_FORCE_DAEMON" in s
+    assert "_assert_linux_systemd_ready_for_onboard_daemon" in s
+    assert "_assert_linux_user_systemd_session_for_openclaw" in s
+    assert "_opc200_msg_user_systemd_required" in s
+    assert "OPENCLAW_ONBOARD_SKIP_DAEMON" in s
