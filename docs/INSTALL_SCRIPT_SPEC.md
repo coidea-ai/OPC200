@@ -230,6 +230,17 @@ journal:
 - **Bootstrap**：`agent/scripts/opc200-install.ps1`（Windows）/ **`agent/scripts/opc200-install.sh`**（Linux/macOS，Release 附带）。需设置 **`OPC200_GITHUB_REPO=owner/repo`**（PowerShell：`-GitHubRepo`；bash：`--github-repo`）；版本 **`latest`** 或显式 semver（环境变量 **`OPC200_INSTALL_VERSION`**，PS：`-Version`）。
 - **本地打包**：`agent/scripts/pack-agent-release.ps1` 或 CI（`release-opc-agent.yml`，打 tag `v*`）。解压根默认：**Windows** ` %USERPROFILE%\.opc200\agent-bundle\<ver>`；**Unix** `$HOME/.opc200/agent-bundle/<ver>`（供安装后 `PYTHONPATH` 指向的源码树）。
 
+### 9.1 Linux / WSL：`install.sh` 第 6 步 OpenClaw onboard（与文档对齐）
+
+| 项 | 说明 |
+|----|------|
+| **默认行为** | `openclaw onboard --non-interactive` 带 **`--install-daemon`**（未设 `OPENCLAW_ONBOARD_SKIP_DAEMON=1` 时），将网关注册为 **用户级 systemd** 服务。 |
+| **前置条件** | **系统级** `systemd` 可用；**用户级** 会话可用（典型：`/run/user/<uid>/bus` 存在且 `systemctl --user` 对该用户可用）。WSL 需 `/etc/wsl.conf` 中 `[boot] systemd=true` 并已自 Windows 执行 `wsl --shutdown` 后重进。 |
+| **不满足时** | 第 6 步 **预检失败即退出**；若 OpenClaw 仍报用户服务不可用，脚本根据日志 **中止安装**（输出原因与处理步骤），**不**继续后续 `[STEP]`。 |
+| **处理建议** | 目标用户至少登录一次；或 `loginctl enable-linger <用户>` 后重登；避免仅 `sudo`、无 user@ 会话时安装。 |
+| **显式非默认路径** | 环境变量 **`OPENCLAW_ONBOARD_SKIP_DAEMON=1`**：onboard **不**使用 `--install-daemon`，并带 `--skip-health`；网关由第 8/8b 步等继续处理。 |
+| **Windows** | `install.ps1` 不使用 Linux systemd，不适用本条。 |
+
 ---
 
 ## 附录
