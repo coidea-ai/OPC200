@@ -89,7 +89,8 @@ powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 -Version latest
 | `OPENCLAW_SKIP_ONBOARD` | `1` 时强制跳过 onboard。 |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `CUSTOM_API_KEY` 等 | 按所选 `OPENCLAW_AUTH_CHOICE` 提供；`custom-api-key` 还需 `OPENCLAW_CUSTOM_BASE_URL`、`OPENCLAW_CUSTOM_MODEL_ID` 等。 |
 | `OPENCLAW_GATEWAY_PORT` | 网关端口，默认 `18789`。 |
-| `OPENCLAW_ONBOARD_STRICT` | `1` 时 onboard 或网关健康失败会中止整个安装。 |
+| `OPENCLAW_ONBOARD_STRICT` | `1` 时 onboard **超时或其他失败**会中止安装（**不含**「用户级 systemd 不可用」：该情况在 Linux 上 **无需** 设此变量也会中止）。 |
+| `OPENCLAW_ONBOARD_SKIP_DAEMON` | **仅 Linux**：`1` 时第 6 步 onboard **不**使用 `--install-daemon`，并带 `--skip-health`；须**显式**设置。默认要求系统级 + 用户级 systemd 就绪，否则第 6 步 **退出**（见下文 Linux 说明）。 |
 | `OPC200_TENANT_ID` | 静默时可用作租户 ID，与 `-OPC200TenantId` 二选一或互为补充。 |
 | `OPC200_API_KEY` | 静默时可用作平台密钥，与 `-OPC200ApiKey` 二选一或互为补充。 |
 
@@ -189,6 +190,7 @@ Agent 代码入口为 `agent/src/opc_agent/`（安装脚本会把仓库根目录
 
 - **解释器**：需要 **Python 3.10+**（与 `install.sh` 中环境检查一致）。Linux 可用发行版包或 [python.org](https://www.python.org/downloads/source/)；macOS 可用 `brew install python@3.12`。
 - **运行安装脚本**：Linux 需 **root 或 sudo**（systemd 写 `/etc/systemd/system/`）；macOS 使用 launchd，脚本不以 root 跑完整流程时须保证对 `~/Library/LaunchAgents` 等与安装目录的写权限。在 `agent/scripts` 下执行：`sudo ./install.sh`（Linux）或 `./install.sh`（macOS，按提示）。
+- **OpenClaw 第 6 步（Linux / WSL，默认 onboard + `--install-daemon`）**：须 **系统级 systemd**（如 WSL 在 `/etc/wsl.conf` 设 `systemd=true` 并已 `wsl --shutdown` 重进）且 **用户级 systemd 可用**（存在 `/run/user/<目标用户 uid>/bus`，`systemctl --user` 可执行）。仅用 `sudo`、目标用户无登录会话时易失败。处理：对该用户 **`loginctl enable-linger <用户>`** 后重登，或先 **SSH/桌面登录** 该用户再安装。不满足时脚本会 **打印说明并退出**；若 OpenClaw 报用户服务不可用，脚本也会 **中止安装**。**显式**不装用户级网关守护进程：先设 **`OPENCLAW_ONBOARD_SKIP_DAEMON=1`**（非默认，网关改由第 8/8b 步等处理）。
 - **不跑安装脚本、直接调试 Agent**：在仓库根执行，例如  
   `python3 -m agent.src.opc_agent.cli --config <你的 config.yml 路径> run`  
   需自行准备 `config.yml`、`.env`（或环境变量）中的平台地址、租户与 `OPC200_API_KEY`。
@@ -225,7 +227,7 @@ bash /path/to/opc200-install.sh --version latest --silent \
 | `--binary` / `--local-binary PATH` | 使用发布二进制路径（非 venv 源码模式）。 |
 | `--full-runtime-deps` | venv 使用完整依赖列表（体积大、耗时长）。 |
 
-**常用环境变量**：与 Windows 相同，`OPENCLAW_ONBOARD`、`OPENCLAW_AUTH_CHOICE`、`OPENCLAW_ONBOARD_STRICT`、`OPC200_TENANT_ID`、`OPC200_API_KEY`、`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 等，见上表 Windows 小节。
+**常用环境变量**：与 Windows 相同（含上表 **`OPENCLAW_ONBOARD_SKIP_DAEMON`**），`OPENCLAW_ONBOARD`、`OPENCLAW_AUTH_CHOICE`、`OPENCLAW_ONBOARD_STRICT`、`OPC200_TENANT_ID`、`OPC200_API_KEY`、`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 等。Linux 默认第 6 步 **不因**「用户级 systemd 未就绪」而继续安装；须先按上文修好环境，或显式 `OPENCLAW_ONBOARD_SKIP_DAEMON=1`。
 
 **示例**
 

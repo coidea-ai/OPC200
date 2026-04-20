@@ -458,18 +458,34 @@ _is_wsl() {
 }
 
 _opc200_msg_user_systemd_required() {
-    local uname="${1:-}"
-    local bus="${2:-}"
+    local uname="${1:-$(id -un)}"
     printf '%s\n' "" >&2
-    err "【第 6 步已中止】OpenClaw 需要使用「用户级 systemd」安装网关守护进程（--install-daemon），当前环境不满足。"
-    err "原因：用户 ${uname:-?} 没有可用的 user@ 会话（D-Bus：${bus:-未就绪}）。仅用 sudo、无登录会话时常见。"
-    err "请自行完成以下一项或多项后，再重新运行本安装脚本："
-    err "  1) 以该用户登录一次（本地桌面 / SSH），确保存在 /run/user/<uid>/bus；"
-    err "  2) 以 root 执行：loginctl enable-linger ${uname:-<用户名>}，然后注销该用户或 wsl --shutdown 后重进；"
-    err "  3) WSL：确认 /etc/wsl.conf 中 [boot] systemd=true，并在 Windows 执行 wsl --shutdown 后重开发行版。"
-    err "若你明确不装用户级守护进程，须先导出 OPENCLAW_ONBOARD_SKIP_DAEMON=1 再运行安装（网关改由后续步骤处理，非默认）。"
-    err "完整说明亦见 agent/README.md（Linux 环境变量）。"
+    warn "【第 6 步已中止】OpenClaw 安装网关守护进程（--install-daemon）需要用户「${uname}」的用户级系统服务，当前环境未就绪。"
+    if _is_wsl; then
+        warn "请按如下操作依次执行（复制整行命令即可）："
+        warn "  1. 若从没开过 WSL 的 systemd，在本 WSL 终端执行一次（已开过的可跳过）："
+        warn "       printf '%s\\n' '[boot]' 'systemd=true' | sudo tee /etc/wsl.conf"
+        warn "  2. 在 Windows 打开 PowerShell，执行："
+        warn "       wsl --shutdown"
+        warn "  3. 重新打开本 WSL，执行："
+        warn "       sudo loginctl enable-linger ${uname}"
+        warn "  4. 再在 Windows PowerShell 执行："
+        warn "       wsl --shutdown"
+        warn "  5. 再次打开本 WSL，重新运行本安装脚本。"
+    else
+        warn "在本机终端执行后注销或重启，再重新运行安装脚本："
+        warn "       sudo loginctl enable-linger ${uname}"
+    fi
+    warn "若不想装用户级网关服务，可先执行：export OPENCLAW_ONBOARD_SKIP_DAEMON=1"
     printf '%s\n' "" >&2
+}
+
+_opc200_abort_user_systemd_setup() {
+    local uname="${1:-$(id -un)}"
+    _opc200_msg_user_systemd_required "$uname"
+    warn "安装已退出（退出码 ${E001}）。"
+    rollback
+    exit "$E001"
 }
 
 _assert_linux_user_systemd_session_for_openclaw() {
@@ -482,18 +498,17 @@ _assert_linux_user_systemd_session_for_openclaw() {
     uid="$(id -u "$uname" 2>/dev/null)" || fail $E001 "E001: 无法解析用户 $uname"
     bus="/run/user/${uid}/bus"
     if [[ ! -S "$bus" ]]; then
-        _opc200_msg_user_systemd_required "$uname" "$bus"
-        fail $E001 "E001: 缺少用户 D-Bus 套接字，无法继续第 6 步 onboard（--install-daemon）。"
+        _opc200_abort_user_systemd_setup "$uname"
     fi
     if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
         sudo -u "$SUDO_USER" -H env \
             XDG_RUNTIME_DIR="/run/user/${uid}" \
             DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}" \
             systemctl --user is-system-running &>/dev/null \
-            || { _opc200_msg_user_systemd_required "$uname" "$bus"; fail $E001 "E001: systemctl --user 不可用，无法继续第 6 步 onboard（--install-daemon）。"; }
+            || _opc200_abort_user_systemd_setup "$uname"
     else
         systemctl --user is-system-running &>/dev/null \
-            || { _opc200_msg_user_systemd_required "$uname" "$bus"; fail $E001 "E001: systemctl --user 不可用，无法继续第 6 步 onboard（--install-daemon）。"; }
+            || _opc200_abort_user_systemd_setup "$uname"
     fi
 }
 
@@ -1032,10 +1047,9 @@ step_openclaw_onboard() {
     fi
     if [[ "$exit_code" -ne 0 ]]; then
         if $use_onboard_daemon && [[ -f "$ob_log" ]] && grep -qiE 'systemd user services are unavailable|user services are not reachable|Gateway service install is unavailable.*systemd user|skipping service install' "$ob_log"; then
-            _opc200_msg_user_systemd_required "${SUDO_USER:-$(id -un)}" "/run/user/$(id -u "${SUDO_USER:-$(id -un)}" 2>/dev/null)/bus"
-            err "openclaw 报告（退出码 ${exit_code}），完整日志: $ob_log"
-            tail -n 30 "$ob_log" >&2 || true
-            fail $E001 "E001: 第 6 步 onboard 因用户级 systemd 不可用而失败，安装中止。"
+            warn "openclaw 未装上用户级网关服务（退出码 ${exit_code}），日志：$ob_log"
+            tail -n 20 "$ob_log" >&2 || true
+            _opc200_abort_user_systemd_setup "${SUDO_USER:-$(id -un)}"
         fi
         if [[ "${OPENCLAW_ONBOARD_STRICT:-}" == "1" ]]; then
             fail $E002 "E002: openclaw onboard 失败（退出码 ${exit_code}）。请运行 openclaw doctor；完整日志: $ob_log"

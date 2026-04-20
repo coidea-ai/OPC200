@@ -1,7 +1,7 @@
 # 无仓库安装跑通指南（开发者 / 用户）
 
 > **目的**：按顺序操作，使 **GitHub Release 上的引导脚本 + 制品包** 能被真实用户一键跑通（Bootstrap → `install.ps1` / `install.sh`）。  
-> **关联**：[`../INSTALL_SCRIPT_SPEC.md`](../INSTALL_SCRIPT_SPEC.md) §9、[`../../agent/README.md`](../../agent/README.md)、[`PREINSTALLED_LOBSTER_ROADMAP.md`](PREINSTALLED_LOBSTER_ROADMAP.md) §2.9。
+> **关联**：[`../INSTALL_SCRIPT_SPEC.md`](../INSTALL_SCRIPT_SPEC.md) §9 与 **§9.1**、[`../../agent/README.md`](../../agent/README.md)、[`PREINSTALLED_LOBSTER_ROADMAP.md`](PREINSTALLED_LOBSTER_ROADMAP.md) §2.9。
 
 ---
 
@@ -60,6 +60,7 @@ git push origin v2.5.1
 
 - 准备 **租户 ID**、**平台 ApiKey**（静默安装必填）。
 - 若需 **静默执行 OpenClaw onboard**：按 `agent/README.md` 配置 **`OPENCLAW_*`** 等环境变量。
+- **Linux / WSL**：默认 onboard 使用 **`--install-daemon`**，须 **用户级 systemd** 可用（`/run/user/<uid>/bus` 等）；不满足时安装脚本在第 6 步 **退出**（见 `docs/INSTALL_SCRIPT_SPEC.md` §9.1）。**显式**跳过用户守护进程：`OPENCLAW_ONBOARD_SKIP_DAEMON=1`。
 
 ### 2.2 Windows
 
@@ -90,7 +91,7 @@ export OPC200_GITHUB_REPO="owner/repo"
   --opc200-api-key "your-platform-key"
 ```
 
-3. **Linux**：第二阶段会通过 **`sudo -E`** 调用 `install.sh`；需要本机 **`sudo`**，若依赖当前 shell 中的 `OPENCLAW_*`，**`-E`** 用于保留环境变量（详见 README）。
+3. **Linux**：第二阶段会通过 **`sudo -E`** 调用 `install.sh`；需要本机 **`sudo`**，若依赖当前 shell 中的 `OPENCLAW_*`，**`-E`** 用于保留环境变量（详见 README）。装 OpenClaw 网关用户服务前请按 README / SPEC §9.1 准备好 **user systemd**（WSL：`systemd=true`、`loginctl enable-linger` 等）。
 
 ### 2.4 建议的「跑通」判据
 
