@@ -230,6 +230,71 @@ journal:
 - **Bootstrap**：`agent/scripts/opc200-install.ps1`（Windows）/ **`agent/scripts/opc200-install.sh`**（Linux/macOS，Release 附带）。需设置 **`OPC200_GITHUB_REPO=owner/repo`**（PowerShell：`-GitHubRepo`；bash：`--github-repo`）；版本 **`latest`** 或显式 semver（环境变量 **`OPC200_INSTALL_VERSION`**，PS：`-Version`）。
 - **本地打包**：`agent/scripts/pack-agent-release.ps1` 或 CI（`release-opc-agent.yml`，打 tag `v*`）。解压根默认：**Windows** ` %USERPROFILE%\.opc200\agent-bundle\<ver>`；**Unix** `$HOME/.opc200/agent-bundle/<ver>`（供安装后 `PYTHONPATH` 指向的源码树）。
 
+### 9.0 发布与验收清单（原 USER_INSTALL_RUNBOOK 合并）
+
+#### 9.0.1 开发者发布前检查
+
+- 目标提交需包含：
+  - `agent/scripts/opc200-install.ps1`
+  - `agent/scripts/opc200-install.sh`
+  - `.github/workflows/release-opc-agent.yml`
+- 版本对齐：
+  - 根目录 `VERSION`
+  - `agent/scripts/install.ps1` 的 `AGENT_VERSION`
+  - 制品名 `opc200-agent-<semver>.zip`
+  - git tag `v<semver>`
+
+#### 9.0.2 发布命令（示例）
+
+```bash
+git tag v2.5.1
+git push origin v2.5.1
+```
+
+#### 9.0.3 Release 资产必查（四件套）
+
+- `opc200-agent-<semver>.zip`
+- `SHA256SUMS`
+- `opc200-install.ps1`
+- `opc200-install.sh`
+
+缺任一项，`latest` 或固定版本安装会失败。
+
+#### 9.0.4 用户最小跑通步骤
+
+Windows：
+
+```powershell
+$env:OPC200_GITHUB_REPO = "owner/repo"
+powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 -Version latest
+```
+
+Linux/macOS：
+
+```bash
+chmod +x opc200-install.sh
+export OPC200_GITHUB_REPO="owner/repo"
+./opc200-install.sh --version latest --silent \
+  --opc200-tenant-id "your-tenant" \
+  --opc200-api-key "your-platform-key"
+```
+
+通过标准：
+
+- Bootstrap 下载成功
+- SHA256 校验通过
+- 解压后存在 `agent/scripts/install.ps1` 或 `agent/scripts/install.sh`
+- 第二阶段安装脚本可启动
+
+#### 9.0.5 常见问题
+
+| 现象 | 常见原因 |
+|------|----------|
+| 无法下载 zip / SHA256SUMS | 未发 Release、tag 未推送、`OPC200_GITHUB_REPO` 错误 |
+| 校验失败 | 包不完整或 Release 资产与 `SHA256SUMS` 不匹配 |
+| 第二阶段立即失败 | 权限不足、依赖缺失、静默参数不完整 |
+| Linux 环境变量丢失 | 未使用 `sudo -E` 或未在调用前 `export` |
+
 ### 9.1 Linux / WSL：`install.sh` 第 6 步 OpenClaw onboard（与文档对齐）
 
 | 项 | 说明 |

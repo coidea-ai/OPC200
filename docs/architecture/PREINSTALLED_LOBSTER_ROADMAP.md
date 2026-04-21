@@ -163,6 +163,81 @@
 
 > **说明**：企业离线包、多通道（stable/beta）、签名与 SBOM 等可与 **第三期 §3.1–3.2** 衔接；本期以「HTTPS + SHA256 + 固定域名」为最低门槛。
 
+### 2.10 4.21 安装器改造落地步骤（OpenClaw 与 OPC200 分离）
+
+> **目标**：将 OpenClaw 从 `install.ps1/install.sh` 的强耦合流程中拆分为独立安装器交付，OPC200 保留原安装链路，形成“两条安装链路 + 单包分发”。
+
+#### 2.10.1 架构拆分
+
+- [x] 明确职责边界：
+  - OpenClaw Installer 只负责 OpenClaw 安装、onboard、网关配置、桌面入口。
+  - OPC200 Installer（原 `install.ps1/install.sh`）只负责 OPC200 Agent 安装与运行。
+- [x] 新增 OpenClaw 专用脚本族（Windows 主路径）：
+  - `openclaw-installer.ps1`
+  - `openclaw-uninstaller.ps1`
+  - `build-openclaw-installer-exe.ps1`
+  - `build-openclaw-uninstaller-exe.ps1`
+  - `pack-openclaw-installer-release.ps1`
+
+#### 2.10.2 OpenClaw 安装流程（Windows）
+
+- [x] 使用内置 Release 资产安装 OpenClaw（`openclaw-releases`）。
+- [x] 执行 `openclaw onboard --non-interactive --accept-risk`（含 `custom-api-key` 分支）。
+- [x] 轻预装：
+  - `openclaw config set tools.profile full`
+  - `openclaw skills install skill-vetter`
+  - 模板文档投放：`AGENTS.md` / `IDENTITY.md` / `SOUL.md`
+- [x] 网关配置：`gateway.mode=local` + `gateway.tls.enabled=false` + `gateway install/restart` + `status --require-rpc`。
+
+#### 2.10.3 硬检测与离线 Node
+
+- [x] 安装前硬检测（失败即中止）：
+  - Node 版本（>=22）
+  - 网关端口占用
+  - 安装目录可写
+  - 网络可达（`openclaw.ai:443`）
+  - OpenClaw 可执行性（安装后强校验）
+- [x] Node 离线兜底：
+  - 若未安装或 `<22`，从 `agent/scripts/node-v22.22.2` 选择本地包安装。
+  - Windows 使用 `node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip` 自动按架构选择。
+
+#### 2.10.4 桌面入口与 dashboard token
+
+- [x] 快捷方式收敛为两个：
+  - `OpenClaw Start`
+  - `OpenClaw Stop`
+- [x] `OpenClaw Start` 逻辑：
+  - 先做网关可用性检测
+  - 不可用则 `openclaw gateway start`
+  - 再执行 `openclaw dashboard`
+  - 解析输出中的 `Dashboard URL: ...#token=...`
+  - 浏览器打开带 token URL（失败回退 `http://127.0.0.1:<port>`）
+- [x] 安装完成弹框：
+  - 使用 Windows GUI `MessageBox`
+  - 用户点确认后打开带 token 的 dashboard URL
+
+#### 2.10.5 交付与发布
+
+- [x] 双 exe 构建：
+  - `OpenClawInstaller.exe`
+  - `OpenClawUninstaller.exe`
+- [x] 单包交付：
+  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-releases + openclaw-templates`
+- [x] 发布标签：
+  - `openclaw-installer-v2026.4.15`
+- [x] 资产覆盖更新：
+  - `OpenClawInstaller.zip` 随优化迭代多次 `--clobber` 覆盖
+
+#### 2.10.6 测试与验收
+
+- [x] 新增契约测试：`tests/unit/agent/test_agent010_openclaw_installer.py`
+- [x] 覆盖点：
+  - 安装器主流程
+  - 离线 Node 与硬检测关键字
+  - 打包与构建脚本存在性
+  - 快捷方式与 dashboard token URL 逻辑
+- [x] 本地验证：`pytest tests/unit/agent/test_agent010_openclaw_installer.py -q` 通过
+
 ---
 
 ## 第三期：可长期分发（规模化 / 企业化 / 长期维护）
@@ -199,6 +274,7 @@
 | 日期 | 摘要 |
 |------|------|
 | 2026-04-22 | §2.8：Linux 第 6 步用户级 systemd 预检 + onboard 日志识别后中止；`OPENCLAW_ONBOARD_SKIP_DAEMON`；文档与 `INSTALL_SCRIPT_SPEC` §9.1、`agent/README.md` 对齐 |
+| 2026-04-21 | 新增 §2.10：4.21 安装器改造落地步骤（OpenClaw 与 OPC200 分离、离线 Node、快捷方式与 dashboard token URL、双 exe + 单包发布） |
 | 2026-04-21 | §2.8：`sudo` 下 `~/.openclaw` / `OPENCLAW_STATE_HOME` / `_openclaw_run`（与 `install.sh` 一致）；§2.9.2 Bootstrap 入口勾选；与 `docs/TASK_BOARD.md` 对齐 |
 | 2026-04-17 | §2.9 Linux/macOS：`opc200-install.sh` + Release 附带；CI 上传 `opc200-install.sh` |
 | 2026-04-17 | §2.9 Windows：`opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`（tag `v*`）；制品 `opc200-agent-<ver>.zip` + `SHA256SUMS`；`INSTALL_SCRIPT_SPEC` §9 / `README` 互链 |

@@ -68,6 +68,8 @@ qdrant_storage/
 *.tar.gz
 *.zip
 !agent/scripts/openclaw-releases/*.zip
+!agent/scripts/node-v22.22.2/*.zip
+!agent/scripts/node-v22.22.2/*.gz
 
 # Documentation build
 docs/_build/
