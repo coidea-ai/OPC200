@@ -350,21 +350,53 @@
 - **预计 AI 工时**: 1h
 - **描述**: 批量替换 `from src.xxx` → 新包名
 
-#### AGENT-011: 实现 selfhealer/l1_local_fix.py
+#### AGENT-011: OpenClaw 独立安装器（4.21 改造）
+
+- **状态**: ✅ 已完成（2026-04-21）
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 8h
+- **描述**: 将 OpenClaw 与 OPC200 安装链路拆分，交付 OpenClaw 独立安装/卸载程序与单一 zip 交付包。
+- **里程碑**:
+  - [x] M1 新增 OpenClaw 独立安装器脚本（`openclaw-installer.ps1` / `openclaw-installer.sh`）
+  - [x] M2 新增 OpenClaw 卸载器脚本（`openclaw-uninstaller.ps1`）
+  - [x] M3 新增双 exe 构建脚本（`build-openclaw-installer-exe.ps1` / `build-openclaw-uninstaller-exe.ps1`）
+  - [x] M4 单包交付（`pack-openclaw-installer-release.ps1` → `OpenClawInstaller.zip`）
+  - [x] M5 网关感知启动入口（`OpenClaw Start` / `OpenClaw Stop` 快捷方式）
+  - [x] M6 Dashboard token URL 自动打开（安装成功弹框确认后打开）
+  - [x] M7 离线 Node 22.22.2 兜底（`node-v22.22.2` 本地资产）
+- **测试**:
+  - `tests/unit/agent/test_agent010_openclaw_installer.py`（5 passed）
+- **交付**:
+  - Release: `openclaw-installer-v2026.4.15`
+  - Asset: `OpenClawInstaller.zip`
+
+#### AGENT-012: OpenClaw / OPC200 双安装链路文档对齐（4.21）
+
+- **状态**: 🏃 进行中
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 2h
+- **描述**: 用户文档统一“OpenClaw 独立安装 + OPC200 安装保留”双链路表达，补全脚本入口与发布说明。
+- **里程碑**:
+  - [x] M1 `agent/README.md` 新增「改造计划4.21」
+  - [x] M2 `TASK_BOARD` 增加用户侧里程碑与计划大纲
+  - [x] M3 `PREINSTALLED_LOBSTER_ROADMAP` 补全详细步骤
+  - [ ] M4 与 `INSTALL_SCRIPT_SPEC` / `USER_INSTALL_RUNBOOK` 双向互链复核
+
+#### AGENT-013: 实现 selfhealer/l1_local_fix.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 3h
 - **描述**: L1 本地自动修复机制
 
-#### AGENT-012: 实现 updater/update_client.py
+#### AGENT-014: 实现 updater/update_client.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 4h
 - **描述**: 版本更新客户端
 
-#### AGENT-013: 创建 platform/docker-compose.yml 完整版
+#### AGENT-015: 创建 platform/docker-compose.yml 完整版
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -375,19 +407,19 @@
 
 ## 🟢 P2 - 中优先级任务（Phase 3）
 
-#### AGENT-014: 创建 shared/proto/ 通信协议
+#### AGENT-016: 创建 shared/proto/ 通信协议
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 2h
 
-#### AGENT-015: 实现 version-control 版本管理服务
+#### AGENT-017: 实现 version-control 版本管理服务
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 6h
 
-#### AGENT-016: 迁移测试文件到 tests/agent/ 和 tests/platform/
+#### AGENT-018: 迁移测试文件到 tests/agent/ 和 tests/platform/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -397,13 +429,13 @@
 
 ## ⚪ P3 - 低优先级任务（Backlog）
 
-#### AGENT-017: 删除旧目录 src/, skills/, config/
+#### AGENT-019: 删除旧目录 src/, skills/, config/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 30min
 
-#### AGENT-018: 完善 CI/CD 脚本适配新结构
+#### AGENT-020: 完善 CI/CD 脚本适配新结构
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配

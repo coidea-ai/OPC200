@@ -4,7 +4,7 @@
 
 | 文档 | 路径 |
 |------|------|
-| 无仓库安装跑通（开发者/用户） | `docs/architecture/USER_INSTALL_RUNBOOK.md` |
+| 无仓库安装发布与验收 | `docs/INSTALL_SCRIPT_SPEC.md` §9.0 |
 
 ## 仓库内关键路径
 

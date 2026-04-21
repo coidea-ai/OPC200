@@ -467,3 +467,90 @@ sudo ./uninstall.sh
 #### 可选：私有仓库或 API 限流
 
 若 Release 在**私有仓库**或访问 GitHub API 受限，可设置环境变量 **`GITHUB_TOKEN`**（有读 Release 权限的 token），再执行上述命令；Bootstrap 会把 token 用于 API 请求。
+
+## 改造计划4.21
+
+### 架构调整（OpenClaw 与 OPC200 分离）
+
+4.21 改造后，用户侧安装链路拆分为两条：
+
+1. **OpenClaw 安装链路（独立 Installer）**  
+   目标：仅负责 OpenClaw 本体安装与可用化，不再与 OPC200 强耦合。
+2. **OPC200 安装链路（原有 install.ps1/install.sh）**  
+   目标：仅负责 OPC200 Agent 安装、配置与服务注册，复用已安装的 OpenClaw 网关。
+
+对应目录（用户侧）：
+
+- OpenClaw 独立安装器相关：
+  - `agent/scripts/openclaw-installer.ps1`
+  - `agent/scripts/openclaw-uninstaller.ps1`
+  - `agent/scripts/build-openclaw-installer-exe.ps1`
+  - `agent/scripts/build-openclaw-uninstaller-exe.ps1`
+  - `agent/scripts/pack-openclaw-installer-release.ps1`
+  - `agent/scripts/openclaw-releases/`
+  - `agent/scripts/node-v22.22.2/`
+  - `agent/scripts/openclaw-templates/`
+- OPC200 安装链路（保留）：
+  - `agent/scripts/install.ps1`
+  - `agent/scripts/install.sh`
+  - `agent/scripts/opc200-install.ps1`
+  - `agent/scripts/opc200-install.sh`
+
+### OpenClaw 脚本使用方法（Windows）
+
+1) 生成 OpenClaw 安装器/卸载器 exe：
+
+```powershell
+cd agent\scripts
+powershell -ExecutionPolicy Bypass -File .\build-openclaw-installer-exe.ps1
+powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
+```
+
+2) 打包单一交付物（一个 zip）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
+```
+
+产物：
+
+- `agent/scripts/dist/OpenClawInstaller.zip`
+
+包内包含：
+
+- `OpenClawInstaller.exe`
+- `OpenClawUninstaller.exe`
+- `openclaw-releases/`
+- `openclaw-templates/`
+
+3) 用户安装行为（当前实现）：
+
+- 安装器先做硬检测：Node（<22 自动离线安装 22.22.2）、端口、目录可写、网络可达等。
+- 网关可用后执行 `openclaw dashboard`，解析带 token 的 Dashboard URL。
+- 点击安装成功弹框后打开带 token URL。
+- 创建桌面快捷方式：
+  - `OpenClaw Start`（网关检测/启动 + dashboard token URL 打开）
+  - `OpenClaw Stop`（停止网关）
+
+### OPC200 脚本使用方法（保留）
+
+OpenClaw 安装与 OPC200 安装已解耦。用户完成 OpenClaw Installer 后，再按原流程安装 OPC200：
+
+- Windows：
+
+```powershell
+cd agent\scripts
+.\install.ps1
+```
+
+- Linux/macOS：
+
+```bash
+cd agent/scripts
+./install.sh
+```
+
+无仓库场景继续使用：
+
+- `opc200-install.ps1`
+- `opc200-install.sh`

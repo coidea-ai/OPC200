@@ -1,11 +1,11 @@
 ---
 name: opc200-release-deliverables
-description: Guides OPC200 developers through publishing GitHub Release deliverables (version alignment, v* tag, release-opc-agent CI, four-asset verification) per docs/architecture/USER_INSTALL_RUNBOOK.md. Use when shipping a new agent bundle, cutting a release, verifying opc200-agent zip and bootstrap scripts, or when the user mentions Release assets, tag push, or USER_INSTALL_RUNBOOK.
+description: Guides OPC200 developers through publishing GitHub Release deliverables (version alignment, v* tag, release-opc-agent CI, four-asset verification) per docs/INSTALL_SCRIPT_SPEC.md §9.0. Use when shipping a new agent bundle, cutting a release, verifying opc200-agent zip and bootstrap scripts, or when the user mentions Release assets or tag push.
 ---
 
 # OPC200 Release 交付物发布
 
-权威说明见仓库 **`docs/architecture/USER_INSTALL_RUNBOOK.md`** §1；本 skill 将 §1 固化为可重复执行的检查清单与命令。
+权威说明见仓库 **`docs/INSTALL_SCRIPT_SPEC.md`** §9.0；本 skill 将该发布清单固化为可重复执行命令。
 
 ## 何时使用
 
@@ -98,7 +98,7 @@ curl -sS "https://api.github.com/repos/<owner>/<repo>/releases/tags/vX.Y.Z" | he
 - API：`releases/latest` 中 `tag_name` 与 assets 含 `opc200-agent-*.zip`。  
 - 本机：下载 zip + `SHA256SUMS`，`sha256sum -c`（或等价）通过后解压，确认存在 **`agent/scripts/install.ps1`** 与 **`install.sh`**。  
 
-详见 **`docs/architecture/USER_INSTALL_RUNBOOK.md`** §1.4。
+详见 **`docs/INSTALL_SCRIPT_SPEC.md`** §9.0.4。
 
 ## 给 Agent 的执行提示
 
@@ -109,5 +109,5 @@ curl -sS "https://api.github.com/repos/<owner>/<repo>/releases/tags/vX.Y.Z" | he
 ## 延伸阅读
 
 - [reference.md](reference.md) — 路径速查与 `gh`/`curl` 片段  
-- `docs/architecture/USER_INSTALL_RUNBOOK.md` — 开发者 §1 + 用户 §2  
+- `docs/INSTALL_SCRIPT_SPEC.md` §9.0 — 发布与验收清单  
 - `docs/INSTALL_SCRIPT_SPEC.md` §9 — Bootstrap 与制品约定  
