@@ -1,4 +1,7 @@
-name: Release OPC200 agent bundle
+# 方案 2：单一 v* Release。当前仅发布 OpenClaw 安装器（OpenClawInstaller.zip）。
+# OPC200 安装器/制品包流水线待重构后再启用下方 `release` job。
+
+name: Release v* artifacts
 
 on:
   push:
@@ -9,31 +12,32 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve version
-        id: ver
-        run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build bundle
-        run: bash agent/scripts/build-agent-bundle.sh "${{ steps.ver.outputs.ver }}" bundle-out
-
-      - name: Zip and SHA256SUMS
-        run: |
-          (cd bundle-out && zip -r "../opc200-agent-${{ steps.ver.outputs.ver }}.zip" agent)
-          sha256sum "opc200-agent-${{ steps.ver.outputs.ver }}.zip" > SHA256SUMS
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            opc200-agent-${{ steps.ver.outputs.ver }}.zip
-            SHA256SUMS
-            agent/scripts/opc200-install.ps1
-            agent/scripts/opc200-install.sh
+  # --- OPC200 Agent 制品（opc200-agent zip / SHA256SUMS / bootstrap）— 重构前暂停 ---
+  # release:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Resolve version
+  #       id: ver
+  #       run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+  #
+  #     - name: Build bundle
+  #       run: bash agent/scripts/build-agent-bundle.sh "${{ steps.ver.outputs.ver }}" bundle-out
+  #
+  #     - name: Zip and SHA256SUMS
+  #       run: |
+  #         (cd bundle-out && zip -r "../opc200-agent-${{ steps.ver.outputs.ver }}.zip" agent)
+  #         sha256sum "opc200-agent-${{ steps.ver.outputs.ver }}.zip" > SHA256SUMS
+  #
+  #     - name: Upload release assets
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: |
+  #           opc200-agent-${{ steps.ver.outputs.ver }}.zip
+  #           SHA256SUMS
+  #           agent/scripts/opc200-install.ps1
+  #           agent/scripts/opc200-install.sh
 
   openclaw-installer-zip:
     runs-on: windows-latest
