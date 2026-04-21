@@ -16,6 +16,7 @@ $script:NodeOfflineDir = Join-Path $script:ScriptDir "node-v22.22.2"
 $script:DefaultZip = Join-Path $script:ReleaseDir ("OpenClaw-" + $script:ReleaseVersion + ".zip")
 $script:DefaultSkills = "skill-vetter"
 $script:RequiredNodeMajor = 22
+$script:DashboardUrl = ""
 
 function Write-Step([string]$m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m) { Write-Host "  [OK] $m" -ForegroundColor Green }
@@ -234,18 +235,54 @@ function Configure-Gateway {
     Write-Ok "OpenClaw 安装完成: http://127.0.0.1:$GatewayPort"
 }
 
+function Get-DashboardUrlFromCli {
+    param([string]$FallbackUrl)
+    $cmd = Get-OpenClawCmd
+    if (-not $cmd) { return $FallbackUrl }
+    $outFile = Join-Path $env:TEMP ("openclaw-dashboard-" + [Guid]::NewGuid().ToString("N") + ".log")
+    $errFile = $outFile + ".err"
+    try {
+        $p = Start-Process -FilePath $cmd -ArgumentList @("dashboard") -RedirectStandardOutput $outFile -RedirectStandardError $errFile -PassThru
+        $deadline = [DateTime]::UtcNow.AddSeconds(12)
+        $url = $null
+        while ([DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 400
+            if (Test-Path -LiteralPath $outFile) {
+                $txt = Get-Content -LiteralPath $outFile -Raw -ErrorAction SilentlyContinue
+                if ($txt) {
+                    $m = [regex]::Match($txt, 'Dashboard URL:\s*(https?://\S+)')
+                    if ($m.Success) {
+                        $url = $m.Groups[1].Value.Trim()
+                        break
+                    }
+                }
+            }
+            if ($p.HasExited) { break }
+        }
+        if (-not $p.HasExited) {
+            try { $p.Kill() } catch {}
+        }
+        if ($url) { return $url }
+    } catch {}
+    finally {
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+    return $FallbackUrl
+}
+
 function Write-ShortcutScripts {
     $scriptRoot = Join-Path $env:LOCALAPPDATA "OpenClawInstaller"
     if (-not (Test-Path -LiteralPath $scriptRoot)) {
         New-Item -ItemType Directory -Path $scriptRoot -Force | Out-Null
     }
-    $launchScript = Join-Path $scriptRoot "openclaw-launch.ps1"
     $startScript = Join-Path $scriptRoot "openclaw-gateway-start.ps1"
     $stopScript = Join-Path $scriptRoot "openclaw-gateway-stop.ps1"
 
-    $launchContent = @"
+    $startContent = @"
 `$ErrorActionPreference = 'SilentlyContinue'
 `$port = $GatewayPort
+`$fallback = "http://127.0.0.1:`$port"
 `$health = "http://127.0.0.1:`$port/health"
 `$ok = `$false
 try {
@@ -256,12 +293,31 @@ if (-not `$ok) {
   & openclaw gateway start
   Start-Sleep -Seconds 2
 }
-Start-Process "http://127.0.0.1:`$port"
-"@
-    [System.IO.File]::WriteAllText($launchScript, $launchContent, [System.Text.UTF8Encoding]::new($false))
-
-    $startContent = @"
-& openclaw gateway start
+`$tmpOut = [System.IO.Path]::GetTempFileName()
+`$tmpErr = [System.IO.Path]::GetTempFileName()
+`$url = `$fallback
+try {
+  `$p = Start-Process -FilePath "openclaw" -ArgumentList @("dashboard") -RedirectStandardOutput `$tmpOut -RedirectStandardError `$tmpErr -PassThru
+  `$deadline = [DateTime]::UtcNow.AddSeconds(12)
+  while ([DateTime]::UtcNow -lt `$deadline) {
+    Start-Sleep -Milliseconds 400
+    if (Test-Path -LiteralPath `$tmpOut) {
+      `$txt = Get-Content -LiteralPath `$tmpOut -Raw -ErrorAction SilentlyContinue
+      if (`$txt) {
+        `$m = [regex]::Match(`$txt, 'Dashboard URL:\s*(https?://\S+)')
+        if (`$m.Success) {
+          `$url = `$m.Groups[1].Value.Trim()
+          break
+        }
+      }
+    }
+    if (`$p.HasExited) { break }
+  }
+  if (-not `$p.HasExited) { try { `$p.Kill() } catch {} }
+} catch {}
+Remove-Item -LiteralPath `$tmpOut -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath `$tmpErr -Force -ErrorAction SilentlyContinue
+Start-Process `$url
 "@
     [System.IO.File]::WriteAllText($startScript, $startContent, [System.Text.UTF8Encoding]::new($false))
 
@@ -271,7 +327,6 @@ Start-Process "http://127.0.0.1:`$port"
     [System.IO.File]::WriteAllText($stopScript, $stopContent, [System.Text.UTF8Encoding]::new($false))
 
     return @{
-        Launch = $launchScript
         Start  = $startScript
         Stop   = $stopScript
     }
@@ -299,10 +354,18 @@ function Create-DesktopShortcuts {
     $psExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
     if (-not $psExe) { $psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe" }
 
-    New-DesktopShortcut -Name "OpenClaw" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Launch)`""
     New-DesktopShortcut -Name "OpenClaw Start" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Start)`""
     New-DesktopShortcut -Name "OpenClaw Stop" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Stop)`""
-    Write-Ok "桌面快捷方式已创建（OpenClaw / OpenClaw Start / OpenClaw Stop）"
+    Write-Ok "桌面快捷方式已创建（OpenClaw Start / OpenClaw Stop）"
+}
+
+function Show-InstallSuccessDialog {
+    Add-Type -AssemblyName System.Windows.Forms
+    $url = $script:DashboardUrl
+    if (-not $url) { $url = "http://127.0.0.1:$GatewayPort" }
+    $msg = "OpenClaw 安装成功。`r`n`r`n访问地址：$url`r`n已创建桌面快捷方式：OpenClaw Start / OpenClaw Stop`r`n`r`n点击“确定”后将自动打开浏览器。"
+    [void][System.Windows.Forms.MessageBox]::Show($msg, "OpenClaw Installer", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    Start-Process $url
 }
 
 Run-HardChecks
@@ -310,4 +373,6 @@ Install-OpenClawFromBundledZip
 Run-Onboard
 Write-TemplatesAndSkills
 Configure-Gateway
+$script:DashboardUrl = Get-DashboardUrlFromCli -FallbackUrl ("http://127.0.0.1:" + $GatewayPort)
 Create-DesktopShortcuts
+Show-InstallSuccessDialog

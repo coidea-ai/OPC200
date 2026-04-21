@@ -40,11 +40,18 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "openclaw.ai" in s
     assert "Get-NetTCPConnection" in s
     assert "Create-DesktopShortcuts" in s
-    assert "openclaw-launch.ps1" in s
+    assert "Show-InstallSuccessDialog" in s
+    assert "System.Windows.Forms.MessageBox" in s
+    assert "Start-Process $url" in s
+    assert "Get-DashboardUrlFromCli" in s
+    assert "Dashboard URL:" in s
+    assert "openclaw dashboard" in s or 'ArgumentList @("dashboard")' in s
     assert "openclaw-gateway-start.ps1" in s
     assert "openclaw-gateway-stop.ps1" in s
     assert "Invoke-WebRequest -Uri" in s
     assert "& openclaw gateway start" in s
+    assert 'New-DesktopShortcut -Name "OpenClaw Start"' in s
+    assert 'New-DesktopShortcut -Name "OpenClaw Stop"' in s
     assert "Install-OpenClawFromBundledZip" in s
     assert "Run-Onboard" in s
     assert "Write-TemplatesAndSkills" in s
