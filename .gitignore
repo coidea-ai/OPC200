@@ -67,6 +67,7 @@ qdrant_storage/
 # Build artifacts
 *.tar.gz
 *.zip
+!agent/scripts/openclaw-releases/*.zip
 
 # Documentation build
 docs/_build/
