@@ -47,6 +47,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+
+      - name: Populate openclaw npm cache (offline install)
+        shell: pwsh
+        run: |
+          $cache = "agent/scripts/openclaw-npm-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          npm install -g openclaw@2026.4.15 --cache $cache
+
       - name: Download Node 22.22.2 offline bundles
         shell: pwsh
         run: |
