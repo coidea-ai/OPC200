@@ -181,7 +181,7 @@
 
 #### 2.10.2 OpenClaw 安装流程（Windows）
 
-- [x] 使用内置 Release 资产安装 OpenClaw（`openclaw-releases`）。
+- [x] 使用 **npm 离线缓存** 安装 OpenClaw（`openclaw-npm-cache` + `npm install -g openclaw@2026.4.15 --offline`）；不再使用 macOS 用 `openclaw-releases` zip 解压进 PATH。
 - [x] 执行 `openclaw onboard --non-interactive --accept-risk`（含 `custom-api-key` 分支）。
 - [x] 轻预装：
   - `openclaw config set tools.profile full`
@@ -222,7 +222,7 @@
   - `OpenClawInstaller.exe`
   - `OpenClawUninstaller.exe`
 - [x] 单包交付：
-  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-releases + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
+  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
 - [x] 发布标签：
   - `openclaw-installer-v2026.4.15`
 - [x] 资产覆盖更新：
