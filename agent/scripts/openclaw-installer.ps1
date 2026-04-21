@@ -234,8 +234,80 @@ function Configure-Gateway {
     Write-Ok "OpenClaw 安装完成: http://127.0.0.1:$GatewayPort"
 }
 
+function Write-ShortcutScripts {
+    $scriptRoot = Join-Path $env:LOCALAPPDATA "OpenClawInstaller"
+    if (-not (Test-Path -LiteralPath $scriptRoot)) {
+        New-Item -ItemType Directory -Path $scriptRoot -Force | Out-Null
+    }
+    $launchScript = Join-Path $scriptRoot "openclaw-launch.ps1"
+    $startScript = Join-Path $scriptRoot "openclaw-gateway-start.ps1"
+    $stopScript = Join-Path $scriptRoot "openclaw-gateway-stop.ps1"
+
+    $launchContent = @"
+`$ErrorActionPreference = 'SilentlyContinue'
+`$port = $GatewayPort
+`$health = "http://127.0.0.1:`$port/health"
+`$ok = `$false
+try {
+  `$r = Invoke-WebRequest -Uri `$health -UseBasicParsing -TimeoutSec 2
+  if (`$r.StatusCode -ge 200 -and `$r.StatusCode -lt 300) { `$ok = `$true }
+} catch {}
+if (-not `$ok) {
+  & openclaw gateway start
+  Start-Sleep -Seconds 2
+}
+Start-Process "http://127.0.0.1:`$port"
+"@
+    [System.IO.File]::WriteAllText($launchScript, $launchContent, [System.Text.UTF8Encoding]::new($false))
+
+    $startContent = @"
+& openclaw gateway start
+"@
+    [System.IO.File]::WriteAllText($startScript, $startContent, [System.Text.UTF8Encoding]::new($false))
+
+    $stopContent = @"
+& openclaw gateway stop
+"@
+    [System.IO.File]::WriteAllText($stopScript, $stopContent, [System.Text.UTF8Encoding]::new($false))
+
+    return @{
+        Launch = $launchScript
+        Start  = $startScript
+        Stop   = $stopScript
+    }
+}
+
+function New-DesktopShortcut {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$Arguments
+    )
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $lnk = Join-Path $desktop ($Name + ".lnk")
+    $ws = New-Object -ComObject WScript.Shell
+    $sc = $ws.CreateShortcut($lnk)
+    $sc.TargetPath = $TargetPath
+    $sc.Arguments = $Arguments
+    $sc.WorkingDirectory = Split-Path -Parent $TargetPath
+    $sc.Save()
+}
+
+function Create-DesktopShortcuts {
+    Write-Step "5/5 创建桌面快捷方式"
+    $scripts = Write-ShortcutScripts
+    $psExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
+    if (-not $psExe) { $psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe" }
+
+    New-DesktopShortcut -Name "OpenClaw" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Launch)`""
+    New-DesktopShortcut -Name "OpenClaw Start" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Start)`""
+    New-DesktopShortcut -Name "OpenClaw Stop" -TargetPath $psExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$($scripts.Stop)`""
+    Write-Ok "桌面快捷方式已创建（OpenClaw / OpenClaw Start / OpenClaw Stop）"
+}
+
 Run-HardChecks
 Install-OpenClawFromBundledZip
 Run-Onboard
 Write-TemplatesAndSkills
 Configure-Gateway
+Create-DesktopShortcuts

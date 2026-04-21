@@ -39,6 +39,12 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "node-v22.22.2-win-x86.zip" in s
     assert "openclaw.ai" in s
     assert "Get-NetTCPConnection" in s
+    assert "Create-DesktopShortcuts" in s
+    assert "openclaw-launch.ps1" in s
+    assert "openclaw-gateway-start.ps1" in s
+    assert "openclaw-gateway-stop.ps1" in s
+    assert "Invoke-WebRequest -Uri" in s
+    assert "& openclaw gateway start" in s
     assert "Install-OpenClawFromBundledZip" in s
     assert "Run-Onboard" in s
     assert "Write-TemplatesAndSkills" in s
