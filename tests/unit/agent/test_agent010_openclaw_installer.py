@@ -93,3 +93,6 @@ def test_openclaw_release_pack_script_present():
     assert "OpenClawUninstaller.exe" in s
     assert "openclaw-releases" in s
     assert "openclaw-templates" in s
+    assert "node-v22.22.2" in s
+    assert "node-v22.22.2-win-x64.zip" in s
+    assert "node-v22.22.2-win-x86.zip" in s

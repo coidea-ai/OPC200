@@ -522,6 +522,7 @@ powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
 - `OpenClawUninstaller.exe`
 - `openclaw-releases/`
 - `openclaw-templates/`
+- `node-v22.22.2/`（`node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip`，离线安装 Node 用）
 
 3) 用户安装行为（当前实现）：
 

@@ -34,3 +34,35 @@ jobs:
             SHA256SUMS
             agent/scripts/opc200-install.ps1
             agent/scripts/opc200-install.sh
+
+  openclaw-installer-zip:
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Node 22.22.2 offline bundles
+        shell: pwsh
+        run: |
+          $d = "agent/scripts/node-v22.22.2"
+          New-Item -ItemType Directory -Force -Path $d | Out-Null
+          $base = "https://nodejs.org/dist/v22.22.2"
+          foreach ($name in @("node-v22.22.2-win-x64.zip", "node-v22.22.2-win-x86.zip")) {
+            $out = Join-Path $d $name
+            Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
+          }
+
+      - name: Build OpenClawInstaller.zip
+        shell: pwsh
+        run: |
+          Set-Location agent/scripts
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-installer-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
+
+      - name: Upload OpenClawInstaller.zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: agent/scripts/dist/OpenClawInstaller.zip
