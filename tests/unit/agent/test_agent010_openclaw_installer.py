@@ -31,6 +31,14 @@ def _pack_ps1() -> str:
 
 def test_openclaw_installer_ps1_has_expected_steps():
     s = _ps1()
+    assert "Run-HardChecks" in s
+    assert "Get-NodeMajorVersion" in s
+    assert "Install-NodeFromOfflineBundle" in s
+    assert "node-v22.22.2" in s
+    assert "node-v22.22.2-win-x64.zip" in s
+    assert "node-v22.22.2-win-x86.zip" in s
+    assert "openclaw.ai" in s
+    assert "Get-NetTCPConnection" in s
     assert "Install-OpenClawFromBundledZip" in s
     assert "Run-Onboard" in s
     assert "Write-TemplatesAndSkills" in s
