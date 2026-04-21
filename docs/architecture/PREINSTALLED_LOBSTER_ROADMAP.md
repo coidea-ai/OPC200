@@ -222,7 +222,7 @@
   - `OpenClawInstaller.exe`
   - `OpenClawUninstaller.exe`
 - [x] 单包交付：
-  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-releases + openclaw-templates`
+  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-releases + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
 - [x] 发布标签：
   - `openclaw-installer-v2026.4.15`
 - [x] 资产覆盖更新：
