@@ -8,7 +8,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:ScriptDir = $null
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $script:ScriptDir = $PSScriptRoot
+} elseif (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+    $script:ScriptDir = Split-Path -Parent $PSCommandPath
+} elseif ($MyInvocation -and $MyInvocation.MyCommand -and ($MyInvocation.MyCommand.PSObject.Properties.Name -contains "Path")) {
+    $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+} else {
+    $script:ScriptDir = (Get-Location).Path
+}
 $script:TemplatesDir = Join-Path $script:ScriptDir "openclaw-templates"
 $script:NodeOfflineDir = Join-Path $script:ScriptDir "node-v22.22.2"
 $script:NpmCacheDir = Join-Path $script:ScriptDir "openclaw-npm-cache"
