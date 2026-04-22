@@ -1,4 +1,4 @@
-# 方案 2：单一 v* Release。当前仅发布 OpenClaw 安装器（OpenClawInstaller.zip）。
+# 方案 2：单一 v* Release。当前仅发布 OpenClaw 安装器（OpenClawInstaller-win-YYYY.M.D.zip）。
 # OPC200 安装器/制品包流水线待重构后再启用下方 `release` job。
 
 name: Release v* artifacts
@@ -69,7 +69,7 @@ jobs:
             Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
           }
 
-      - name: Build OpenClawInstaller.zip
+      - name: Build OpenClawInstaller-win-YYYY.M.D.zip
         shell: pwsh
         run: |
           Set-Location agent/scripts
@@ -77,7 +77,7 @@ jobs:
           powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
           powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
 
-      - name: Upload OpenClawInstaller.zip to release
+      - name: Upload OpenClawInstaller-win-YYYY.M.D.zip to release
         uses: softprops/action-gh-release@v2
         with:
-          files: agent/scripts/dist/OpenClawInstaller.zip
+          files: agent/scripts/dist/OpenClawInstaller-win-*.zip
