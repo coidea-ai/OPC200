@@ -7,8 +7,36 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-try { $global:PSNativeCommandUseErrorActionPreference = $false } catch {}
-try { $PSNativeCommandUseErrorActionPreference = $false } catch {}
+function Set-NativeCommandStderrNoThrow {
+    try { $global:PSNativeCommandUseErrorActionPreference = $false } catch {}
+    try { $PSNativeCommandUseErrorActionPreference = $false } catch {}
+}
+
+Set-NativeCommandStderrNoThrow
+
+function Invoke-Native {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @()
+    )
+    Set-NativeCommandStderrNoThrow
+    & $FilePath @ArgumentList 2>$null
+    if ($null -eq $LASTEXITCODE) { return 0 }
+    return [int]$LASTEXITCODE
+}
+
+function Invoke-NativeText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @()
+    )
+    Set-NativeCommandStderrNoThrow
+    $out = & $FilePath @ArgumentList 2>$null
+    $code = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+    return [pscustomobject]@{ ExitCode = $code; Output = $out }
+}
 
 $script:ScriptDir = $null
 if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
@@ -44,11 +72,9 @@ function Get-OpenClawCmd {
 function Get-NodeVersionLine {
     $node = Get-Command node -ErrorAction SilentlyContinue
     if (-not $node) { return "" }
-    try {
-        return (& $node.Source -v 2>$null).Trim()
-    } catch {
-        return ""
-    }
+    $nv = Invoke-NativeText -FilePath $node.Source -ArgumentList @("-v")
+    if ($nv.ExitCode -ne 0) { return "" }
+    return ("$($nv.Output)").Trim()
 }
 
 function Test-NodeMatchesPinned {
@@ -127,7 +153,7 @@ function Try-ReleaseLocalPort {
 
     $oc = Get-OpenClawCmd
     if ($oc) {
-        try { & $oc gateway stop 2>&1 | Out-Null } catch {}
+        try { [void](Invoke-Native -FilePath $oc.Source -ArgumentList @("gateway", "stop")) } catch {}
     }
     foreach ($t in @(Get-ScheduledTask -TaskName "OpenClaw Gateway" -ErrorAction SilentlyContinue)) {
         try { Stop-ScheduledTask -InputObject $t -ErrorAction SilentlyContinue } catch {}
@@ -213,15 +239,14 @@ function Run-HardChecks {
     $ocExe = Get-OpenClawCmd
     if ($ocExe) {
         $ov = ""
-        try {
-            $raw = @(& $ocExe.Source --version 2>&1 | ForEach-Object { "$_" })
-            foreach ($line in $raw) {
-                if (-not [string]::IsNullOrWhiteSpace($line)) {
-                    $ov = $line.Trim()
-                    break
-                }
+        $verOut = Invoke-NativeText -FilePath $ocExe.Source -ArgumentList @("--version")
+        $vtext = if ($null -eq $verOut.Output) { "" } elseif ($verOut.Output -is [string]) { $verOut.Output } else { ($verOut.Output | ForEach-Object { "$_" }) -join [Environment]::NewLine }
+        foreach ($line in ($vtext -split "\r?\n")) {
+            if (-not [string]::IsNullOrWhiteSpace($line)) {
+                $ov = $line.Trim()
+                break
             }
-        } catch {}
+        }
         if ([string]::IsNullOrWhiteSpace($ov)) { $ov = "（未能读取版本）" }
         Write-Ok "OpenClaw 版本: $ov"
         $script:SkipInstallOpenClawFromNpm = $true
@@ -247,8 +272,10 @@ function Install-OpenClawFromOfflineNpm {
     $env:npm_config_registry = "https://registry.npmjs.org/"
     $env:npm_config_loglevel = "error"
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
-    & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $npmExit = Invoke-Native -FilePath $npmCmd.Source -ArgumentList @(
+        "install", "-g", $spec, "--offline", "--prefer-offline", "--no-audit", "--no-fund"
+    )
+    if ($npmExit -ne 0) {
         Fail "npm install -g $spec 失败（离线）。请确认 cache 与当前 Windows/Node 22.22.2 匹配。"
     }
     $npmGlobalBin = Join-Path $env:APPDATA "npm"
@@ -422,8 +449,7 @@ function Write-TemplatesAndSkills {
     Write-Step "4/6 轻预装（tools/skills/docs）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
-    & $cmd config set tools.profile full 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "tools.profile 设置失败" }
+    if ((Invoke-Native -FilePath $cmd.Source -ArgumentList @("config", "set", "tools.profile", "full")) -ne 0) { Write-Warn "tools.profile 设置失败" }
     # 旧逻辑封存：在线安装 skills（openclaw skills install）
     # & $cmd skills install $script:DefaultSkills
     # if ($LASTEXITCODE -ne 0) { Write-Warn "skills 安装失败: $($script:DefaultSkills)" }
@@ -453,8 +479,8 @@ function Write-TemplatesAndSkills {
 
 function Test-GatewayRpcOk {
     param([Parameter(Mandatory)][string]$OpenClawExe)
-    $null = & $OpenClawExe gateway status --json --require-rpc 2>&1
-    return ($LASTEXITCODE -eq 0)
+    $code = Invoke-Native -FilePath $OpenClawExe -ArgumentList @("gateway", "status", "--json", "--require-rpc")
+    return ($code -eq 0)
 }
 
 function Wait-GatewayRpcReady {
@@ -476,32 +502,30 @@ function Configure-Gateway {
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
 
-    try { $null = & $cmd gateway stop 2>&1 } catch {}
+    try { [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "stop")) } catch {}
     Start-Sleep -Seconds 4
 
-    & $cmd config set gateway.mode local 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "gateway.mode 设置返回非 0" }
-    & $cmd config set gateway.tls.enabled false 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "gateway.tls.enabled 设置返回非 0" }
+    if ((Invoke-Native -FilePath $cmd.Source -ArgumentList @("config", "set", "gateway.mode", "local")) -ne 0) { Write-Warn "gateway.mode 设置返回非 0" }
+    if ((Invoke-Native -FilePath $cmd.Source -ArgumentList @("config", "set", "gateway.tls.enabled", "false")) -ne 0) { Write-Warn "gateway.tls.enabled 设置返回非 0" }
 
-    & $cmd gateway install --force --port $GatewayPort 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $gwi = Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
+    if ($gwi -ne 0) {
         Write-Warn "gateway install --force 失败，尝试无 --force"
-        & $cmd gateway install --port $GatewayPort 2>$null
+        [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "install", "--port", "$GatewayPort"))
     }
 
-    & $cmd gateway restart 2>$null
+    [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "restart"))
     Start-Sleep -Seconds 5
 
-    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd)) {
+    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd.Source)) {
         Write-Warn "网关 RPC 仍未就绪，执行 doctor 后停止再装并重启"
-        & $cmd doctor --non-interactive 2>$null
-        try { $null = & $cmd gateway stop 2>&1 } catch {}
+        [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("doctor", "--non-interactive"))
+        try { [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "stop")) } catch {}
         Start-Sleep -Seconds 4
-        & $cmd gateway install --force --port $GatewayPort 2>$null
-        & $cmd gateway restart 2>$null
+        [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort"))
+        [void](Invoke-Native -FilePath $cmd.Source -ArgumentList @("gateway", "restart"))
         Start-Sleep -Seconds 5
-        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -MaxAttempts 12 -IntervalSec 5)) {
+        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd.Source -MaxAttempts 12 -IntervalSec 5)) {
             Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；openclaw gateway restart；再执行 openclaw gateway status --deep。"
         }
     }
@@ -520,8 +544,10 @@ function Get-DashboardUrlFromCli {
             param([string]$OpenClawExe, [string]$WorkDir)
             Set-Location -LiteralPath $WorkDir
             $ErrorActionPreference = "Continue"
-            & $OpenClawExe @("dashboard") 2>&1 | Out-String
-        } -ArgumentList @($cmd, $workDir)
+            try { $global:PSNativeCommandUseErrorActionPreference = $false } catch {}
+            try { $PSNativeCommandUseErrorActionPreference = $false } catch {}
+            & $OpenClawExe @("dashboard") 2>$null | Out-String
+        } -ArgumentList @($cmd.Source, $workDir)
 
         $null = Wait-Job -Job $job -Timeout 50
         if ($job.State -ne "Completed") {
@@ -608,7 +634,9 @@ for (`$ti = 1; `$ti -le 2; `$ti++) {
     param([string]`$OpenClawExe, [string]`$WorkDir)
     Set-Location -LiteralPath `$WorkDir
     `$ErrorActionPreference = 'Continue'
-    & `$OpenClawExe @('dashboard') 2>&1 | Out-String
+    try { `$global:PSNativeCommandUseErrorActionPreference = `$false } catch {}
+    try { `$PSNativeCommandUseErrorActionPreference = `$false } catch {}
+    & `$OpenClawExe @('dashboard') 2>`$null | Out-String
   } -ArgumentList @(`$ocBin, `$scriptDir)
   `$null = Wait-Job -Job `$job -Timeout 50
   if (`$job.State -ne 'Completed') { Stop-Job -Job `$job -ErrorAction SilentlyContinue }
@@ -636,8 +664,9 @@ try {
 
     $stopContent = @"
 `$ErrorActionPreference = 'SilentlyContinue'
+try { `$global:PSNativeCommandUseErrorActionPreference = `$false } catch {}
 `$ocBin = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$ocB64'))
-& `$ocBin gateway stop
+& `$ocBin gateway stop 2>`$null
 "@
     [System.IO.File]::WriteAllText($stopScript, $stopContent, [System.Text.UTF8Encoding]::new($true))
 

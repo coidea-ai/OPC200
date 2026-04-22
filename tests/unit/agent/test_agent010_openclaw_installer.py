@@ -29,6 +29,10 @@ def _pack_ps1() -> str:
     return (SCRIPTS_DIR / "pack-openclaw-installer-release.ps1").read_text(encoding="utf-8")
 
 
+def _pack_mac_sh() -> str:
+    return (SCRIPTS_DIR / "pack-openclaw-installer-mac-release.sh").read_text(encoding="utf-8")
+
+
 def test_openclaw_installer_ps1_has_expected_steps():
     s = _ps1()
     assert "Run-HardChecks" in s
@@ -96,12 +100,32 @@ def test_openclaw_installer_ps1_has_expected_steps():
 
 def test_openclaw_installer_sh_has_expected_steps():
     s = _sh()
-    assert "install_openclaw_macos" in s
+    assert "run_hard_checks" in s
+    assert "install_openclaw_from_offline_npm" in s
     assert "run_onboard" in s
     assert "preinstall_assets" in s
     assert "configure_gateway" in s
-    assert "openclaw onboard --non-interactive --accept-risk" in s
-    assert 'DMG_PATH="${RELEASE_DIR}/OpenClaw-2026.4.15.dmg"' in s
+    assert "finish_install" in s
+    assert 'step "1/6 环境检测（硬检测）"' in s
+    assert 'step "6/6 打开 Dashboard"' in s
+    assert "openclaw-npm-cache" in s
+    assert "npm install -g" in s and "--offline" in s
+    assert 'OPENCLAW_NPM_VERSION="${OPENCLAW_NPM_VERSION:-2026.4.15}"' in s
+    assert "pick_node_tarball" in s
+    assert "darwin-arm64" in s
+    assert "darwin-x64" in s
+    assert "openclaw.ai" in s
+    assert "lsof" in s and "LISTEN" in s
+    assert "gateway stop" in s
+    assert "run_onboard_with_timeout" in s
+    assert "--skip-health" in s
+    assert "--skip-skills" in s
+    assert "wait_gateway_rpc_ready" in s
+    assert "gateway install --force --port" in s
+    assert "get_dashboard_url_from_cli" in s
+    assert "open_dashboard_url_in_browser" in s
+    assert "OPENCLAW_SECRET_INPUT_MODE" in s
+    assert "--custom-compatibility" in s
 
 
 def test_openclaw_installer_exe_build_script_present():
@@ -132,7 +156,7 @@ def test_openclaw_uninstaller_scripts_present():
 
 def test_openclaw_release_pack_script_present():
     s = _pack_ps1()
-    assert "OpenClawInstaller.zip" in s
+    assert "OpenClawInstaller-win-" in s
     assert "OpenClawInstaller.exe" in s
     assert "OpenClawUninstaller.exe" in s
     assert "openclaw-npm-cache" in s
@@ -140,3 +164,13 @@ def test_openclaw_release_pack_script_present():
     assert "node-v22.22.2" in s
     assert "node-v22.22.2-win-x64.zip" in s
     assert "node-v22.22.2-win-x86.zip" in s
+
+
+def test_openclaw_mac_release_pack_script_present():
+    s = _pack_mac_sh()
+    assert "OpenClawInstaller-mac" in s
+    assert "openclaw-installer.sh" in s
+    assert "openclaw-npm-cache" in s
+    assert "openclaw-templates" in s
+    assert "node-v22.22.2-darwin-arm64.tar.gz" in s
+    assert "node-v22.22.2-darwin-x64.tar.gz" in s
