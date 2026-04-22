@@ -89,7 +89,8 @@ powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 -Version latest
 | `OPENCLAW_SKIP_ONBOARD` | `1` 时强制跳过 onboard。 |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `CUSTOM_API_KEY` 等 | 按所选 `OPENCLAW_AUTH_CHOICE` 提供；`custom-api-key` 还需 `OPENCLAW_CUSTOM_BASE_URL`、`OPENCLAW_CUSTOM_MODEL_ID` 等。 |
 | `OPENCLAW_GATEWAY_PORT` | 网关端口，默认 `18789`。 |
-| `OPENCLAW_ONBOARD_STRICT` | `1` 时 onboard 或网关健康失败会中止整个安装。 |
+| `OPENCLAW_ONBOARD_STRICT` | `1` 时 onboard **超时或其他失败**会中止安装（**不含**「用户级 systemd 不可用」：该情况在 Linux 上 **无需** 设此变量也会中止）。 |
+| `OPENCLAW_ONBOARD_SKIP_DAEMON` | **仅 Linux**：`1` 时第 6 步 onboard **不**使用 `--install-daemon`，并带 `--skip-health`；须**显式**设置。默认要求系统级 + 用户级 systemd 就绪，否则第 6 步 **退出**（见下文 Linux 说明）。 |
 | `OPC200_TENANT_ID` | 静默时可用作租户 ID，与 `-OPC200TenantId` 二选一或互为补充。 |
 | `OPC200_API_KEY` | 静默时可用作平台密钥，与 `-OPC200ApiKey` 二选一或互为补充。 |
 
@@ -189,6 +190,7 @@ Agent 代码入口为 `agent/src/opc_agent/`（安装脚本会把仓库根目录
 
 - **解释器**：需要 **Python 3.10+**（与 `install.sh` 中环境检查一致）。Linux 可用发行版包或 [python.org](https://www.python.org/downloads/source/)；macOS 可用 `brew install python@3.12`。
 - **运行安装脚本**：Linux 需 **root 或 sudo**（systemd 写 `/etc/systemd/system/`）；macOS 使用 launchd，脚本不以 root 跑完整流程时须保证对 `~/Library/LaunchAgents` 等与安装目录的写权限。在 `agent/scripts` 下执行：`sudo ./install.sh`（Linux）或 `./install.sh`（macOS，按提示）。
+- **OpenClaw 第 6 步（Linux / WSL，默认 onboard + `--install-daemon`）**：须 **系统级 systemd**（如 WSL 在 `/etc/wsl.conf` 设 `systemd=true` 并已 `wsl --shutdown` 重进）且 **用户级 systemd 可用**（存在 `/run/user/<目标用户 uid>/bus`，`systemctl --user` 可执行）。仅用 `sudo`、目标用户无登录会话时易失败。处理：对该用户 **`loginctl enable-linger <用户>`** 后重登，或先 **SSH/桌面登录** 该用户再安装。不满足时脚本会 **打印说明并退出**；若 OpenClaw 报用户服务不可用，脚本也会 **中止安装**。**显式**不装用户级网关守护进程：先设 **`OPENCLAW_ONBOARD_SKIP_DAEMON=1`**（非默认，网关改由第 8/8b 步等处理）。
 - **不跑安装脚本、直接调试 Agent**：在仓库根执行，例如  
   `python3 -m agent.src.opc_agent.cli --config <你的 config.yml 路径> run`  
   需自行准备 `config.yml`、`.env`（或环境变量）中的平台地址、租户与 `OPC200_API_KEY`。
@@ -225,7 +227,7 @@ bash /path/to/opc200-install.sh --version latest --silent \
 | `--binary` / `--local-binary PATH` | 使用发布二进制路径（非 venv 源码模式）。 |
 | `--full-runtime-deps` | venv 使用完整依赖列表（体积大、耗时长）。 |
 
-**常用环境变量**：与 Windows 相同，`OPENCLAW_ONBOARD`、`OPENCLAW_AUTH_CHOICE`、`OPENCLAW_ONBOARD_STRICT`、`OPC200_TENANT_ID`、`OPC200_API_KEY`、`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 等，见上表 Windows 小节。
+**常用环境变量**：与 Windows 相同（含上表 **`OPENCLAW_ONBOARD_SKIP_DAEMON`**），`OPENCLAW_ONBOARD`、`OPENCLAW_AUTH_CHOICE`、`OPENCLAW_ONBOARD_STRICT`、`OPC200_TENANT_ID`、`OPC200_API_KEY`、`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 等。Linux 默认第 6 步 **不因**「用户级 systemd 未就绪」而继续安装；须先按上文修好环境，或显式 `OPENCLAW_ONBOARD_SKIP_DAEMON=1`。
 
 **示例**
 
@@ -311,10 +313,10 @@ Invoke-WebRequest -Uri "https://github.com/coidea-ai/OPC200/releases/latest/down
 **Linux / macOS**
 
 ```bash
-# 创建文件夹 /data/opc200
+# 创建文件夹 ~/data/opc200
 mkdir -p ~/data/opc200
 
-# 从 GitHub 下载安装脚本，保存到 /data/opc200 目录
+# 从 GitHub 下载安装脚本，保存到 ~/data/opc200 目录
 curl -fsSL -o ~/data/opc200/opc200-install.sh "https://github.com/coidea-ai/OPC200/releases/latest/download/opc200-install.sh"
 
 # 给脚本添加 “可执行权限”
@@ -373,7 +375,7 @@ chmod +x ~/data/opc200/opc200-install.sh
 
 1. 在终端中操作（**Linux**：引导脚本可在非 root 下执行，检测到需写 systemd 时会对第二阶段 `install.sh` 自动 `sudo -E` 以继承当前 shell 中的 `OPENCLAW_*` 等变量；**macOS**：一般直接执行 `bash`，无需对引导脚本本身 `sudo`）。
 
-2. **交互式引导安装**（与 Windows「下载到同一文件夹 + `ExtractParent`」一致：下面以 `/data/opc200` 为例，请与第一步下载目录一致）
+2. **交互式引导安装**（与 Windows「下载到同一文件夹 + `ExtractParent`」一致：下面以 `~/data/opc200` 为例，请与第一步下载目录一致）
 
    ```bash
    cd ~/data/opc200
@@ -389,7 +391,7 @@ chmod +x ~/data/opc200/opc200-install.sh
    `custom-api-key` 时，**兼容 OpenAI 的 base URL、模型 ID、推理用 API Key** 须通过环境变量 **`OPENCLAW_CUSTOM_BASE_URL`**、**`OPENCLAW_CUSTOM_MODEL_ID`**、**`CUSTOM_API_KEY`** 提供（与 Windows / 上方 `install.sh` 说明一致）。请替换占位符，**勿将密钥写入版本库**。
 
    ```bash
-   cd /data/opc200
+   cd ~/data/opc200
    
    export OPENCLAW_AUTH_CHOICE=custom-api-key
    export OPENCLAW_CUSTOM_BASE_URL="https://your-llm.example/v1"
@@ -401,7 +403,7 @@ chmod +x ~/data/opc200/opc200-install.sh
    bash ./opc200-install.sh \
      --github-repo "coidea-ai/OPC200" \
      --version latest \
-     --extract-parent "/data/opc200" \
+     --extract-parent "~/data/opc200" \
      --silent \
      --openclaw-onboard \
      --opc200-platform-url "https://platform.opc200.co" \
@@ -434,10 +436,10 @@ cd D:\OPC200\agent\scripts
 
 #### Linux / macOS
 
-解压目录与第一步一致（示例 **`/data/opc200`**）时，进入其中的 `agent/scripts` 再执行卸载（与 Windows `D:\OPC200\agent\scripts` 对应）：
+解压目录与第一步一致（示例 **`~/data/opc200`**）时，进入其中的 `agent/scripts` 再执行卸载（与 Windows `D:\OPC200\agent\scripts` 对应）：
 
 ```bash
-cd /data/opc200/agent/scripts
+cd ~/data/opc200/agent/scripts
 
 # Linux（须 root / sudo 写 systemd 与清理目录）
 sudo ./uninstall.sh
@@ -446,7 +448,7 @@ sudo ./uninstall.sh
 # ./uninstall.sh
 ```
 
-若安装时使用了非默认路径，将 `/data/opc200` 换成你的 **`-ExtractParent` / `--extract-parent`** 目录。
+若安装时使用了非默认路径，将 `~/data/opc200` 换成你的 **`-ExtractParent` / `--extract-parent`** 目录。
 
 ### FAQ
 
@@ -465,3 +467,147 @@ sudo ./uninstall.sh
 #### 可选：私有仓库或 API 限流
 
 若 Release 在**私有仓库**或访问 GitHub API 受限，可设置环境变量 **`GITHUB_TOKEN`**（有读 Release 权限的 token），再执行上述命令；Bootstrap 会把 token 用于 API 请求。
+
+## 改造计划4.21
+
+### 架构调整（OpenClaw 与 OPC200 分离）
+
+4.21 改造后，用户侧安装链路拆分为两条：
+
+1. **OpenClaw 安装链路（独立 Installer）**  
+   目标：仅负责 OpenClaw 本体安装与可用化，不再与 OPC200 强耦合。
+2. **OPC200 安装链路（原有 install.ps1/install.sh）**  
+   目标：仅负责 OPC200 Agent 安装、配置与服务注册，复用已安装的 OpenClaw 网关。
+
+对应目录（用户侧）：
+
+- OpenClaw 独立安装器相关：
+  - `agent/scripts/openclaw-installer.ps1`  
+    Windows 安装主流程（环境检测、离线 Node 22.22.2、`openclaw-npm-cache` 离线装 `openclaw@2026.4.15`、onboard、轻预装、网关、桌面快捷方式与完成提示）。
+  - `agent/scripts/openclaw-uninstaller.ps1`  
+    卸载 OpenClaw（尝试停 gateway、执行官方 `openclaw uninstall` 等）。
+  - `agent/scripts/build-openclaw-installer-exe.ps1`  
+    用 ps2exe 将 `openclaw-installer.ps1` 打成 `dist/OpenClawInstaller.exe`。
+  - `agent/scripts/build-openclaw-uninstaller-exe.ps1`  
+    用 ps2exe 将 `openclaw-uninstaller.ps1` 打成 `dist/OpenClawUninstaller.exe`。
+  - `agent/scripts/pack-openclaw-installer-release.ps1`  
+    将 exe、`openclaw-npm-cache`、`openclaw-templates`、`node-v22.22.2` 等打成 `dist/OpenClawInstaller.zip`。
+  - `agent/scripts/fetch-openclaw-npm-cache.ps1`  
+    联网执行，灌满 `openclaw-npm-cache`（供打包与离线 `npm install -g`）。
+  - `agent/scripts/openclaw-npm-cache/`  
+    npm 离线缓存目录（**不提交**；本地由上一脚本生成，Release 由 CI 生成）。
+  - `agent/scripts/node-v22.22.2/`  
+    内置 Node 22.22.2 Windows zip（x64/x86），安装器在无/非 22.22.2 Node 时离线解压使用。
+  - `agent/scripts/openclaw-templates/`  
+    安装时拷贝到用户 OpenClaw 配置目录的模板（如 `AGENTS.md` 等）。
+- OPC200 安装链路（保留）：
+  - `agent/scripts/install.ps1`
+  - `agent/scripts/install.sh`
+  - `agent/scripts/opc200-install.ps1`
+  - `agent/scripts/opc200-install.sh`
+
+### 离线安装的实现原理
+
+**版本**：当前产品固定 **OpenClaw 2026.4.15 稳定版**（npm：`openclaw@2026.4.15`）；**Node 固定 22.22.2（LTS）**，与 `node-v22.22.2` 离线包一致。
+
+**背景**：OpenClaw 官方目前没有提供可以离线安装的 Windows 应用包。在 GitHub Release 中的 `OpenClaw-<版本>.zip` / `.dmg` 主要为 **macOS**（含 `OpenClaw.app`），**不是** Windows 下解压即用的 CLI。Windows 侧官方推荐 **`npm install -g openclaw@2026.4.15`**（需联网）或官方 `install.ps1`。要在 **完全离线** 环境部署 CLI，采用 **npm 缓存 + 离线全局安装**，而不是把 Mac 的 zip 解压进 PATH。
+
+**推荐方案（两台电脑可以不同，但须同平台）**
+
+1. **在有网的 Windows 上**（Node **22.22.2** 与目标机一致；架构一致，如均为 x64）：
+   - 使用独立目录作为 npm cache，例如：  
+     `npm install -g openclaw@2026.4.15 --cache <绝对路径>\npm-cache-openclaw`  
+   - 将 **`npm-cache-openclaw` 整目录**作为离线资源打包（zip 等），随安装器或内网分发。
+
+2. **在离线 Windows 上**：
+   - 解压 cache 到本地路径，执行：  
+     `npm config set cache <解压后的 cache 路径>`  
+     `npm install -g openclaw@2026.4.15 --offline --prefer-offline`  
+   - 安装完成后应能使用 `openclaw` 命令（并确保全局 `bin` 在 PATH 中）。
+
+**平台约束**：联网机与离线机须 **同一操作系统、同一 CPU 架构**（如均为 Windows x64）；**Node 须均为 22.22.2**。跨系统（如 Win / Linux）或跨架构共用同一 cache 不可靠。
+
+**如何生成 `openclaw-npm-cache`（本地实践）**
+
+- **何时需要**：在本机调试 **`openclaw-installer.ps1`**，或在**不经过** GitHub Actions 的情况下执行 **`pack-openclaw-installer-release.ps1`** 时，必须先有非空的 **`agent/scripts/openclaw-npm-cache/`**。若仅通过 **打 `v*` tag、走 `release-opc-agent.yml`** 出 Release，流水线里会联网灌 cache，**一般不必**在本地先跑。
+- **环境**：Windows；本机已安装 **Node 22.22.2**（与安装器、离线 Node 包一致）；能访问 **npm registry**。
+- **命令**（联网执行一次即可）：
+
+```powershell
+cd agent\scripts
+powershell -ExecutionPolicy Bypass -File .\fetch-openclaw-npm-cache.ps1
+```
+
+- **结果**：在 **`agent/scripts/`** 下生成 **`openclaw-npm-cache/`**（目录已被 `.gitignore` 忽略，勿提交）。内部为 npm 缓存内容；完成后可运行安装器验证，或继续 **`build-openclaw-installer-exe.ps1` / `build-openclaw-uninstaller-exe.ps1`** 与 **`pack-openclaw-installer-release.ps1`**。等价的手动命令是：`npm install -g openclaw@2026.4.15 --cache <仓库>\agent\scripts\openclaw-npm-cache`。
+
+**与「整目录拷贝全局 prefix」的区别**：本方案搬运的是 **npm 下载的包缓存**，在离线机由 npm **再执行一次** `install -g`，行为与线上一致；若改为直接 zip 全局安装目录「移花接木」，需自行保证路径与 Node 版本完全一致，维护成本更高。
+
+安装器已实现：`openclaw-installer.ps1` 使用同目录下 **`openclaw-npm-cache`** 执行 `npm install -g openclaw@2026.4.15 --offline --prefer-offline`；构建流水线见 **`release-opc-agent.yml`**。
+
+分阶段说明见 **`docs/plans/openclaw-windows-offline-install.md`**。
+
+### OpenClaw 脚本使用方法（Windows）
+
+1) 生成 OpenClaw 安装器/卸载器 exe：
+
+```powershell
+cd agent\scripts
+powershell -ExecutionPolicy Bypass -File .\build-openclaw-installer-exe.ps1
+powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
+```
+
+2) 联网灌 npm 离线缓存（**打包前必做**，或依赖 CI）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\fetch-openclaw-npm-cache.ps1
+```
+
+3) 打包单一交付物（一个 zip）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
+```
+
+产物：
+
+- `agent/scripts/dist/OpenClawInstaller.zip`
+
+包内包含：
+
+- `OpenClawInstaller.exe`
+- `OpenClawUninstaller.exe`
+- `openclaw-npm-cache/`（`npm install -g openclaw@2026.4.15` 所需离线缓存）
+- `openclaw-templates/`
+- `node-v22.22.2/`（`node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip`，离线安装 Node 22.22.2 用）
+
+4) 用户安装行为（当前实现）：
+
+- 安装器先做硬检测：Node 须为 **22.22.2 LTS**（否则用离线包对齐）、端口、目录可写；**网络不可达时仅警告**，不阻断离线装 OpenClaw。
+- 网关可用后执行 `openclaw dashboard`，解析带 token 的 Dashboard URL。
+- 点击安装成功弹框后打开带 token URL。
+- 创建桌面快捷方式：
+  - `OpenClaw Start`（网关检测/启动 + dashboard token URL 打开）
+  - `OpenClaw Stop`（停止网关）
+
+### OPC200 脚本使用方法（保留）
+
+OpenClaw 安装与 OPC200 安装已解耦。用户完成 OpenClaw Installer 后，再按原流程安装 OPC200：
+
+- Windows：
+
+```powershell
+cd agent\scripts
+.\install.ps1
+```
+
+- Linux/macOS：
+
+```bash
+cd agent/scripts
+./install.sh
+```
+
+无仓库场景继续使用：
+
+- `opc200-install.ps1`
+- `opc200-install.sh`

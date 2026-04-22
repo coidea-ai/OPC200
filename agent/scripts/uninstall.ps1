@@ -166,6 +166,23 @@ function Stop-OpenClawGatewayBeforeUninstall {
     Write-Ok "已尝试释放端口 $gwPort"
 }
 
+function Get-OpenClawConfigDirs {
+    $dirs = New-Object System.Collections.Generic.List[string]
+    if ($env:OPENCLAW_STATE_HOME) {
+        $p = Join-Path $env:OPENCLAW_STATE_HOME ".openclaw"
+        if (-not $dirs.Contains($p)) { $dirs.Add($p) }
+    }
+    if ($HOME) {
+        $p = Join-Path $HOME ".openclaw"
+        if (-not $dirs.Contains($p)) { $dirs.Add($p) }
+    }
+    if ($env:USERPROFILE) {
+        $p = Join-Path $env:USERPROFILE ".openclaw"
+        if (-not $dirs.Contains($p)) { $dirs.Add($p) }
+    }
+    return $dirs
+}
+
 try {
     Write-Host ""
     Write-Host "OPC200 Agent Uninstaller" -ForegroundColor Cyan
@@ -239,23 +256,70 @@ try {
     if (-not $script:KeepOpenClawChoice) {
         Write-Step "3/$($script:TotalSteps) 卸载 OpenClaw（先停 gateway，再执行官方卸载）"
         Sync-SessionPathFromRegistry
-        Write-Ok "进度 1/3：检查 openclaw 命令"
+        Write-Ok "进度 1/6：检查 openclaw 命令"
         $oc = Get-Command openclaw -ErrorAction SilentlyContinue
         if (-not $oc) {
-            Write-Warn "未找到 openclaw 命令（PATH），无法自动停止 gateway 或执行官方卸载；若仍需移除，请手动删除用户目录下 .openclaw 并清理 npm 全局包"
+            Write-Warn "未找到 openclaw 命令（PATH），跳过 gateway 停止与官方卸载"
         }
         else {
             $exe = $oc.Source
             try {
-                Write-Ok "进度 2/3：若 gateway 在运行则先停止并释放端口"
+                Write-Ok "进度 2/6：若 gateway 在运行则先停止并释放端口"
                 Stop-OpenClawGatewayBeforeUninstall -ExePath $exe
-                Write-Ok "进度 3/3：openclaw uninstall --all --yes --non-interactive"
+                Write-Ok "进度 3/6：openclaw uninstall --all --yes --non-interactive"
                 & $exe @("uninstall", "--all", "--yes", "--non-interactive")
-                Write-Ok "OpenClaw 官方卸载命令已执行（CLI 全局包可能仍需自行 npm/pnpm 移除）"
+                Write-Ok "OpenClaw 官方卸载命令已执行"
             }
             catch {
                 Write-Warn "OpenClaw 卸载过程异常（OPC200 目录已按上文处理）: $_"
             }
+        }
+        Write-Ok "进度 4/6：sudo npm -g uninstall openclaw || true（Windows 等价命令）"
+        $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+        if ($npmCmd) {
+            try {
+                & $npmCmd.Source @("-g", "uninstall", "openclaw")
+            }
+            catch {
+                Write-Warn "npm 全局卸载失败（已忽略）: $_"
+            }
+        }
+        else {
+            Write-Warn "未找到 npm 命令，跳过 npm 全局卸载"
+        }
+        Write-Ok "进度 5/6：复查 openclaw 命令是否仍可用"
+        $ocAll = @(Get-Command openclaw -All -ErrorAction SilentlyContinue)
+        if ($ocAll.Count -gt 0) {
+            Write-Warn "检测到仍存在 openclaw 命令："
+            foreach ($item in $ocAll) {
+                Write-Host ("  - " + $item.Source) -ForegroundColor Yellow
+            }
+            Write-Warn "可继续执行以下命令清理残留："
+            Write-Host "  npm -g uninstall openclaw" -ForegroundColor Yellow
+            Write-Host "  if (Get-Command nvm -ErrorAction SilentlyContinue) { nvm list | Out-Null }" -ForegroundColor Yellow
+            Write-Host "  # WSL/Linux 可再执行：for v in ~/.nvm/versions/node/*; do [ -x \"`$v/bin/npm\" ] && \"`$v/bin/npm\" -g uninstall openclaw || true; done" -ForegroundColor Yellow
+            Write-Host "  Get-Command openclaw -All" -ForegroundColor Yellow
+        }
+        else {
+            Write-Ok "未检测到残留 openclaw 命令"
+        }
+        Write-Ok "进度 6/6：删除 OpenClaw 配置目录（若存在）"
+        $openclawDirs = @(Get-OpenClawConfigDirs)
+        $removedAny = $false
+        foreach ($openclawDir in $openclawDirs) {
+            if (Test-Path -LiteralPath $openclawDir) {
+                try {
+                    Remove-Item -LiteralPath $openclawDir -Recurse -Force
+                    Write-Ok "已删除 $openclawDir"
+                    $removedAny = $true
+                }
+                catch {
+                    Write-Warn "删除 $openclawDir 失败，请手动处理: $_"
+                }
+            }
+        }
+        if (-not $removedAny) {
+            Write-Ok ("未发现配置目录，已检查: " + ($openclawDirs -join ", "))
         }
     }
 

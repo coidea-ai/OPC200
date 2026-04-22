@@ -313,6 +313,7 @@
   - [x] M3 exporter 打通 openclaw health：`agent_health` 默认探测 `http://127.0.0.1:18789/health` + 本进程存活；详见 `docs/METRICS_PROTOCOL.md`（端到端联调见 Roadmap §2.7 末项）
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
 - **补充**（2026-04-21）：Linux `install.sh` 在 `sudo` 下将 OpenClaw 状态目录对齐 **`SUDO_USER` 的 `~/.openclaw`**，支持 **`OPENCLAW_STATE_HOME`**；`gateway`/`onboard`/8b 补启统一 `HOME`，避免 **`Missing HOME`** 与 `/root` 错位（见 Roadmap §2.8）。
+- **补充**（2026-04-22）：Linux 第 6 步 **用户级 systemd** 预检与 onboard 日志识别后 **中止**；**`OPENCLAW_ONBOARD_SKIP_DAEMON`**；`INSTALL_SCRIPT_SPEC` §9.1 与 `agent/README.md` 对齐（见 Roadmap §2.8）。
 
 #### AGENT-008: OpenClaw 开箱即用配置自动化（免手动 setup）
 
@@ -324,7 +325,7 @@
   - [x] M1 明确最小可用配置集（`OPENCLAW_AUTH_CHOICE` + 网关端口 + custom 端点变量；与官方 onboard 文档对齐）
   - [x] M2 安装阶段交互采集 + 静默参数输入（Windows `install.ps1` + Linux `install.sh`）
   - [x] M3 非引导式配置落地（`openclaw onboard --non-interactive`；写配置文件 fallback 列为后续，见 Roadmap §2.8）
-  - [x] M4 安装后网关 HTTP 健康检查 + `OPENCLAW_ONBOARD_STRICT` 严格失败中止
+  - [x] M4 网关可用性：**Linux** 不在 onboard 段轮询 HTTP（由第 8/8b 步负责）；用户级 systemd 不满足时第 6 步 **退出**；`OPENCLAW_ONBOARD_STRICT` 用于 onboard **超时/其他失败** 的严格中止（**Windows** `install.ps1` 曾含 onboard 后 HTTP 探测，可与 Linux 行为分别看待，以脚本为准）
 - **详细计划文档**: `docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`
 
 #### AGENT-009: 无仓库一键安装（Bootstrap + 版本化制品包）
@@ -349,21 +350,53 @@
 - **预计 AI 工时**: 1h
 - **描述**: 批量替换 `from src.xxx` → 新包名
 
-#### AGENT-011: 实现 selfhealer/l1_local_fix.py
+#### AGENT-011: OpenClaw 独立安装器（4.21 改造）
+
+- **状态**: ✅ 已完成（2026-04-21）
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 8h
+- **描述**: 将 OpenClaw 与 OPC200 安装链路拆分，交付 OpenClaw 独立安装/卸载程序与单一 zip 交付包。
+- **里程碑**:
+  - [x] M1 新增 OpenClaw 独立安装器脚本（`openclaw-installer.ps1` / `openclaw-installer.sh`）
+  - [x] M2 新增 OpenClaw 卸载器脚本（`openclaw-uninstaller.ps1`）
+  - [x] M3 新增双 exe 构建脚本（`build-openclaw-installer-exe.ps1` / `build-openclaw-uninstaller-exe.ps1`）
+  - [x] M4 单包交付（`pack-openclaw-installer-release.ps1` → `OpenClawInstaller-win-YYYY.M.D.zip`）
+  - [x] M5 网关感知启动入口（`OpenClaw Start` / `OpenClaw Stop` 快捷方式）
+  - [x] M6 Dashboard token URL 自动打开（安装成功弹框确认后打开）
+  - [x] M7 离线 Node 22.22.2 兜底（`node-v22.22.2` 本地资产）
+- **测试**:
+  - `tests/unit/agent/test_agent010_openclaw_installer.py`（5 passed）
+- **交付**:
+  - Release: `openclaw-installer-v2026.4.15`
+  - Asset: `OpenClawInstaller-win-YYYY.M.D.zip`
+
+#### AGENT-012: OpenClaw / OPC200 双安装链路文档对齐（4.21）
+
+- **状态**: 🏃 进行中
+- **负责人**: @zhang-yao-claw
+- **预计 AI 工时**: 2h
+- **描述**: 用户文档统一“OpenClaw 独立安装 + OPC200 安装保留”双链路表达，补全脚本入口与发布说明。
+- **里程碑**:
+  - [x] M1 `agent/README.md` 新增「改造计划4.21」
+  - [x] M2 `TASK_BOARD` 增加用户侧里程碑与计划大纲
+  - [x] M3 `PREINSTALLED_LOBSTER_ROADMAP` 补全详细步骤
+  - [ ] M4 与 `INSTALL_SCRIPT_SPEC` / `USER_INSTALL_RUNBOOK` 双向互链复核
+
+#### AGENT-013: 实现 selfhealer/l1_local_fix.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 3h
 - **描述**: L1 本地自动修复机制
 
-#### AGENT-012: 实现 updater/update_client.py
+#### AGENT-014: 实现 updater/update_client.py
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 4h
 - **描述**: 版本更新客户端
 
-#### AGENT-013: 创建 platform/docker-compose.yml 完整版
+#### AGENT-015: 创建 platform/docker-compose.yml 完整版
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -374,19 +407,19 @@
 
 ## 🟢 P2 - 中优先级任务（Phase 3）
 
-#### AGENT-014: 创建 shared/proto/ 通信协议
+#### AGENT-016: 创建 shared/proto/ 通信协议
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 2h
 
-#### AGENT-015: 实现 version-control 版本管理服务
+#### AGENT-017: 实现 version-control 版本管理服务
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 6h
 
-#### AGENT-016: 迁移测试文件到 tests/agent/ 和 tests/platform/
+#### AGENT-018: 迁移测试文件到 tests/agent/ 和 tests/platform/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -396,13 +429,13 @@
 
 ## ⚪ P3 - 低优先级任务（Backlog）
 
-#### AGENT-017: 删除旧目录 src/, skills/, config/
+#### AGENT-019: 删除旧目录 src/, skills/, config/
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
 - **预计 AI 工时**: 30min
 
-#### AGENT-018: 完善 CI/CD 脚本适配新结构
+#### AGENT-020: 完善 CI/CD 脚本适配新结构
 
 - **状态**: 📥 待领取
 - **负责人**: 未分配
@@ -799,6 +832,11 @@
 - **调整**: 原 Phase 2 任务顺延（AGENT-010~018 仍 📥 待领取）
 - **更新**: 任务统计表增加 Phase 1.5 列
 
+### 2026-04-22
+
+- **安装器对齐**: OpenClaw 独立安装器轻预装改为离线 skills 方案：不再执行在线 `openclaw skills install`，改用 `openclaw-skills/skills.zip` 解压到 `.openclaw/skills`（覆盖同名）。
+- **发布链路对齐**: `pack-openclaw-installer-release.ps1` 已纳入 `openclaw-skills/skills.zip` 打包，确保离线安装资源随 `OpenClawInstaller-win-YYYY.M.D.zip` 一并交付。
+
 ### 2026-04-21
 
 - **对齐**: `PLAT-001`、`PLAT-002` 与 [Phase 1 归档](archive/phase-1-mvp.md) 一致，标记为 ✅ 已完成。
@@ -819,8 +857,8 @@
 - **推进**（Windows 安装脚本阶段性收束）：`install.ps1` **放开 `Main` 全注释**，默认跑满第一～三部分；轻预装增加 **`openclaw config set tools.profile full`**；网关段 **RPC 优先**（`--require-rpc`）避免重复 `gateway install`；`uninstall.ps1` 已对齐 **`-KeepOpenClaw`** 与卸载顺序。`agent/README.md`、`docs/architecture/PREINSTALLED_LOBSTER_ROADMAP.md`、相关单测已同步。
 - **重构**: `install.ps1`（AGENT-007/002 对齐）：安装开头不再采集平台三件套；OpenClaw 顺序为官方安装 → PATH 同步 → onboard → 轻预装 → 网关配置（现以 RPC 探测为先，非固定 `doctor` 首跑）；OPC200 Agent 前再采平台与租户，平台 ApiKey 复用 OpenClaw 模型密钥或 `-OPC200ApiKey` / `OPC200_API_KEY`；移除 `-LocalBinary`/`-UseBinary` 与 Release exe 下载，仅 venv+pip；`agent/README.md` + `test_agent002_install.py` 同步
 - **完成**: AGENT-008 OpenClaw 开箱即用配置自动化
-  - `agent/scripts/install.ps1`：可选 `-OpenClawOnboard` / `-SkipOpenClawOnboard` / `-OpenClawAuthChoice`；`OPENCLAW_ONBOARD=1` 时执行 `openclaw onboard --non-interactive`；交互 `SecureString`；健康探测与 `OPENCLAW_ONBOARD_STRICT`
-  - `agent/scripts/install.sh`：`--openclaw-onboard` / `--skip-openclaw-onboard`；子 shell 注入密钥避免污染父环境；GNU `timeout` 包裹 onboard
+  - `agent/scripts/install.ps1`：可选 `-OpenClawOnboard` / `-SkipOpenClawOnboard` / `-OpenClawAuthChoice`；`OPENCLAW_ONBOARD=1` 时执行 `openclaw onboard --non-interactive`；交互 `SecureString`；`OPENCLAW_ONBOARD_STRICT`（onboard 超时/失败等；网关 HTTP 由后续网关段负责，与 Linux `install.sh` 对齐）
+  - `agent/scripts/install.sh`：`--openclaw-onboard` / `--skip-openclaw-onboard`；子 shell 注入密钥；GNU `timeout` 包裹 onboard；**用户级 systemd** 预检、`OPENCLAW_ONBOARD_SKIP_DAEMON`、onboard 失败日志识别后中止（见 `INSTALL_SCRIPT_SPEC` §9.1）
   - 单测：`agent/src/tests/test_agent008_openclaw_onboard_install.py`；Roadmap §2.8 已勾选
 
 ### 2026-04-15
@@ -943,7 +981,7 @@
 
 - **AGENT-007/008 补充**（2026-04-21）：Linux `install.sh` — `sudo` 下 OpenClaw 状态目录对齐 `~/.openclaw`（`SUDO_USER`）、`OPENCLAW_STATE_HOME`、统一 `HOME` 执行 CLI（与 Roadmap §2.8 一致）
 - **docs**: `agent/README.md` 用户使用（Linux/macOS 引导安装与卸载说明对齐 Windows）（2026-04-20）
-- **AGENT-008**: OpenClaw 可选非交互 onboard + 网关健康验证（2026-04-16）
+- **AGENT-008**: OpenClaw 非交互 onboard；Linux 用户级 systemd / `SKIP_DAEMON` / 第 8–9 步网关与 **AGENT-008** 文档持续对齐（2026-04-16 起，2026-04-22 SPEC/README 统一）
 - **AGENT-007**: OpenClaw 官方安装 + 轻预装 + `agent_health` 网关探测打通（2026-04-15）
 - **AGENT-003**: v2 重写 Mac/Linux 安装脚本（2026-04-12）
 - **AGENT-002**: v2 重写 Windows 安装脚本（2026-04-12）

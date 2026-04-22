@@ -117,6 +117,22 @@ get_openclaw_gateway_port() {
     printf '%s' "$gw"
 }
 
+get_openclaw_state_home() {
+    if [[ -n "${OPENCLAW_STATE_HOME:-}" ]]; then
+        printf '%s' "${OPENCLAW_STATE_HOME}"
+        return
+    fi
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local h
+        h="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+        if [[ -n "$h" ]]; then
+            printf '%s' "$h"
+            return
+        fi
+    fi
+    printf '%s' "${HOME:-}"
+}
+
 port_is_listening() {
     local p="$1"
     if command -v ss &>/dev/null; then
@@ -233,16 +249,40 @@ fi
 
 if ! $SHOULD_KEEP_OPENCLAW; then
     info "3/${TOTAL_STEPS} 卸载 OpenClaw（先停 gateway，再执行官方卸载）"
-    ok "进度 1/3：检查 openclaw 命令"
+    ok "进度 1/6：检查 openclaw 命令"
     if ! command -v openclaw &>/dev/null; then
-        warn "未找到 openclaw 命令（PATH），无法自动停止 gateway 或执行官方卸载；若仍需移除，请手动删除 ~/.openclaw 并清理 npm 全局包"
+        warn "未找到 openclaw 命令（PATH），跳过 gateway 停止与官方卸载"
     else
         oc_exe="$(command -v openclaw)"
-        ok "进度 2/3：若 gateway 在运行则先停止并释放端口"
+        ok "进度 2/6：若 gateway 在运行则先停止并释放端口"
         stop_openclaw_gateway_before_uninstall
-        ok "进度 3/3：openclaw uninstall --all --yes --non-interactive"
+        ok "进度 3/6：openclaw uninstall --all --yes --non-interactive"
         openclaw uninstall --all --yes --non-interactive || warn "OpenClaw 卸载命令失败（已忽略，OPC200 已清理）"
-        ok "OpenClaw 官方卸载命令已执行（CLI 全局包需自行 npm/pnpm 移除）"
+        ok "OpenClaw 官方卸载命令已执行"
+    fi
+    ok "进度 4/6：sudo npm -g uninstall openclaw || true"
+    sudo npm -g uninstall openclaw || true
+    ok "进度 5/6：复查 openclaw 命令是否仍可用"
+    oc_left="$(which -a openclaw 2>/dev/null || true)"
+    if [[ -n "$oc_left" ]]; then
+        warn "检测到仍存在 openclaw 命令："
+        printf '%s\n' "$oc_left"
+        warn "可继续执行以下命令清理残留："
+        printf '%s\n' "  sudo npm -g uninstall openclaw || true"
+        printf '%s\n' "  npm -g uninstall openclaw || true"
+        printf '%s\n' "  for v in ~/.nvm/versions/node/*; do [ -x \"\$v/bin/npm\" ] && \"\$v/bin/npm\" -g uninstall openclaw || true; done"
+        printf '%s\n' "  hash -r; which -a openclaw || true"
+    else
+        ok "未检测到残留 openclaw 命令"
+    fi
+    ok "进度 6/6：删除 OpenClaw 配置目录（若存在）"
+    oc_home="$(get_openclaw_state_home)"
+    oc_dir="${oc_home}/.openclaw"
+    if [[ -d "$oc_dir" ]]; then
+        rm -rf "$oc_dir" || warn "删除 $oc_dir 失败，请手动处理"
+        ok "已删除 $oc_dir"
+    else
+        ok "未发现 $oc_dir，跳过"
     fi
 fi
 

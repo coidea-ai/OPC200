@@ -49,7 +49,7 @@ $ErrorActionPreference = "Stop"
 
 # ── 常量 ──────────────────────────────────────────────────────────
 
-$script:AGENT_VERSION   = "2.5.2"
+$script:AGENT_VERSION   = "2.5.3"
 $script:SERVICE_NAME    = "OPC200-Agent"
 $script:SERVICE_DISPLAY = "OPC200 Agent Service"
 $script:TASK_NAME       = "OPC200-Agent"
@@ -58,9 +58,9 @@ $script:OPENCLAW_DEFAULT_INSTALL_URL    = "https://openclaw.ai/install.ps1"
 $script:OPENCLAW_MIN_NODE_MAJOR         = 22
 $script:NODEJS_DIST_INDEX               = "https://nodejs.org/dist/index.json"
 $script:OPENCLAW_ALLOWED_HOSTS          = @("openclaw.ai", "www.openclaw.ai")
-$script:OPENCLAW_DEFAULT_NPM_REGISTRY   = "https://registry.npmmirror.com/"
+$script:OPENCLAW_DEFAULT_NPM_REGISTRY   = "https://repo.huaweicloud.com/repository/npm/"
 $script:OPENCLAW_INSTALL_TIMEOUT_SEC    = 900   # 15 分钟
-$script:OPENCLAW_NET_CHECK_HOSTS        = @("openclaw.ai", "registry.npmmirror.com", "github.com")
+$script:OPENCLAW_NET_CHECK_HOSTS        = @("openclaw.ai", "repo.huaweicloud.com", "github.com")
 $script:OPENCLAW_DEFAULT_PROFILE_DIR = Join-Path $HOME ".openclaw"
 $script:OPENCLAW_DEFAULT_SKILLS = "skill-vetter"
 $script:OPENCLAW_DEFAULT_SKILL_INSTALL_CMD = "openclaw skills install"
@@ -1425,27 +1425,6 @@ function Install-OpenClawOnboardIfRequested {
         }
         Write-Warn "openclaw onboard 失败（退出码 $code），已按非严格策略继续。设置 OPENCLAW_ONBOARD_STRICT=1 可在失败时中止安装。"
         return
-    }
-
-    $healthUrl = if ($env:OPENCLAW_GATEWAY_HEALTH_URL) { $env:OPENCLAW_GATEWAY_HEALTH_URL } else { "http://127.0.0.1:$gwPort/health" }
-    Write-Ok "探测网关健康: $healthUrl"
-    $okHealth = $false
-    for ($i = 0; $i -lt 30; $i++) {
-        try {
-            $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
-            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { $okHealth = $true; break }
-        }
-        catch { }
-        Start-Sleep -Seconds 2
-    }
-    if (-not $okHealth) {
-        if ($env:OPENCLAW_ONBOARD_STRICT -eq "1") {
-            Fail $script:E002 "E002: onboard 后网关健康检查失败。请确认计划任务/服务已拉起网关或检查 OPENCLAW_GATEWAY_HEALTH_URL"
-        }
-        Write-Warn "网关 HTTP 健康检查未在约 60s 内通过；opc-agent 仍会继续安装。可稍后重试网关或设置 OPENCLAW_GATEWAY_HEALTH_PROBE=0（仅 Agent 指标场景）"
-    }
-    else {
-        Write-Ok "OpenClaw 网关健康检查通过"
     }
 }
 

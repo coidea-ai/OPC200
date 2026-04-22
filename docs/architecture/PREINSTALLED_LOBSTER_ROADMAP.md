@@ -1,7 +1,7 @@
 # 预装版小龙虾（OpenClaw）交付路线图
 
 > **用途**：后续预装版安装、打包、观测相关工作以此文档为单一事实来源；完成项及时勾选，并在文末更新「变更记录」。  
-> **最后更新**：2026-04-21（§2.8 sudo/`HOME`；§2.9.2 Bootstrap 入口勾选；与 TASK_BOARD 同步）
+> **最后更新**：2026-04-22（§2.8 第 6 步用户级 systemd 预检/中止；§9.1 SPEC；与 README 同步）
 
 ---
 
@@ -112,7 +112,7 @@
 - [x] 安装脚本交互采集配置：非静默模式问答输入（Windows + Linux），敏感字段 `SecureString` / `read -rsp`；执行参数日志不打印密钥。
 - [x] 静默模式参数化：`OPENCLAW_AUTH_CHOICE` + 对应 provider 环境变量；Windows 增加 `-OpenClawOnboard` / `-OpenClawAuthChoice` / `-SkipOpenClawOnboard`；Linux 增加 `--openclaw-onboard` / `--skip-openclaw-onboard`；**交互安装默认执行 onboard**；**静默**须 `OPENCLAW_ONBOARD=1`（或 CLI 开关）才跑 onboard，避免无密钥 CI 误跑；`OPENCLAW_ONBOARD=0` 或 `Skip` 可显式跳过。
 - [x] 配置落地策略：优先官方 `openclaw onboard --non-interactive`（见 https://docs.openclaw.ai/start/wizard-cli-automation ）；**直接写 `openclaw.json` 的 fallback 仍列为后续**（schema 随版本变化，避免脚本侧误写）。
-- [x] 成功判定与兜底：`OPENCLAW_GATEWAY_HEALTH_URL` 或默认 `http://127.0.0.1:<port>/health` 轮询；`OPENCLAW_ONBOARD_STRICT=1` 时 onboard 或健康失败则中止安装；否则告警继续并完成 opc-agent 安装。
+- [x] 成功判定与兜底：Linux 第 6 步 **预检** 系统级 + 用户级 systemd；不满足则 **退出**；onboard 若报用户服务不可用（脚本识别日志关键字）亦 **中止**。**不**依赖 `OPENCLAW_ONBOARD_STRICT`。`OPENCLAW_ONBOARD_STRICT=1` 仍用于 onboard **超时/其他退出码** 的严格中止。显式 **`OPENCLAW_ONBOARD_SKIP_DAEMON=1`** 跳过 `--install-daemon`。onboard 段 **不**做网关 HTTP 轮询（由第 8/8b 步负责）。
 - [x] 网关段优化：优先 `gateway status --require-rpc`，避免 onboard 已装 daemon 后重复 `gateway install`；仅在 RPC 未就绪时再区分未安装/需修复；`doctor` 仅在重启仍失败路径触发。
 - [x] 轻预装写入 `tools.profile=full`：`install.ps1` / `install.sh` 在 skills 与文档前执行（CLI 不可用时跳过并告警）。
 - [x] Linux `install.sh`：`sudo` 安装时 OpenClaw 状态目录对齐 **调用用户 `~/.openclaw`**（`SUDO_USER`），**不**默认落在 `/root`；支持环境变量 **`OPENCLAW_STATE_HOME`** 显式覆盖；`openclaw` / `gateway` / `onboard` / `doctor` 与 **8b** 网关补启经 **`_openclaw_run`** 统一 **`HOME`**，消除 **`Missing HOME`** 与配置错位；轻预装模板目录与上述一致（未设 `OPENCLAW_PROFILE_DIR` 时）。
@@ -163,6 +163,81 @@
 
 > **说明**：企业离线包、多通道（stable/beta）、签名与 SBOM 等可与 **第三期 §3.1–3.2** 衔接；本期以「HTTPS + SHA256 + 固定域名」为最低门槛。
 
+### 2.10 4.21 安装器改造落地步骤（OpenClaw 与 OPC200 分离）
+
+> **目标**：将 OpenClaw 从 `install.ps1/install.sh` 的强耦合流程中拆分为独立安装器交付，OPC200 保留原安装链路，形成“两条安装链路 + 单包分发”。
+
+#### 2.10.1 架构拆分
+
+- [x] 明确职责边界：
+  - OpenClaw Installer 只负责 OpenClaw 安装、onboard、网关配置、桌面入口。
+  - OPC200 Installer（原 `install.ps1/install.sh`）只负责 OPC200 Agent 安装与运行。
+- [x] 新增 OpenClaw 专用脚本族（Windows 主路径）：
+  - `openclaw-installer.ps1`
+  - `openclaw-uninstaller.ps1`
+  - `build-openclaw-installer-exe.ps1`
+  - `build-openclaw-uninstaller-exe.ps1`
+  - `pack-openclaw-installer-release.ps1`
+
+#### 2.10.2 OpenClaw 安装流程（Windows）
+
+- [x] 使用 **npm 离线缓存** 安装 OpenClaw（`openclaw-npm-cache` + `npm install -g openclaw@2026.4.15 --offline`）；不再使用 macOS 用 `openclaw-releases` zip 解压进 PATH。
+- [x] 执行 `openclaw onboard --non-interactive --accept-risk`（含 `custom-api-key` 分支）。
+- [x] 轻预装：
+  - `openclaw config set tools.profile full`
+  - 使用 `openclaw-skills/skills.zip` 离线解压到 `.openclaw/skills`（覆盖同名）
+  - 模板文档投放：`AGENTS.md` / `IDENTITY.md` / `SOUL.md`
+- [x] 网关配置：`gateway.mode=local` + `gateway.tls.enabled=false` + `gateway install/restart` + `status --require-rpc`。
+
+#### 2.10.3 硬检测与离线 Node
+
+- [x] 安装前硬检测（失败即中止）：
+  - Node 版本（>=22）
+  - 网关端口占用
+  - 安装目录可写
+  - 网络可达（`openclaw.ai:443`）
+  - OpenClaw 可执行性（安装后强校验）
+- [x] Node 离线兜底：
+  - 若未安装或 `<22`，从 `agent/scripts/node-v22.22.2` 选择本地包安装。
+  - Windows 使用 `node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip` 自动按架构选择。
+
+#### 2.10.4 桌面入口与 dashboard token
+
+- [x] 快捷方式收敛为两个：
+  - `OpenClaw Start`
+  - `OpenClaw Stop`
+- [x] `OpenClaw Start` 逻辑：
+  - 先做网关可用性检测
+  - 不可用则 `openclaw gateway start`
+  - 再执行 `openclaw dashboard`
+  - 解析输出中的 `Dashboard URL: ...#token=...`
+  - 浏览器打开带 token URL（失败回退 `http://127.0.0.1:<port>`）
+- [x] 安装完成弹框：
+  - 使用 Windows GUI `MessageBox`
+  - 用户点确认后打开带 token 的 dashboard URL
+
+#### 2.10.5 交付与发布
+
+- [x] 双 exe 构建：
+  - `OpenClawInstaller.exe`
+  - `OpenClawUninstaller.exe`
+- [x] 单包交付：
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
+- [x] 发布标签：
+  - `openclaw-installer-v2026.4.15`
+- [x] 资产覆盖更新：
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 随优化迭代多次 `--clobber` 覆盖
+
+#### 2.10.6 测试与验收
+
+- [x] 新增契约测试：`tests/unit/agent/test_agent010_openclaw_installer.py`
+- [x] 覆盖点：
+  - 安装器主流程
+  - 离线 Node 与硬检测关键字
+  - 打包与构建脚本存在性
+  - 快捷方式与 dashboard token URL 逻辑
+- [x] 本地验证：`pytest tests/unit/agent/test_agent010_openclaw_installer.py -q` 通过
+
 ---
 
 ## 第三期：可长期分发（规模化 / 企业化 / 长期维护）
@@ -198,13 +273,16 @@
 
 | 日期 | 摘要 |
 |------|------|
+| 2026-04-22 | §2.10.2 轻预装更新：skills 从在线 `openclaw skills install` 切换为离线 `openclaw-skills/skills.zip` 解压到 `.openclaw/skills`；与安装器实现对齐 |
+| 2026-04-22 | §2.8：Linux 第 6 步用户级 systemd 预检 + onboard 日志识别后中止；`OPENCLAW_ONBOARD_SKIP_DAEMON`；文档与 `INSTALL_SCRIPT_SPEC` §9.1、`agent/README.md` 对齐 |
+| 2026-04-21 | 新增 §2.10：4.21 安装器改造落地步骤（OpenClaw 与 OPC200 分离、离线 Node、快捷方式与 dashboard token URL、双 exe + 单包发布） |
 | 2026-04-21 | §2.8：`sudo` 下 `~/.openclaw` / `OPENCLAW_STATE_HOME` / `_openclaw_run`（与 `install.sh` 一致）；§2.9.2 Bootstrap 入口勾选；与 `docs/TASK_BOARD.md` 对齐 |
 | 2026-04-17 | §2.9 Linux/macOS：`opc200-install.sh` + Release 附带；CI 上传 `opc200-install.sh` |
 | 2026-04-17 | §2.9 Windows：`opc200-install.ps1`、`build-agent-bundle.sh`、`pack-agent-release.ps1`、`release-opc-agent.yml`（tag `v*`）；制品 `opc200-agent-<ver>.zip` + `SHA256SUMS`；`INSTALL_SCRIPT_SPEC` §9 / `README` 互链 |
 | 2026-04-16 | 第二期新增 **§2.9**：无仓库一键安装 — **Bootstrap + 版本化制品包（zip/tar + SHA256SUMS）** 选型、交付物、Bootstrap 行为、CI 发布与验收标准；与第三期企业化衔接说明 |
 | 2026-04-16 | Windows `install.ps1`：`Main` 全量三段（环境 → OpenClaw → OPC200 Agent）；onboard 后轻预装（含 `tools.profile=full`）；网关 RPC 优先探测；平台三件套在 Agent 段采集；轻预装/`uninstall.ps1`（`-KeepOpenClaw`）与单测、README 同步 |
 | 2026-04-16 | 交互安装默认执行 OpenClaw onboard；静默仍须 `OPENCLAW_ONBOARD=1`；支持 `OPENCLAW_ONBOARD=0` / Skip 显式关闭 |
-| 2026-04-16 | §2.8 落地：`install.ps1` / `install.sh` 可选 `openclaw onboard --non-interactive` + 网关 HTTP 健康检查；单测 `test_agent008_openclaw_onboard_install.py` |
+| 2026-04-16 | §2.8 落地：`install.ps1` / `install.sh` 可选 `openclaw onboard --non-interactive`；单测 `test_agent008_openclaw_onboard_install.py`（onboard 后网关 HTTP 轮询后迁至第 8 步逻辑，见当前 §2.8） |
 | 2026-04-15 | 新增第二期 §2.8：OpenClaw 开箱即用配置自动化（最小配置集、交互采集、静默参数、配置落地与验证兜底） |
 | 2026-04-15 | AGENT-007：Windows/Linux 卸载脚本交互对齐（确认是否卸载 OpenClaw + 卸载进度提示 + CLI 手动清理提醒） |
 | 2026-04-15 | 第二期 §2.7：`agent_health` 改为 OpenClaw 网关 HTTP 探测 + 本进程存活；协议与单测已更新（端到端联调待办） |

@@ -1,4 +1,7 @@
-name: Release OPC200 agent bundle
+# 方案 2：单一 v* Release。当前仅发布 OpenClaw 安装器（OpenClawInstaller-win-YYYY.M.D.zip）。
+# OPC200 安装器/制品包流水线待重构后再启用下方 `release` job。
+
+name: Release v* artifacts
 
 on:
   push:
@@ -9,28 +12,90 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  # --- OPC200 Agent 制品（opc200-agent zip / SHA256SUMS / bootstrap）— 重构前暂停 ---
+  # release:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Resolve version
+  #       id: ver
+  #       run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+  #
+  #     - name: Build bundle
+  #       run: bash agent/scripts/build-agent-bundle.sh "${{ steps.ver.outputs.ver }}" bundle-out
+  #
+  #     - name: Zip and SHA256SUMS
+  #       run: |
+  #         (cd bundle-out && zip -r "../opc200-agent-${{ steps.ver.outputs.ver }}.zip" agent)
+  #         sha256sum "opc200-agent-${{ steps.ver.outputs.ver }}.zip" > SHA256SUMS
+  #
+  #     - name: Upload release assets
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: |
+  #           opc200-agent-${{ steps.ver.outputs.ver }}.zip
+  #           SHA256SUMS
+  #           agent/scripts/opc200-install.ps1
+  #           agent/scripts/opc200-install.sh
+
+  openclaw-installer-win-zip:
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve version
-        id: ver
-        run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
 
-      - name: Build bundle
-        run: bash agent/scripts/build-agent-bundle.sh "${{ steps.ver.outputs.ver }}" bundle-out
+      - name: Restore openclaw npm cache
+        id: openclaw-cache
+        uses: actions/cache@v4
+        with:
+          path: agent/scripts/openclaw-npm-cache
+          key: openclaw-npm-cache-windows-openclaw-2026.4.15-v2
 
-      - name: Zip and SHA256SUMS
+      - name: Populate openclaw npm cache (offline install)
+        if: steps.openclaw-cache.outputs.cache-hit != 'true'
+        shell: pwsh
         run: |
-          (cd bundle-out && zip -r "../opc200-agent-${{ steps.ver.outputs.ver }}.zip" agent)
-          sha256sum "opc200-agent-${{ steps.ver.outputs.ver }}.zip" > SHA256SUMS
+          $cache = "agent/scripts/openclaw-npm-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          npm install -g openclaw@2026.4.15 --cache $cache --registry https://registry.npmjs.org/
 
-      - name: Upload release assets
+      - name: Verify openclaw cache works offline
+        shell: pwsh
+        run: |
+          $cache = (Resolve-Path "agent/scripts/openclaw-npm-cache").Path
+          $probe = "agent/scripts/.offline-openclaw-probe"
+          if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $probe | Out-Null
+          npm install --prefix $probe openclaw@2026.4.15 --offline --cache $cache --registry https://registry.npmjs.org/ --prefer-offline --no-audit --no-fund
+          Remove-Item -LiteralPath $probe -Recurse -Force
+
+      - name: Download Node 22.22.2 offline bundles
+        shell: pwsh
+        run: |
+          $d = "agent/scripts/node-v22.22.2"
+          New-Item -ItemType Directory -Force -Path $d | Out-Null
+          $base = "https://nodejs.org/dist/v22.22.2"
+          foreach ($name in @("node-v22.22.2-win-x64.zip", "node-v22.22.2-win-x86.zip")) {
+            $out = Join-Path $d $name
+            Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
+          }
+
+      - name: Build OpenClawInstaller-win-YYYY.M.D.zip
+        shell: pwsh
+        run: |
+          Set-Location agent/scripts
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-installer-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
+
+      - name: Upload OpenClawInstaller-win-YYYY.M.D.zip to release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            opc200-agent-${{ steps.ver.outputs.ver }}.zip
-            SHA256SUMS
-            agent/scripts/opc200-install.ps1
-            agent/scripts/opc200-install.sh
+          files: agent/scripts/dist/OpenClawInstaller-win-*.zip
