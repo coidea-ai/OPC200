@@ -308,13 +308,13 @@ route:
   group_by: ['alertname', 'job']
   group_wait: 10s
   group_interval: 5m
-  repeat_interval: 0s
+  repeat_interval: 4h
   receiver: 'opc200-email'
 
   routes:
     - match:
         severity: critical
-      receiver: 'opc200-email-p0'
+      receiver: 'opc200-feishu-p0'
       group_wait: 10s
       continue: true
     - match:
@@ -323,6 +323,11 @@ route:
       continue: true
 
 receivers:
+  - name: 'opc200-feishu-p0'
+    webhook_configs:
+      - url: 'http://localhost:5000/webhook/feishu'
+        send_resolved: true
+
   - name: 'opc200-email-p0'
     email_configs:
       - to: '${ALERT_TO:-admin@example.com}'
