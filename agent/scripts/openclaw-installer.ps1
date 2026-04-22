@@ -52,8 +52,11 @@ function Invoke-NativeText {
 
 function Invoke-NpmProcess {
     <#
-    使用 Start-Process 重定向 stdout/stderr，避免通过 & 调 npm 时
-    子进程/批处理 仍让 PowerShell 7 在 ErrorAction=Stop 下因 stderr 而终止。
+    全局 $ErrorActionPreference 为 Stop。禁止在本脚本内改为直接 & npm / npm.cmd：
+    stderr 在 PS5/7 上可触发「因为首选项变量 ErrorActionPreference（或通用参数）设置为 Stop」类终止。
+
+    须用 Start-Process 重定向 stdout/stderr；本函数内另设 EAP=Continue 与 Set-NativeCommandStderrNoThrow
+    与重定向双保险，不得省略。
     #>
     [CmdletBinding()]
     param(
@@ -62,14 +65,27 @@ function Invoke-NpmProcess {
     )
     $outFile = [System.IO.Path]::GetTempFileName()
     $errFile = [System.IO.Path]::GetTempFileName() + ".err"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
+        Set-NativeCommandStderrNoThrow
         $p = Start-Process -FilePath $NpmPath -ArgumentList $ArgumentList -WorkingDirectory (Get-Location).Path `
-            -NoNewWindow -PassThru -Wait -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+            -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile -ErrorAction Continue
         if (-not $p) { return 1 }
+        $t0 = Get-Date
+        $id = 91
+        while ($true) {
+            if ($p.WaitForExit(1000)) { break }
+            $sec = [int]((Get-Date) - $t0).TotalSeconds
+            Write-Progress -Id $id -Activity "OpenClaw npm 离线安装" -Status "进行中… 已 $sec 秒（大缓存可能需数分钟，请勿关闭）" -PercentComplete -1 -ErrorAction SilentlyContinue
+        }
+        Write-Progress -Id $id -Activity "OpenClaw npm 离线安装" -Completed -ErrorAction SilentlyContinue
         if ($p.ExitCode -is [int]) { return $p.ExitCode }
         if ($null -ne $p.ExitCode) { return [int]$p.ExitCode }
         return 0
     } finally {
+        $ErrorActionPreference = $prevEap
+        Write-Progress -Id 91 -Activity "OpenClaw npm 离线安装" -Completed -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
@@ -328,7 +344,7 @@ function Install-OpenClawFromOfflineNpm {
     $cacheFull = (Resolve-Path -LiteralPath $script:NpmCacheDir).Path
     $env:npm_config_cache = $cacheFull
     $env:npm_config_registry = "https://registry.npmjs.org/"
-    $env:npm_config_loglevel = "error"
+    $env:npm_config_loglevel = "warn"
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
     $npmPath = Get-CommandInvocationPath $npmCmd
     if ([string]::IsNullOrWhiteSpace($npmPath)) { Fail "无法解析 npm 可执行文件路径" }

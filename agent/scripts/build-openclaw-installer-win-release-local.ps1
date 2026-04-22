@@ -89,6 +89,7 @@ function New-LocalOpenClawInstallerFolder {
     Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x86.zip") -Force
     Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force
     Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
+    Remove-Item -LiteralPath $installerExe, $uninstallerExe -Force
     return $stageDir
 }
 

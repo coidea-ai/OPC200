@@ -1,0 +1,12 @@
+---
+description: openclaw-installer.ps1 与 ErrorActionPreference=Stop 的硬约束
+globs: agent/scripts/openclaw-installer.ps1
+alwaysApply: false
+---
+
+# `openclaw-installer.ps1` 与 EAP=Stop
+
+脚本顶部为 `$ErrorActionPreference = "Stop"`。对 **npm**（及同类批处理/原生命令）**禁止**改为直接 `& npm` / 管道调用而不做隔离：stderr 在 PS5/7 上可导致「因为首选项变量 ErrorActionPreference 或通用参数设置为 Stop」类终止。
+
+- **已约定**：`Invoke-NpmProcess` 内须 **Start-Process** 重定向 stdio，并在该函数内 **EAP=Continue** 且 **Set-NativeCommandStderrNoThrow**；不要删除这套双保险。
+- 新增长步骤若再调外部命令，沿用现有 `Invoke-Native` / `Invoke-NativeText` 模式，或同等隔离，勿在 EAP=Stop 下裸调产生 stderr 的原生命令。

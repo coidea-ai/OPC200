@@ -177,6 +177,7 @@ def test_openclaw_release_pack_script_present():
 def test_openclaw_installer_win_local_release_script_present():
     s = _local_win_ps1()
     assert "New-LocalOpenClawInstallerFolder" in s
+    assert "Remove-Item -LiteralPath $installerExe, $uninstallerExe" in s
     assert "STAGE:" in s
     assert "build-openclaw-installer-exe.ps1" in s
     assert "build-openclaw-uninstaller-exe.ps1" in s
