@@ -64,7 +64,7 @@ jobs:
         run: |
           $cache = "agent/scripts/openclaw-npm-cache"
           New-Item -ItemType Directory -Force -Path $cache | Out-Null
-          npm install -g openclaw@2026.4.15 --cache $cache
+          npm install -g openclaw@2026.4.15 --cache $cache --registry https://registry.npmjs.org/
 
       - name: Verify openclaw cache works offline
         shell: pwsh
@@ -73,7 +73,7 @@ jobs:
           $probe = "agent/scripts/.offline-openclaw-probe"
           if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $probe | Out-Null
-          npm install --prefix $probe openclaw@2026.4.15 --offline --cache $cache --prefer-offline --no-audit --no-fund
+          npm install --prefix $probe openclaw@2026.4.15 --offline --cache $cache --registry https://registry.npmjs.org/ --prefer-offline --no-audit --no-fund
           Remove-Item -LiteralPath $probe -Recurse -Force
 
       - name: Download Node 22.22.2 offline bundles

@@ -243,7 +243,7 @@ function Install-OpenClawFromOfflineNpm {
     $cacheFull = (Resolve-Path -LiteralPath $script:NpmCacheDir).Path
     $env:npm_config_cache = $cacheFull
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
-    & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund
+    & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund --registry "https://registry.npmjs.org/"
     if ($LASTEXITCODE -ne 0) {
         Fail "npm install -g $spec 失败（离线）。请确认 cache 与当前 Windows/Node 22.22.2 匹配。"
     }
