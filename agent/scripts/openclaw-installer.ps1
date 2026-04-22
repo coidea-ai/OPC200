@@ -20,10 +20,16 @@ function Invoke-Native {
         [Parameter(Mandatory)][string]$FilePath,
         [string[]]$ArgumentList = @()
     )
-    Set-NativeCommandStderrNoThrow
-    & $FilePath @ArgumentList 2>$null
-    if ($null -eq $LASTEXITCODE) { return 0 }
-    return [int]$LASTEXITCODE
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Set-NativeCommandStderrNoThrow
+        & $FilePath @ArgumentList 2>$null
+        if ($null -eq $LASTEXITCODE) { return 0 }
+        return [int]$LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
 }
 
 function Invoke-NativeText {
@@ -32,10 +38,41 @@ function Invoke-NativeText {
         [Parameter(Mandatory)][string]$FilePath,
         [string[]]$ArgumentList = @()
     )
-    Set-NativeCommandStderrNoThrow
-    $out = & $FilePath @ArgumentList 2>$null
-    $code = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-    return [pscustomobject]@{ ExitCode = $code; Output = $out }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Set-NativeCommandStderrNoThrow
+        $out = & $FilePath @ArgumentList 2>$null
+        $code = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        return [pscustomobject]@{ ExitCode = $code; Output = $out }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
+function Invoke-NpmProcess {
+    <#
+    使用 Start-Process 重定向 stdout/stderr，避免通过 & 调 npm 时
+    子进程/批处理 仍让 PowerShell 7 在 ErrorAction=Stop 下因 stderr 而终止。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$NpmPath,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName() + ".err"
+    try {
+        $p = Start-Process -FilePath $NpmPath -ArgumentList $ArgumentList -WorkingDirectory (Get-Location).Path `
+            -NoNewWindow -PassThru -Wait -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        if (-not $p) { return 1 }
+        if ($p.ExitCode -is [int]) { return $p.ExitCode }
+        if ($null -ne $p.ExitCode) { return [int]$p.ExitCode }
+        return 0
+    } finally {
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $script:ScriptDir = $null
@@ -272,7 +309,7 @@ function Install-OpenClawFromOfflineNpm {
     $env:npm_config_registry = "https://registry.npmjs.org/"
     $env:npm_config_loglevel = "error"
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
-    $npmExit = Invoke-Native -FilePath $npmCmd.Source -ArgumentList @(
+    $npmExit = Invoke-NpmProcess -NpmPath $npmCmd.Source -ArgumentList @(
         "install", "-g", $spec, "--offline", "--prefer-offline", "--no-audit", "--no-fund"
     )
     if ($npmExit -ne 0) {
