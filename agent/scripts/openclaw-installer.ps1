@@ -7,6 +7,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 $script:ScriptDir = $null
 if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
@@ -243,6 +246,7 @@ function Install-OpenClawFromOfflineNpm {
     $cacheFull = (Resolve-Path -LiteralPath $script:NpmCacheDir).Path
     $env:npm_config_cache = $cacheFull
     $env:npm_config_registry = "https://registry.npmjs.org/"
+    $env:npm_config_loglevel = "error"
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
     & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) {
