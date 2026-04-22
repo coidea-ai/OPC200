@@ -832,6 +832,11 @@
 - **调整**: 原 Phase 2 任务顺延（AGENT-010~018 仍 📥 待领取）
 - **更新**: 任务统计表增加 Phase 1.5 列
 
+### 2026-04-22
+
+- **安装器对齐**: OpenClaw 独立安装器轻预装改为离线 skills 方案：不再执行在线 `openclaw skills install`，改用 `openclaw-skills/skills.zip` 解压到 `.openclaw/skills`（覆盖同名）。
+- **发布链路对齐**: `pack-openclaw-installer-release.ps1` 已纳入 `openclaw-skills/skills.zip` 打包，确保离线安装资源随 `OpenClawInstaller.zip` 一并交付。
+
 ### 2026-04-21
 
 - **对齐**: `PLAT-001`、`PLAT-002` 与 [Phase 1 归档](archive/phase-1-mvp.md) 一致，标记为 ✅ 已完成。

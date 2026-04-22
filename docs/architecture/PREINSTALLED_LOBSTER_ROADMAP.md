@@ -185,7 +185,7 @@
 - [x] 执行 `openclaw onboard --non-interactive --accept-risk`（含 `custom-api-key` 分支）。
 - [x] 轻预装：
   - `openclaw config set tools.profile full`
-  - `openclaw skills install skill-vetter`
+  - 使用 `openclaw-skills/skills.zip` 离线解压到 `.openclaw/skills`（覆盖同名）
   - 模板文档投放：`AGENTS.md` / `IDENTITY.md` / `SOUL.md`
 - [x] 网关配置：`gateway.mode=local` + `gateway.tls.enabled=false` + `gateway install/restart` + `status --require-rpc`。
 
@@ -273,6 +273,7 @@
 
 | 日期 | 摘要 |
 |------|------|
+| 2026-04-22 | §2.10.2 轻预装更新：skills 从在线 `openclaw skills install` 切换为离线 `openclaw-skills/skills.zip` 解压到 `.openclaw/skills`；与安装器实现对齐 |
 | 2026-04-22 | §2.8：Linux 第 6 步用户级 systemd 预检 + onboard 日志识别后中止；`OPENCLAW_ONBOARD_SKIP_DAEMON`；文档与 `INSTALL_SCRIPT_SPEC` §9.1、`agent/README.md` 对齐 |
 | 2026-04-21 | 新增 §2.10：4.21 安装器改造落地步骤（OpenClaw 与 OPC200 分离、离线 Node、快捷方式与 dashboard token URL、双 exe + 单包发布） |
 | 2026-04-21 | §2.8：`sudo` 下 `~/.openclaw` / `OPENCLAW_STATE_HOME` / `_openclaw_run`（与 `install.sh` 一致）；§2.9.2 Bootstrap 入口勾选；与 `docs/TASK_BOARD.md` 对齐 |
