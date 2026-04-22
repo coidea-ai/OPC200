@@ -42,7 +42,10 @@ New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 Copy-Item -LiteralPath $installerExe -Destination (Join-Path $stageDir "OpenClawInstaller.exe") -Force
 Copy-Item -LiteralPath $uninstallerExe -Destination (Join-Path $stageDir "OpenClawUninstaller.exe") -Force
 Copy-Item -LiteralPath $templatesDir -Destination (Join-Path $stageDir "openclaw-templates") -Recurse -Force
-Copy-Item -LiteralPath $nodeOfflineDir -Destination (Join-Path $stageDir "node-v22.22.2") -Recurse -Force
+$stageNodeDir = Join-Path $stageDir "node-v22.22.2"
+New-Item -ItemType Directory -Path $stageNodeDir -Force | Out-Null
+Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x64.zip") -Force
+Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x86.zip") -Force
 Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force
 Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
 
