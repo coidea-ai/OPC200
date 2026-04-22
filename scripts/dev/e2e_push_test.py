@@ -12,7 +12,7 @@ import requests
 from agent.src.exporter.collector import MetricsCollector
 from agent.src.exporter.pusher import MetricsPusher
 
-PUSHGATEWAY_URL = "http://localhost:9091"
+PUSHGATEWAY_URL = "http://opc200.meerkatai.cn:9091"
 PROMETHEUS_URL = "http://localhost:9090"
 
 TENANTS = [

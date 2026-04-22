@@ -14,7 +14,7 @@ import sys
 import signal
 from datetime import datetime
 
-DEFAULT_PLATFORM_URL = "http://localhost:9091"
+DEFAULT_PLATFORM_URL = "http://opc200.meerkatai.cn:9091"
 DEFAULT_INTERVAL = 60
 
 

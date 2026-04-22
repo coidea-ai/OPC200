@@ -45,7 +45,7 @@ services:
     volumes:
       - exporter-data:/data/exporter
     environment:
-      PLATFORM_URL: ${PLATFORM_URL:-https://platform.opc200.co}
+      PLATFORM_URL: ${PLATFORM_URL:-http://opc200.meerkatai.cn:9091}
       TENANT_ID: ${TENANT_ID:-opc-001}
       API_KEY: ${API_KEY:-}
       PUSH_INTERVAL: "60"

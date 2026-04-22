@@ -11,7 +11,7 @@ set -euo pipefail
 AGENT_VERSION="2.5.2"
 DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VERSION}"
 SERVICE_NAME="opc200-agent"
-DEFAULT_URL="https://platform.opc200.co"
+DEFAULT_URL="http://opc200.meerkatai.cn:9091"
 OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
 OPENCLAW_MIN_NODE_MAJOR=22
 OPENCLAW_DEFAULT_NPM_REGISTRY="https://registry.npmmirror.com/"

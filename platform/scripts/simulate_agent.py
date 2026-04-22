@@ -16,7 +16,7 @@ import signal
 import sys
 from datetime import datetime
 
-PUSHGATEWAY_URL = "http://100.74.18.112:9091"
+PUSHGATEWAY_URL = "http://opc200.meerkatai.cn:9091"
 INTERVAL = 60  # 推送间隔（秒）
 
 # 模拟数据模板

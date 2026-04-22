@@ -39,7 +39,7 @@ def mock_collector():
 @pytest.fixture
 def pusher(tmp_path, mock_collector):
     return MetricsPusher(
-        platform_url="https://platform.opc200.co",
+        platform_url="http://opc200.meerkatai.cn:9091",
         tenant_id="opc-test-001",
         api_key="sk-test",
         spool_dir=tmp_path,
@@ -81,7 +81,7 @@ class TestBackoff:
 
 class TestPusherInit:
     def test_push_url(self, pusher):
-        assert pusher.push_url == "https://platform.opc200.co/metrics/job/opc-test-001"
+        assert pusher.push_url == "http://opc200.meerkatai.cn:9091/metrics/job/opc-test-001"
 
     def test_headers(self, pusher):
         h = pusher._headers
