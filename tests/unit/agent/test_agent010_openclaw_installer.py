@@ -164,7 +164,6 @@ def test_openclaw_uninstaller_scripts_present():
 
 def test_openclaw_release_pack_script_present():
     s = _pack_ps1()
-    assert "NoZip" in s
     assert "OpenClawInstaller-win-" in s
     assert "OpenClawInstaller.exe" in s
     assert "OpenClawUninstaller.exe" in s
@@ -177,8 +176,7 @@ def test_openclaw_release_pack_script_present():
 
 def test_openclaw_installer_win_local_release_script_present():
     s = _local_win_ps1()
-    assert "pack-openclaw-installer-release.ps1" in s
-    assert "-NoZip" in s
+    assert "New-LocalOpenClawInstallerFolder" in s
     assert "STAGE:" in s
     assert "build-openclaw-installer-exe.ps1" in s
     assert "build-openclaw-uninstaller-exe.ps1" in s
