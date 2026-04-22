@@ -12,6 +12,8 @@ $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:TemplatesDir = Join-Path $script:ScriptDir "openclaw-templates"
 $script:NodeOfflineDir = Join-Path $script:ScriptDir "node-v22.22.2"
 $script:NpmCacheDir = Join-Path $script:ScriptDir "openclaw-npm-cache"
+$script:OpenClawSkillsDir = Join-Path $script:ScriptDir "openclaw-skills"
+$script:OpenClawSkillsZip = Join-Path $script:OpenClawSkillsDir "skills.zip"
 $script:OpenClawNpmVersion = "2026.4.15"
 $script:DefaultSkills = "skill-vetter"
 $script:DashboardUrl = ""
@@ -409,11 +411,19 @@ function Write-TemplatesAndSkills {
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
     & $cmd config set tools.profile full
     if ($LASTEXITCODE -ne 0) { Write-Warn "tools.profile 设置失败" }
-    & $cmd skills install $script:DefaultSkills
-    if ($LASTEXITCODE -ne 0) { Write-Warn "skills 安装失败: $($script:DefaultSkills)" }
+    # 旧逻辑封存：在线安装 skills（openclaw skills install）
+    # & $cmd skills install $script:DefaultSkills
+    # if ($LASTEXITCODE -ne 0) { Write-Warn "skills 安装失败: $($script:DefaultSkills)" }
 
     $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { Join-Path $HOME ".openclaw" }
     New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $script:OpenClawSkillsZip)) {
+        Fail "未找到内置 skills 资源包: $($script:OpenClawSkillsZip)"
+    }
+    $skillsDir = Join-Path $profileDir "skills"
+    New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
+    Expand-Archive -LiteralPath $script:OpenClawSkillsZip -DestinationPath $skillsDir -Force
+    Write-Ok "skills 已解压到: $skillsDir"
     foreach ($name in @("AGENTS.md", "IDENTITY.md", "SOUL.md")) {
         $src = Join-Path $script:TemplatesDir $name
         if (Test-Path -LiteralPath $src) {

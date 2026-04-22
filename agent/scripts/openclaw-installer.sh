@@ -17,6 +17,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$SCRIPT_DIR/openclaw-releases"
 TEMPLATES_DIR="$SCRIPT_DIR/openclaw-templates"
+OPENCLAW_SKILLS_DIR="$SCRIPT_DIR/openclaw-skills"
+OPENCLAW_SKILLS_ZIP="${OPENCLAW_SKILLS_DIR}/skills.zip"
 DMG_PATH="${RELEASE_DIR}/OpenClaw-2026.4.15.dmg"
 DEFAULT_SKILLS="skill-vetter"
 
@@ -91,9 +93,26 @@ preinstall_assets() {
   step "3/4 轻预装（tools/skills/docs）"
   ensure_openclaw
   openclaw config set tools.profile full || warn "tools.profile 设置失败"
-  openclaw skills install "$DEFAULT_SKILLS" || warn "skills 安装失败: $DEFAULT_SKILLS"
+  # 旧逻辑封存：在线安装 skills（openclaw skills install）
+  # openclaw skills install "$DEFAULT_SKILLS" || warn "skills 安装失败: $DEFAULT_SKILLS"
   local profile_dir="${OPENCLAW_PROFILE_DIR:-$HOME/.openclaw}"
   mkdir -p "$profile_dir"
+  [[ -f "$OPENCLAW_SKILLS_ZIP" ]] || die "未找到内置 skills 资源包: $OPENCLAW_SKILLS_ZIP"
+  local skills_dir="${profile_dir}/skills"
+  mkdir -p "$skills_dir"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o -q "$OPENCLAW_SKILLS_ZIP" -d "$skills_dir"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$OPENCLAW_SKILLS_ZIP" "$skills_dir" <<'PY'
+import sys, zipfile
+zip_path, target = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(zip_path, "r") as z:
+    z.extractall(target)
+PY
+  else
+    die "缺少 unzip/python3，无法解压 skills 资源包"
+  fi
+  ok "skills 已解压到: $skills_dir"
   for name in AGENTS.md IDENTITY.md SOUL.md; do
     local src="$TEMPLATES_DIR/$name"
     local dst="$profile_dir/$name"
