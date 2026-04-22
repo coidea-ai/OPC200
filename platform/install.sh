@@ -99,7 +99,7 @@ collect_config() {
         info "自动检测为: $EXTERNAL_HOST"
     fi
     prompt GRAFANA_ADMIN_PASS "Grafana 管理员密码" "$DEFAULT_GRAFANA_PASS" true
-    prompt PROM_RETENTION "Prometheus 数据保留天数" "$DEFAULT_RETENTION_DAYS"
+    prompt RETENTION "Prometheus 数据保留天数" "$DEFAULT_RETENTION_DAYS"
 
     echo
     step "配置告警邮箱（Alertmanager）"
@@ -298,10 +298,10 @@ generate_alertmanager_config() {
 
     cat > "$DEPLOY_DIR/alertmanager/alertmanager.yml" <<EOF
 global:
-  smtp_smarthost: '${SMTP_HOST}'
-  smtp_from: '${SMTP_USER}'
-  smtp_auth_username: '${SMTP_USER}'
-  smtp_auth_password: '${SMTP_PASS}'
+  smtp_smarthost: '${SMTP_HOST:-smtp.qq.com:587}'
+  smtp_from: '${SMTP_USER:-opc200@example.com}'
+  smtp_auth_username: '${SMTP_USER:-opc200@example.com}'
+  smtp_auth_password: '${SMTP_PASS:-placeholder}'
   smtp_require_tls: true
 
 route:
@@ -325,7 +325,7 @@ route:
 receivers:
   - name: 'opc200-email-p0'
     email_configs:
-      - to: '${ALERT_TO}'
+      - to: '${ALERT_TO:-admin@example.com}'
         send_resolved: true
         headers:
           Subject: '[P0] OPC200 Alert: {{ .GroupLabels.alertname }}'
@@ -333,7 +333,7 @@ receivers:
 
   - name: 'opc200-email-p1'
     email_configs:
-      - to: '${ALERT_TO}'
+      - to: '${ALERT_TO:-admin@example.com}'
         send_resolved: true
         headers:
           Subject: '[P1] OPC200 Alert: {{ .GroupLabels.alertname }}'
@@ -341,7 +341,7 @@ receivers:
 
   - name: 'opc200-email'
     email_configs:
-      - to: '${ALERT_TO}'
+      - to: '${ALERT_TO:-admin@example.com}'
         send_resolved: true
         headers:
           Subject: 'OPC200 Alert: {{ .GroupLabels.alertname }}'
@@ -354,7 +354,7 @@ inhibit_rules:
       severity: 'warning'
     equal: ['job']
 EOF
-    chmod 600 "$DEPLOY_DIR/alertmanager/alertmanager.yml"
+    chmod 644 "$DEPLOY_DIR/alertmanager/alertmanager.yml"
     ok "Alertmanager 配置已生成"
 }
 
@@ -427,7 +427,7 @@ generate_env() {
 
 EXTERNAL_HOST=${EXTERNAL_HOST}
 GRAFANA_PASS=${GRAFANA_ADMIN_PASS}
-RETENTION=${PROM_RETENTION}
+RETENTION=${RETENTION}
 SMTP_HOST=${SMTP_HOST}
 SMTP_USER=${SMTP_USER}
 EOF
@@ -441,7 +441,7 @@ deploy() {
     cd "$DEPLOY_DIR"
 
     # 用 envsubst 替换 docker-compose.yml 中的变量
-    export EXTERNAL_HOST GRAFANA_ADMIN_PASS PROM_RETENTION
+    export EXTERNAL_HOST GRAFANA_ADMIN_PASS RETENTION
     envsubst '$EXTERNAL_HOST $GRAFANA_ADMIN_PASS $RETENTION' < docker-compose.yml > docker-compose.yml.tmp
     mv docker-compose.yml.tmp docker-compose.yml
 
