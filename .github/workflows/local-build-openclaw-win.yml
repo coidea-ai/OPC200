@@ -1,0 +1,60 @@
+# 手工触发、仅产出 zip 为 Artifact；不跑 offline verify、不随 tag 发 Release。与 release-opc-agent 的 v* 发布解耦。
+
+name: Manual OpenClaw win zip (no offline verify)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openclaw-installer-win-zip:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+
+      - name: Restore openclaw npm cache
+        id: openclaw-cache
+        uses: actions/cache@v4
+        with:
+          path: agent/scripts/openclaw-npm-cache
+          key: openclaw-npm-cache-windows-openclaw-2026.4.15-v2
+
+      - name: Populate openclaw npm cache (if cache miss)
+        if: steps.openclaw-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $cache = "agent/scripts/openclaw-npm-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          npm install -g openclaw@2026.4.15 --cache $cache --registry https://registry.npmjs.org/
+
+      - name: Download Node 22.22.2 offline bundles
+        shell: pwsh
+        run: |
+          $d = "agent/scripts/node-v22.22.2"
+          New-Item -ItemType Directory -Force -Path $d | Out-Null
+          $base = "https://nodejs.org/dist/v22.22.2"
+          foreach ($name in @("node-v22.22.2-win-x64.zip", "node-v22.22.2-win-x86.zip")) {
+            $out = Join-Path $d $name
+            Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
+          }
+
+      - name: Build OpenClawInstaller win zip
+        shell: pwsh
+        run: |
+          Set-Location agent/scripts
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-installer-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\build-openclaw-uninstaller-exe.ps1
+          powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenClawInstaller-win
+          path: agent/scripts/dist/OpenClawInstaller-win-*.zip
+          if-no-files-found: error

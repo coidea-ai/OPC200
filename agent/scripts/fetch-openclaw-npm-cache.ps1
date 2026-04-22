@@ -9,6 +9,13 @@ New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 
 Write-Host "npm cache -> $cacheDir"
 Write-Host "npm install -g openclaw@2026.4.15 (populates cache for offline use)"
-npm install -g openclaw@2026.4.15 --cache $cacheDir
-if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+$env:npm_config_cache = $cacheDir
+$env:npm_config_registry = "https://registry.npmjs.org/"
+try {
+    npm install -g openclaw@2026.4.15 --no-fund
+    if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+} finally {
+    Remove-Item Env:\npm_config_cache -ErrorAction SilentlyContinue
+    Remove-Item Env:\npm_config_registry -ErrorAction SilentlyContinue
+}
 Write-Host "OK. Next: pack-openclaw-installer-release.ps1"
