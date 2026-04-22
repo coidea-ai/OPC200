@@ -29,12 +29,19 @@ def _pack_ps1() -> str:
     return (SCRIPTS_DIR / "pack-openclaw-installer-release.ps1").read_text(encoding="utf-8")
 
 
+def _local_win_ps1() -> str:
+    return (SCRIPTS_DIR / "build-openclaw-installer-win-release-local.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+
+
 def _pack_mac_sh() -> str:
     return (SCRIPTS_DIR / "pack-openclaw-installer-mac-release.sh").read_text(encoding="utf-8")
 
 
 def test_openclaw_installer_ps1_has_expected_steps():
     s = _ps1()
+    assert "Get-CommandInvocationPath" in s
     assert "Run-HardChecks" in s
     assert 'Write-Step "1/6 环境检测（硬检测）"' in s
     assert 'Write-Step "6/6 创建桌面快捷方式"' in s
@@ -91,6 +98,7 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert '@("/d", "/s", "/c"' in s
     assert "Write-TemplatesAndSkills" in s
     assert "Configure-Gateway" in s
+    assert "Test-GatewayHttpOk" in s
     assert "Wait-GatewayRpcReady" in s
     assert "gateway install --force --port" in s
     assert '"onboard", "--non-interactive", "--accept-risk", "--mode", "local",' in s
@@ -156,6 +164,7 @@ def test_openclaw_uninstaller_scripts_present():
 
 def test_openclaw_release_pack_script_present():
     s = _pack_ps1()
+    assert "NoZip" in s
     assert "OpenClawInstaller-win-" in s
     assert "OpenClawInstaller.exe" in s
     assert "OpenClawUninstaller.exe" in s
@@ -164,6 +173,24 @@ def test_openclaw_release_pack_script_present():
     assert "node-v22.22.2" in s
     assert "node-v22.22.2-win-x64.zip" in s
     assert "node-v22.22.2-win-x86.zip" in s
+
+
+def test_openclaw_installer_win_local_release_script_present():
+    s = _local_win_ps1()
+    assert "pack-openclaw-installer-release.ps1" in s
+    assert "-NoZip" in s
+    assert "STAGE:" in s
+    assert "build-openclaw-installer-exe.ps1" in s
+    assert "build-openclaw-uninstaller-exe.ps1" in s
+    assert "openclaw-npm-cache" in s
+    assert "2026.4.15" in s
+    assert "VerifyCache" in s
+    assert "CacheOnly" in s
+
+
+def test_fetch_openclaw_npm_cache_uses_npmjs_registry():
+    t = (SCRIPTS_DIR / "fetch-openclaw-npm-cache.ps1").read_text(encoding="utf-8-sig")
+    assert "registry.npmjs.org" in t
 
 
 def test_openclaw_mac_release_pack_script_present():

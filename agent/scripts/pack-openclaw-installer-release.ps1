@@ -1,6 +1,7 @@
 #Requires -Version 5.1
 param(
-    [string]$ZipName = ""
+    [string]$ZipName = "",
+    [switch]$NoZip
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -8,10 +9,13 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $distDir = Join-Path $scriptDir "dist"
 $stageDir = Join-Path $distDir "OpenClawInstaller"
-if ([string]::IsNullOrWhiteSpace($ZipName)) {
-    $ZipName = "OpenClawInstaller-win-{0}.zip" -f (Get-Date -Format "yyyy.M.d")
+$zipPath = $null
+if (-not $NoZip) {
+    if ([string]::IsNullOrWhiteSpace($ZipName)) {
+        $ZipName = "OpenClawInstaller-win-{0}.zip" -f (Get-Date -Format "yyyy.M.d")
+    }
+    $zipPath = Join-Path $distDir $ZipName
 }
-$zipPath = Join-Path $distDir $ZipName
 
 $installerExe = Join-Path $distDir "OpenClawInstaller.exe"
 $uninstallerExe = Join-Path $distDir "OpenClawUninstaller.exe"
@@ -36,7 +40,7 @@ $cacheItems = @(Get-ChildItem -LiteralPath $npmCacheDir -ErrorAction SilentlyCon
 if ($cacheItems.Count -eq 0) { throw "openclaw-npm-cache is empty; run fetch-openclaw-npm-cache.ps1" }
 
 if (Test-Path -LiteralPath $stageDir) { Remove-Item -LiteralPath $stageDir -Recurse -Force }
-if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+if (-not $NoZip -and (Test-Path -LiteralPath $zipPath)) { Remove-Item -LiteralPath $zipPath -Force }
 
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 Copy-Item -LiteralPath $installerExe -Destination (Join-Path $stageDir "OpenClawInstaller.exe") -Force
@@ -49,5 +53,9 @@ Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v2
 Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force
 Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
 
-Compress-Archive -LiteralPath $stageDir -DestinationPath $zipPath -Force
-Write-Host "packed: $zipPath"
+if ($NoZip) {
+    Write-Host "staged: $stageDir"
+} else {
+    Compress-Archive -LiteralPath $stageDir -DestinationPath $zipPath -Force
+    Write-Host "packed: $zipPath"
+}
