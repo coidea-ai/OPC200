@@ -7,9 +7,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
-    $PSNativeCommandUseErrorActionPreference = $false
-}
+try { $global:PSNativeCommandUseErrorActionPreference = $false } catch {}
+try { $PSNativeCommandUseErrorActionPreference = $false } catch {}
 
 $script:ScriptDir = $null
 if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
@@ -248,7 +247,7 @@ function Install-OpenClawFromOfflineNpm {
     $env:npm_config_registry = "https://registry.npmjs.org/"
     $env:npm_config_loglevel = "error"
     $spec = "openclaw@$($script:OpenClawNpmVersion)"
-    & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund
+    & $npmCmd.Source install -g $spec --offline --prefer-offline --no-audit --no-fund 2>$null
     if ($LASTEXITCODE -ne 0) {
         Fail "npm install -g $spec 失败（离线）。请确认 cache 与当前 Windows/Node 22.22.2 匹配。"
     }
@@ -423,7 +422,7 @@ function Write-TemplatesAndSkills {
     Write-Step "4/6 轻预装（tools/skills/docs）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
-    & $cmd config set tools.profile full
+    & $cmd config set tools.profile full 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Warn "tools.profile 设置失败" }
     # 旧逻辑封存：在线安装 skills（openclaw skills install）
     # & $cmd skills install $script:DefaultSkills
@@ -480,27 +479,27 @@ function Configure-Gateway {
     try { $null = & $cmd gateway stop 2>&1 } catch {}
     Start-Sleep -Seconds 4
 
-    & $cmd config set gateway.mode local
+    & $cmd config set gateway.mode local 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Warn "gateway.mode 设置返回非 0" }
-    & $cmd config set gateway.tls.enabled false
+    & $cmd config set gateway.tls.enabled false 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Warn "gateway.tls.enabled 设置返回非 0" }
 
-    & $cmd gateway install --force --port $GatewayPort
+    & $cmd gateway install --force --port $GatewayPort 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "gateway install --force 失败，尝试无 --force"
-        & $cmd gateway install --port $GatewayPort
+        & $cmd gateway install --port $GatewayPort 2>$null
     }
 
-    & $cmd gateway restart
+    & $cmd gateway restart 2>$null
     Start-Sleep -Seconds 5
 
     if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd)) {
         Write-Warn "网关 RPC 仍未就绪，执行 doctor 后停止再装并重启"
-        & $cmd doctor --non-interactive
+        & $cmd doctor --non-interactive 2>$null
         try { $null = & $cmd gateway stop 2>&1 } catch {}
         Start-Sleep -Seconds 4
-        & $cmd gateway install --force --port $GatewayPort
-        & $cmd gateway restart
+        & $cmd gateway install --force --port $GatewayPort 2>$null
+        & $cmd gateway restart 2>$null
         Start-Sleep -Seconds 5
         if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -MaxAttempts 12 -IntervalSec 5)) {
             Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；openclaw gateway restart；再执行 openclaw gateway status --deep。"
