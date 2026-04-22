@@ -51,7 +51,15 @@ jobs:
         with:
           node-version: "22.22.2"
 
+      - name: Restore openclaw npm cache
+        id: openclaw-cache
+        uses: actions/cache@v4
+        with:
+          path: agent/scripts/openclaw-npm-cache
+          key: openclaw-npm-cache-windows-openclaw-2026.4.15-v1
+
       - name: Populate openclaw npm cache (offline install)
+        if: steps.openclaw-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $cache = "agent/scripts/openclaw-npm-cache"
