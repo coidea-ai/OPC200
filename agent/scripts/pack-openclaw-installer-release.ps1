@@ -1,11 +1,17 @@
 #Requires -Version 5.1
+param(
+    [string]$ZipName = ""
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $distDir = Join-Path $scriptDir "dist"
 $stageDir = Join-Path $distDir "OpenClawInstaller"
-$zipPath = Join-Path $distDir "OpenClawInstaller.zip"
+if ([string]::IsNullOrWhiteSpace($ZipName)) {
+    $ZipName = "OpenClawInstaller-win-{0}.zip" -f (Get-Date -Format "yyyy.M.d")
+}
+$zipPath = Join-Path $distDir $ZipName
 
 $installerExe = Join-Path $distDir "OpenClawInstaller.exe"
 $uninstallerExe = Join-Path $distDir "OpenClawUninstaller.exe"

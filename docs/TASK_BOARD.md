@@ -360,7 +360,7 @@
   - [x] M1 新增 OpenClaw 独立安装器脚本（`openclaw-installer.ps1` / `openclaw-installer.sh`）
   - [x] M2 新增 OpenClaw 卸载器脚本（`openclaw-uninstaller.ps1`）
   - [x] M3 新增双 exe 构建脚本（`build-openclaw-installer-exe.ps1` / `build-openclaw-uninstaller-exe.ps1`）
-  - [x] M4 单包交付（`pack-openclaw-installer-release.ps1` → `OpenClawInstaller.zip`）
+  - [x] M4 单包交付（`pack-openclaw-installer-release.ps1` → `OpenClawInstaller-win-YYYY.M.D.zip`）
   - [x] M5 网关感知启动入口（`OpenClaw Start` / `OpenClaw Stop` 快捷方式）
   - [x] M6 Dashboard token URL 自动打开（安装成功弹框确认后打开）
   - [x] M7 离线 Node 22.22.2 兜底（`node-v22.22.2` 本地资产）
@@ -368,7 +368,7 @@
   - `tests/unit/agent/test_agent010_openclaw_installer.py`（5 passed）
 - **交付**:
   - Release: `openclaw-installer-v2026.4.15`
-  - Asset: `OpenClawInstaller.zip`
+  - Asset: `OpenClawInstaller-win-YYYY.M.D.zip`
 
 #### AGENT-012: OpenClaw / OPC200 双安装链路文档对齐（4.21）
 
@@ -835,7 +835,7 @@
 ### 2026-04-22
 
 - **安装器对齐**: OpenClaw 独立安装器轻预装改为离线 skills 方案：不再执行在线 `openclaw skills install`，改用 `openclaw-skills/skills.zip` 解压到 `.openclaw/skills`（覆盖同名）。
-- **发布链路对齐**: `pack-openclaw-installer-release.ps1` 已纳入 `openclaw-skills/skills.zip` 打包，确保离线安装资源随 `OpenClawInstaller.zip` 一并交付。
+- **发布链路对齐**: `pack-openclaw-installer-release.ps1` 已纳入 `openclaw-skills/skills.zip` 打包，确保离线安装资源随 `OpenClawInstaller-win-YYYY.M.D.zip` 一并交付。
 
 ### 2026-04-21
 

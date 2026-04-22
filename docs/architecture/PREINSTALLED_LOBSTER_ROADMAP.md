@@ -222,11 +222,11 @@
   - `OpenClawInstaller.exe`
   - `OpenClawUninstaller.exe`
 - [x] 单包交付：
-  - `OpenClawInstaller.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
 - [x] 发布标签：
   - `openclaw-installer-v2026.4.15`
 - [x] 资产覆盖更新：
-  - `OpenClawInstaller.zip` 随优化迭代多次 `--clobber` 覆盖
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 随优化迭代多次 `--clobber` 覆盖
 
 #### 2.10.6 测试与验收
 
