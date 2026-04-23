@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 param(
     [switch]$Silent,
-    [string]$OpenClawAuthChoice = "",
+    [string]$OpenClawAuthChoice = "", # 未使用；第 3 步仅支持 Kimi，见 MOONSHOT_API_KEY
     [string]$GatewayPort = "18789"
 )
 
@@ -458,118 +458,54 @@ function Invoke-OpenClawLongRunning {
     }
 }
 
-function Get-CustomProviderApiMode {
-    param([string]$Compat)
-    $c = if ($Compat) { $Compat.Trim().ToLowerInvariant() } else { "openai" }
-    if ($c -like "anthropic*") { return "anthropic-messages" }
-    return "openai-completions"
-}
-
-function New-SafeProviderId {
-    param([string]$Raw, [string]$Fallback = "custom")
-    if ([string]::IsNullOrWhiteSpace($Raw)) { return $Fallback }
-    $s = $Raw.Trim().ToLowerInvariant() -replace "\.+", "-"
-    if ($s -notmatch "^[a-z][a-z0-9_-]*$") { return $Fallback }
-    return $s
+function Get-MoonshotBaseUrl {
+    $r = if ($env:OPENCLAW_MOONSHOT_REGION) { $env:OPENCLAW_MOONSHOT_REGION.Trim().ToLowerInvariant() } else { "cn" }
+    if ($r -eq "intl" -or $r -eq "global" -or $r -eq "international") { return "https://api.moonshot.ai/v1" }
+    return "https://api.moonshot.cn/v1"
 }
 
 function Configure-OpenClawModel {
-    Write-Step "3/6 模型配置（config + models）"
+    Write-Step "3/6 模型配置（Kimi，config + models）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令，请重新打开 PowerShell 后重试" }
 
-    $auth = $OpenClawAuthChoice.Trim()
-    if (-not $auth -and $env:OPENCLAW_AUTH_CHOICE) { $auth = $env:OPENCLAW_AUTH_CHOICE.Trim() }
-    if (-not $auth -and -not $Silent) {
-        Write-Host "请选择需要配置的模型"
-        Write-Host "A) Claude API Key"
-        Write-Host "B) OpenAI API Key"
-        Write-Host "C) Gemini API Key"
-        Write-Host "D) 自定义 API Key"
-        $pick = (Read-Host "选择 [ABCD 其中一个]").Trim().ToUpperInvariant()
-        switch ($pick) {
-            "A" { $auth = "apiKey" }
-            "B" { $auth = "openai-api-key" }
-            "C" { $auth = "gemini-api-key" }
-            "D" { $auth = "custom-api-key" }
-            default { Fail "无效选择，请输入 A、B、C 或 D" }
-        }
-    }
-    if (-not $auth) { Fail "静默模式必须指定 OpenClawAuthChoice 或 OPENCLAW_AUTH_CHOICE" }
-
-    $defaultBundled = @{
-        "apiKey"            = "anthropic/claude-sonnet-4-5"
-        "openai-api-key"    = "openai/gpt-4.1"
-        "gemini-api-key"    = "google/gemini-2.5-flash"
-    }
-
-    if ($auth -eq "custom-api-key") {
-        if (-not $env:OPENCLAW_CUSTOM_BASE_URL) { $env:OPENCLAW_CUSTOM_BASE_URL = Read-RequiredLine "OpenClaw 自定义模型的 Base Url" }
-        if (-not $env:OPENCLAW_CUSTOM_MODEL_ID) { $env:OPENCLAW_CUSTOM_MODEL_ID = Read-RequiredLine "OpenClaw 自定义模型的 ID" }
-        if (-not $env:CUSTOM_API_KEY) { $env:CUSTOM_API_KEY = Read-RequiredLine "OpenClaw 自定义模型的 api key" }
-        $compat = if ($env:OPENCLAW_CUSTOM_COMPATIBILITY) { $env:OPENCLAW_CUSTOM_COMPATIBILITY.Trim() } else { "openai" }
-        $apiMode = Get-CustomProviderApiMode -Compat $compat
-        $providerId = New-SafeProviderId -Raw $(if ($env:OPENCLAW_CUSTOM_PROVIDER_ID) { $env:OPENCLAW_CUSTOM_PROVIDER_ID } else { "custom" })
-        $baseUrl = $env:OPENCLAW_CUSTOM_BASE_URL.Trim().TrimEnd("/")
-        $mid = $env:OPENCLAW_CUSTOM_MODEL_ID.Trim()
-        $provObj = [ordered]@{
-            baseUrl = $baseUrl
-            api     = $apiMode
-            apiKey  = '${CUSTOM_API_KEY}'
-            models  = @(
-                [ordered]@{ id = $mid; name = $mid }
-            )
-        }
-        $provJson = ($provObj | ConvertTo-Json -Compress -Depth 8)
-        $refKey = "$providerId/$mid"
-        if ($refKey -match '["\[\]\\]') { Fail "模型引用含非法字符: $refKey" }
-        $modelsAllowPath = "agents.defaults.models[""$refKey""]"
-
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
-            Write-Warn "config set models.mode merge 非 0，继续"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.$providerId", $provJson, "--strict-json")) -ne 0) {
-            Fail "openclaw config set models.providers 失败"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPath, "{}", "--strict-json")) -ne 0) {
-            Fail "openclaw config set agents.defaults.models 失败"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $refKey)) -ne 0) {
-            Fail "openclaw config set agents.defaults.model.primary 失败"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("models", "set", $refKey)) -ne 0) {
-            Fail "openclaw models set 失败: $refKey"
-        }
+    $kimiRef = "moonshot/kimi-k2.5"
+    if ($Silent) {
+        if ([string]::IsNullOrWhiteSpace($env:MOONSHOT_API_KEY)) { Fail "静默安装须设置环境变量 MOONSHOT_API_KEY" }
     } else {
-        switch ($auth) {
-            "apiKey" {
-                if (-not $env:ANTHROPIC_API_KEY) { $env:ANTHROPIC_API_KEY = Read-RequiredLine "ANTHROPIC_API_KEY" }
-            }
-            "openai-api-key" {
-                if (-not $env:OPENAI_API_KEY) { $env:OPENAI_API_KEY = Read-RequiredLine "OPENAI_API_KEY" }
-            }
-            "gemini-api-key" {
-                if (-not $env:GEMINI_API_KEY) { $env:GEMINI_API_KEY = Read-RequiredLine "GEMINI_API_KEY" }
-            }
-            default { Fail "不支持的 OPENCLAW_AUTH_CHOICE: $auth（预期 apiKey / openai-api-key / gemini-api-key / custom-api-key）" }
-        }
-        $modelRef = if ($env:OPENCLAW_MODEL_REF -and $env:OPENCLAW_MODEL_REF.Trim()) { $env:OPENCLAW_MODEL_REF.Trim() } else { $defaultBundled[$auth] }
-        if (-not $modelRef) { Fail "无法解析默认模型引用（auth=$auth）" }
-        if (-not $Silent) {
-            $hint = Read-Host "模型 provider/model [回车=$modelRef]"
-            if (-not [string]::IsNullOrWhiteSpace($hint)) { $modelRef = $hint.Trim() }
-        }
-        if ($modelRef -match '["\[\]\\]') { Fail "模型引用含非法字符: $modelRef" }
-        $modelsAllowPathBundled = "agents.defaults.models[""$modelRef""]"
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPathBundled, "{}", "--strict-json")) -ne 0) {
-            Write-Warn "agents.defaults.models[…] 非 0，继续"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $modelRef)) -ne 0) {
-            Fail "openclaw config set agents.defaults.model.primary 失败"
-        }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("models", "set", $modelRef)) -ne 0) {
-            Fail "openclaw models set 失败: $modelRef"
-        }
+        if (-not $env:MOONSHOT_API_KEY) { $env:MOONSHOT_API_KEY = Read-RequiredLine "Kimi (Moonshot) API Key（见 platform.moonshot.cn）" }
+        if ([string]::IsNullOrWhiteSpace($env:MOONSHOT_API_KEY)) { Fail "需要 MOONSHOT_API_KEY" }
+    }
+    if ($env:OPENCLAW_MOONSHOT_REGION) {
+        if (-not $Silent) { Write-Ok "已用 OPENCLAW_MOONSHOT_REGION 选择 Moonshot 区域" }
+    } elseif (-not $Silent) {
+        $reg = (Read-Host "使用国际区 api.moonshot.ai？留空/回车=中国区 api.moonshot.cn [y/N]").Trim().ToLowerInvariant()
+        if ($reg -eq "y" -or $reg -eq "yes") { $env:OPENCLAW_MOONSHOT_REGION = "intl" } else { $env:OPENCLAW_MOONSHOT_REGION = "cn" }
+    } elseif (-not $env:OPENCLAW_MOONSHOT_REGION) {
+        $env:OPENCLAW_MOONSHOT_REGION = "cn"
+    }
+    $baseUrl = Get-MoonshotBaseUrl
+    $provJson = [ordered]@{
+        baseUrl = $baseUrl
+        api     = "openai-completions"
+        apiKey  = '${MOONSHOT_API_KEY}'
+    } | ConvertTo-Json -Compress -Depth 4
+    $modelsAllowPath = "agents.defaults.models[""$kimiRef""]"
+
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
+        Write-Warn "config set models.mode merge 非 0，继续"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot", $provJson, "--strict-json")) -ne 0) {
+        Fail "openclaw config set models.providers.moonshot 失败"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPath, "{}", "--strict-json")) -ne 0) {
+        Fail "openclaw config set agents.defaults.models 失败"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $kimiRef)) -ne 0) {
+        Fail "openclaw config set agents.defaults.model.primary 失败"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("models", "set", $kimiRef)) -ne 0) {
+        Fail "openclaw models set 失败: $kimiRef"
     }
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "validate")) -ne 0) {
         Write-Warn "openclaw config validate 非 0，请检查 openclaw.json"
@@ -577,7 +513,7 @@ function Configure-OpenClawModel {
         Write-Ok "openclaw config validate 通过"
     }
     [void](Invoke-Native -FilePath $cmd -ArgumentList @("models", "status"))
-    Write-Ok "模型配置完成（config + models）"
+    Write-Ok "Kimi 模型已配置: $kimiRef（$baseUrl）"
 }
 
 function Write-TemplatesAndSkills {

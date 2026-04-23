@@ -59,107 +59,51 @@ install_openclaw_macos() {
   ok "OpenClaw.app 已安装到 /Applications"
 }
 
-custom_provider_api() {
-  local c
-  c="$(echo -n "${OPENCLAW_CUSTOM_COMPATIBILITY:-openai}" | tr '[:upper:]' '[:lower:]')"
-  case "$c" in
-    anthropic*) echo "anthropic-messages" ;;
-    *) echo "openai-completions" ;;
+moonshot_base_url() {
+  case "${OPENCLAW_MOONSHOT_REGION:-cn}" in
+    intl|global|international) echo "https://api.moonshot.ai/v1" ;;
+    *) echo "https://api.moonshot.cn/v1" ;;
   esac
 }
 
-safe_provider_id() {
-  local r="${1:-custom}"
-  r="$(echo -n "$r" | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
-  if [[ ! "$r" =~ ^[a-z][a-z0-9_-]*$ ]]; then
-    echo "custom"
-  else
-    echo "$r"
-  fi
-}
-
 run_onboard() {
-  step "2/4 模型配置（config + models）"
+  step "2/4 模型配置（Kimi，config + models）"
   ensure_openclaw
-  local auth="$OPENCLAW_AUTH_CHOICE"
-  if [[ -z "$auth" && "$SILENT" == false ]]; then
-    echo "1) apiKey  2) openai-api-key  3) gemini-api-key  4) custom-api-key"
-    local pick=""
-    read -r -p "选择 [1-4]: " pick
-    case "$pick" in
-      1) auth="apiKey" ;;
-      2) auth="openai-api-key" ;;
-      3) auth="gemini-api-key" ;;
-      4) auth="custom-api-key" ;;
-      *) die "无效选择" ;;
-    esac
-  fi
-  [[ -n "$auth" ]] || die "静默模式需 --openclaw-auth-choice 或 OPENCLAW_AUTH_CHOICE"
-
-  if [[ "$auth" == "custom-api-key" ]]; then
-    [[ -n "${OPENCLAW_CUSTOM_BASE_URL:-}" ]] || OPENCLAW_CUSTOM_BASE_URL="$(read_required OPENCLAW_CUSTOM_BASE_URL)"
-    [[ -n "${OPENCLAW_CUSTOM_MODEL_ID:-}" ]] || OPENCLAW_CUSTOM_MODEL_ID="$(read_required OPENCLAW_CUSTOM_MODEL_ID)"
-    [[ -n "${CUSTOM_API_KEY:-}" ]] || CUSTOM_API_KEY="$(read_required CUSTOM_API_KEY)"
-    export OPENCLAW_CUSTOM_BASE_URL OPENCLAW_CUSTOM_MODEL_ID CUSTOM_API_KEY
-    local api_mode pid base mid ref_key prov_json allow_json
-    api_mode="$(custom_provider_api)"
-    pid="$(safe_provider_id "${OPENCLAW_CUSTOM_PROVIDER_ID:-custom}")"
-    base="${OPENCLAW_CUSTOM_BASE_URL// /}"
-    base="${base%/}"
-    mid="${OPENCLAW_CUSTOM_MODEL_ID// /}"
-    ref_key="${pid}/${mid}"
-    prov_json="$(python3 -c 'import json,sys; b,a,m=sys.argv[1:4]; print(json.dumps({"baseUrl":b,"api":a,"apiKey":"${CUSTOM_API_KEY}","models":[{"id":m,"name":m}]}))' \
-      "$base" "$api_mode" "$mid")"
-    openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
-    openclaw config set "models.providers.${pid}" "$prov_json" --strict-json || die "openclaw config set models.providers 失败"
-    openclaw config set "agents.defaults.models[\"${ref_key}\"]" "{}" --strict-json || die "openclaw config set agents.defaults.models 失败"
-    openclaw config set agents.defaults.model.primary "$ref_key" || die "openclaw config set agents.defaults.model.primary 失败"
-    openclaw models set "$ref_key" || die "openclaw models set 失败"
+  local kimi_ref="moonshot/kimi-k2.5"
+  local prov_json base_url
+  if [[ "$SILENT" == true ]]; then
+    [[ -n "${MOONSHOT_API_KEY:-}" ]] || die "静默模式须设置环境变量 MOONSHOT_API_KEY"
   else
-    case "$auth" in
-      apiKey)
-        if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-          read -r -p "ANTHROPIC_API_KEY: " ANTHROPIC_API_KEY
-          export ANTHROPIC_API_KEY
-        fi
-        [[ -n "${ANTHROPIC_API_KEY:-}" ]] || die "需要 ANTHROPIC_API_KEY"
-        ;;
-      openai-api-key)
-        if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-          read -r -p "OPENAI_API_KEY: " OPENAI_API_KEY
-          export OPENAI_API_KEY
-        fi
-        [[ -n "${OPENAI_API_KEY:-}" ]] || die "需要 OPENAI_API_KEY"
-        ;;
-      gemini-api-key)
-        if [[ -z "${GEMINI_API_KEY:-}" ]]; then
-          read -r -p "GEMINI_API_KEY: " GEMINI_API_KEY
-          export GEMINI_API_KEY
-        fi
-        [[ -n "${GEMINI_API_KEY:-}" ]] || die "需要 GEMINI_API_KEY"
-        ;;
-      *) die "不支持的 OPENCLAW_AUTH_CHOICE: $auth" ;;
-    esac
-    local def mr
-    case "$auth" in
-      apiKey) def="anthropic/claude-sonnet-4-5" ;;
-      openai-api-key) def="openai/gpt-4.1" ;;
-      *) def="google/gemini-2.5-flash" ;;
-    esac
-    mr="${OPENCLAW_MODEL_REF:-$def}"
-    if [[ "$SILENT" == false ]]; then
-      read -r -p "模型 provider/model [回车=$mr]: " _mr
-      if [[ -n "$_mr" ]]; then
-        mr="$_mr"
+    if [[ -z "${MOONSHOT_API_KEY:-}" ]]; then
+      read -r -p "Kimi (Moonshot) API Key（见 platform.moonshot.cn）: " MOONSHOT_API_KEY
+      export MOONSHOT_API_KEY
+    fi
+    [[ -n "${MOONSHOT_API_KEY:-}" ]] || die "需要 MOONSHOT_API_KEY"
+    if [[ -n "${OPENCLAW_MOONSHOT_REGION:-}" ]]; then
+      ok "已用 OPENCLAW_MOONSHOT_REGION 选择 Moonshot 区域"
+    else
+      read -r -p "使用国际区 api.moonshot.ai？留空/回车=中国区 api.moonshot.cn [y/N]: " _reg
+      _r="$(printf '%s' "$_reg" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$_r" == "y" || "$_r" == "yes" ]]; then
+        export OPENCLAW_MOONSHOT_REGION="intl"
+      else
+        export OPENCLAW_MOONSHOT_REGION="cn"
       fi
     fi
-    openclaw config set "agents.defaults.models[\"${mr}\"]" "{}" --strict-json || warn "agents.defaults.models[…] 非 0，继续"
-    openclaw config set agents.defaults.model.primary "$mr" || die "openclaw config set agents.defaults.model.primary 失败"
-    openclaw models set "$mr" || die "openclaw models set 失败"
   fi
+  if [[ "$SILENT" == true && -z "${OPENCLAW_MOONSHOT_REGION:-}" ]]; then
+    export OPENCLAW_MOONSHOT_REGION="cn"
+  fi
+  base_url="$(moonshot_base_url)"
+  prov_json="$(python3 -c 'import json,sys; print(json.dumps({"baseUrl":sys.argv[1],"api":"openai-completions","apiKey":"${MOONSHOT_API_KEY}"}))' "$base_url")"
+  openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
+  openclaw config set "models.providers.moonshot" "$prov_json" --strict-json || die "openclaw config set models.providers.moonshot 失败"
+  openclaw config set "agents.defaults.models[\"${kimi_ref}\"]" "{}" --strict-json || die "openclaw config set agents.defaults.models 失败"
+  openclaw config set agents.defaults.model.primary "$kimi_ref" || die "openclaw config set agents.defaults.model.primary 失败"
+  openclaw models set "$kimi_ref" || die "openclaw models set 失败"
   openclaw config validate || warn "openclaw config validate 非 0，请检查 openclaw.json"
   openclaw models status || true
-  ok "模型配置完成（config + models）"
+  ok "Kimi 模型已配置: $kimi_ref（$base_url）"
 }
 
 preinstall_assets() {

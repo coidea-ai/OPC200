@@ -91,13 +91,13 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "npm_config_cache" in s
     assert 'OpenClawNpmVersion = "2026.4.15"' in s
     assert "Configure-OpenClawModel" in s
-    assert "请选择需要配置的模型" in s
-    assert "选择 [ABCD 其中一个]" in s
-    assert "OpenClaw 自定义模型的 Base Url" in s
+    assert "Kimi (Moonshot) API Key" in s
+    assert "moonshot/kimi-k2.5" in s
+    assert "models.providers.moonshot" in s
+    assert "Get-MoonshotBaseUrl" in s
     assert "openclaw config set" in s
     assert "openclaw models set" in s
     assert "agents.defaults.model.primary" in s
-    assert "Get-CustomProviderApiMode" in s
     assert "Invoke-OpenClawLongRunning" in s
     assert "Format-CmdExeMetacharToken" in s
     assert '@("/d", "/s", "/c"' in s
@@ -119,7 +119,8 @@ def test_openclaw_installer_sh_has_expected_steps():
     assert "openclaw config set" in s
     assert "openclaw models set" in s
     assert "agents.defaults.model.primary" in s
-    assert "模型配置（config + models）" in s
+    assert "模型配置（Kimi" in s
+    assert "moonshot/kimi-k2.5" in s
     assert "openclaw.app" in s or "OpenClaw.app" in s
     assert "gateway install" in s
     assert "openclaw config validate" in s or "config validate" in s
