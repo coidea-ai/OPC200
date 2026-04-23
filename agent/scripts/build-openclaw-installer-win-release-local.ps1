@@ -15,6 +15,7 @@ $z64 = Join-Path $nodeDir "node-v22.22.2-win-x64.zip"
 $z86 = Join-Path $nodeDir "node-v22.22.2-win-x86.zip"
 $openclawNpm = "2026.4.15"
 
+<# ── openclaw-npm-cache 已不再打包，以下逻辑注释保留 ──
 $cacheItemCount = 0
 if (Test-Path -LiteralPath $cache) {
     $cacheItemCount = @(Get-ChildItem -LiteralPath $cache -ErrorAction SilentlyContinue).Count
@@ -42,6 +43,7 @@ if ($VerifyCache) {
     if ($LASTEXITCODE -ne 0) { throw "offline cache verify failed" }
     Remove-Item -LiteralPath $probe -Recurse -Force
 }
+#>
 
 $getNode = $true
 if (-not $ForceNodeDownload -and (Test-Path -LiteralPath $z64) -and (Test-Path -LiteralPath $z86)) {
@@ -64,7 +66,7 @@ function New-LocalOpenClawInstallerFolder {
     $nodeOfflineDir = Join-Path $scriptDir "node-v22.22.2"
     $nodeZip64 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x64.zip"
     $nodeZip86 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x86.zip"
-    $npmCacheDir = Join-Path $scriptDir "openclaw-npm-cache"
+    # $npmCacheDir = Join-Path $scriptDir "openclaw-npm-cache"  # 不再打包
     $skillsDir = Join-Path $scriptDir "openclaw-skills"
     if (-not (Test-Path -LiteralPath $installerExe)) { throw "missing exe: $installerExe" }
     if (-not (Test-Path -LiteralPath $uninstallerExe)) { throw "missing exe: $uninstallerExe" }
@@ -72,12 +74,9 @@ function New-LocalOpenClawInstallerFolder {
     if (-not (Test-Path -LiteralPath $nodeOfflineDir)) { throw "missing dir: $nodeOfflineDir" }
     if (-not (Test-Path -LiteralPath $nodeZip64)) { throw "missing file: $nodeZip64" }
     if (-not (Test-Path -LiteralPath $nodeZip86)) { throw "missing file: $nodeZip86" }
-    if (-not (Test-Path -LiteralPath $npmCacheDir)) { throw "missing dir: $npmCacheDir" }
     $skillsZip = Join-Path $skillsDir "skills.zip"
     if (-not (Test-Path -LiteralPath $skillsDir)) { throw "missing dir: $skillsDir" }
     if (-not (Test-Path -LiteralPath $skillsZip)) { throw "missing file: $skillsZip" }
-    $cacheItems = @(Get-ChildItem -LiteralPath $npmCacheDir -ErrorAction SilentlyContinue)
-    if ($cacheItems.Count -eq 0) { throw "openclaw-npm-cache is empty" }
     if (Test-Path -LiteralPath $stageDir) { Remove-Item -LiteralPath $stageDir -Recurse -Force }
     New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
     Copy-Item -LiteralPath $installerExe -Destination (Join-Path $stageDir "OpenClawInstaller.exe") -Force
@@ -87,7 +86,7 @@ function New-LocalOpenClawInstallerFolder {
     New-Item -ItemType Directory -Path $stageNodeDir -Force | Out-Null
     Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x64.zip") -Force
     Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x86.zip") -Force
-    Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force
+    # Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force  # 不再打包
     Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
     Remove-Item -LiteralPath $installerExe, $uninstallerExe -Force
     return $stageDir

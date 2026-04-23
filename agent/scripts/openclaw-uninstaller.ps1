@@ -37,8 +37,15 @@ function Write-Warn([string]$m) { Write-Host " [WARN] $m" -ForegroundColor Yello
 function Fail([string]$m) { Write-Host "  [ERR] $m" -ForegroundColor Red; exit 1 }
 
 function Get-OpenClawCmd {
-    $cmd = Get-Command openclaw -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
+    foreach ($name in @("openclaw.cmd", "openclaw.exe", "openclaw")) {
+        $rows = @(Get-Command -Name $name -CommandType Application -ErrorAction SilentlyContinue)
+        foreach ($row in $rows) {
+            $p = if ($row.Source) { $row.Source } elseif ($row.Path) { $row.Path } else { "" }
+            if ([string]::IsNullOrWhiteSpace($p)) { continue }
+            if ($p.ToLowerInvariant().EndsWith(".ps1")) { continue }
+            return $p
+        }
+    }
     return $null
 }
 

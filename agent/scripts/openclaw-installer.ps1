@@ -254,9 +254,8 @@ function Fail([string]$m) { Write-Host "  [ERR] $m" -ForegroundColor Red; exit 1
 
 function Invoke-InstallRollback {
     Write-Warn "正在回滚已安装的内容…"
-    $oc = Get-Command openclaw -ErrorAction SilentlyContinue
-    if ($oc) {
-        $ocPath = if ($oc.Source) { $oc.Source } else { "openclaw" }
+    $ocPath = Get-OpenClawCmd
+    if ($ocPath) {
         $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         try {
             Set-NativeCommandStderrNoThrow
@@ -305,10 +304,16 @@ function Get-CommandInvocationPath {
 }
 
 function Get-OpenClawCmd {
-    $a = Get-Command -Name "openclaw" -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($a) { return (Get-CommandInvocationPath $a) }
-    $cmd = Get-Command "openclaw" -ErrorAction SilentlyContinue
-    return (Get-CommandInvocationPath $cmd)
+    foreach ($name in @("openclaw.cmd", "openclaw.exe", "openclaw")) {
+        $rows = @(Get-Command -Name $name -CommandType Application -ErrorAction SilentlyContinue)
+        foreach ($row in $rows) {
+            $p = Get-CommandInvocationPath $row
+            if ([string]::IsNullOrWhiteSpace($p)) { continue }
+            if ($p.ToLowerInvariant().EndsWith(".ps1")) { continue }
+            return $p
+        }
+    }
+    return $null
 }
 
 function Get-NodeVersionLine {
