@@ -43,7 +43,7 @@ function Get-OpenClawCmd {
 }
 
 function Stop-GatewayIfPossible {
-    Write-Step "1/6 停止 OpenClaw 网关"
+    Write-Step "1/7 停止 OpenClaw 网关"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
         Write-Warn "未找到 openclaw 命令，跳过网关停止"
@@ -58,7 +58,7 @@ function Stop-GatewayIfPossible {
 }
 
 function Uninstall-OpenClawCore {
-    Write-Step "2/6 官方卸载（openclaw uninstall）"
+    Write-Step "2/7 官方卸载（openclaw uninstall）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
         Write-Warn "未找到 openclaw 命令，跳过官方卸载"
@@ -66,13 +66,14 @@ function Uninstall-OpenClawCore {
     }
     $uc = Invoke-OpenClawNative -FilePath $cmd -ArgumentList @("uninstall", "--all", "--yes", "--non-interactive")
     if ($uc -ne 0) {
-        Fail "openclaw uninstall 失败"
+        Write-Warn "openclaw uninstall 返回非零（模块可能损坏），继续后续清理"
+    } else {
+        Write-Ok "官方卸载完成"
     }
-    Write-Ok "官方卸载完成"
 }
 
 function Uninstall-OpenClawNpmGlobal {
-    Write-Step "3/6 npm 全局卸载 openclaw"
+    Write-Step "3/7 npm 全局卸载 openclaw"
     $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction SilentlyContinue }
     if (-not $npmCmd) {
@@ -113,7 +114,7 @@ function Remove-InstallerDesktopArtifacts {
 }
 
 function Cleanup-InstallerArtifacts {
-    Write-Step "4/6 清理安装器落盘（快捷方式、安装器脚本）"
+    Write-Step "4/7 清理安装器落盘（快捷方式、安装器脚本）"
     Remove-InstallerDesktopArtifacts
     if ($KeepUserFiles) {
         Write-Warn "KeepUserFiles 已启用，下一步将保留 ~/.openclaw（或 OPENCLAW_PROFILE_DIR）"
@@ -121,8 +122,19 @@ function Cleanup-InstallerArtifacts {
     Write-Ok "清理完成"
 }
 
+function Remove-OpenClawEnvVars {
+    Write-Step "5/6 清理环境变量"
+    foreach ($varName in @("MOONSHOT_API_KEY", "OPENCLAW_MOONSHOT_REGION")) {
+        $val = [Environment]::GetEnvironmentVariable($varName, "User")
+        if ($null -ne $val) {
+            [Environment]::SetEnvironmentVariable($varName, $null, "User")
+            Write-Ok "已删除用户环境变量: $varName"
+        }
+    }
+}
+
 function Remove-OpenClawStateDirectories {
-    Write-Step "5/6 删除 OpenClaw 状态目录"
+    Write-Step "6/7 删除 OpenClaw 状态目录"
     $localProbe = Join-Path $env:LOCALAPPDATA "OpenClaw"
     if (Test-Path -LiteralPath $localProbe) {
         Remove-Item -LiteralPath $localProbe -Recurse -Force -ErrorAction SilentlyContinue
@@ -140,7 +152,7 @@ function Remove-OpenClawStateDirectories {
 }
 
 function Remove-ReleaseBundleArtifacts {
-    Write-Step "6/6 删除安装包 zip 与解压目录（OpenClawInstaller）"
+    Write-Step "7/7 删除安装包 zip 与解压目录（OpenClawInstaller）"
     $zipName = "OpenClawInstaller.zip"
     foreach ($zd in @(
         (Join-Path ([Environment]::GetFolderPath("UserProfile")) "Downloads"),
@@ -194,5 +206,6 @@ Stop-GatewayIfPossible
 Uninstall-OpenClawCore
 Uninstall-OpenClawNpmGlobal
 Cleanup-InstallerArtifacts
+Remove-OpenClawEnvVars
 Remove-OpenClawStateDirectories
 Remove-ReleaseBundleArtifacts
