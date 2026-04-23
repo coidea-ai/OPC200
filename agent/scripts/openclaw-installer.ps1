@@ -50,6 +50,113 @@ function Invoke-NativeText {
     }
 }
 
+function Write-OpenClawCliBlob {
+    param([string]$Title, [string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return }
+    $s = $Text.Trim()
+    if ($s.Length -gt 3000) { $s = $s.Substring(0, 3000) + "`n…" }
+    Write-Host "  [i] $Title" -ForegroundColor DarkGray
+    Write-Host $s -ForegroundColor DarkGray
+}
+
+function Get-OpenClawGateCmdMaxSec {
+    $d = 300
+    if ($env:OPENCLAW_INSTALLER_GATE_CMD_MAX_SEC) {
+        $t = 0
+        if ([int]::TryParse($env:OPENCLAW_INSTALLER_GATE_CMD_MAX_SEC, [ref]$t) -and $t -ge 1) { $d = $t }
+    }
+    return $d
+}
+
+function Stop-OpenClawProcessTree {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return }
+    $tk = Join-Path $env:SystemRoot "System32\taskkill.exe"
+    if (Test-Path -LiteralPath $tk) {
+        $o = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try { $null = & $tk /F /T /PID $ProcessId 2>&1 } catch {}
+        $ErrorActionPreference = $o
+    } else {
+        try { Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+    }
+}
+
+# gateway install|restart|stop 会拉起子进程/新窗口；在 PowerShell 用 & 合并 2>&1 时易与控制台管道死锁。此处与 Invoke-NpmProcess 同策略：子进程+重定向+超时。
+# 非 .exe 时与 Invoke-OpenClawLongRunning 一致：用 cmd /d /s /c 包一层，避免对 .cmd 直启时子链与等待语义异常。
+function Invoke-OpenClawWithRedirect {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList,
+        [int]$MaxWaitSec = 0
+    )
+    if ($MaxWaitSec -le 0) { $MaxWaitSec = (Get-OpenClawGateCmdMaxSec) }
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName() + ".err"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $workDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { (Get-Location).Path }
+    try {
+        Set-NativeCommandStderrNoThrow
+        $p = $null
+        try {
+            $ext = [System.IO.Path]::GetExtension($FilePath).ToLowerInvariant()
+            if ($ext -eq ".exe") {
+                $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $workDir -NoNewWindow -PassThru `
+                    -RedirectStandardOutput $outFile -RedirectStandardError $errFile -ErrorAction Stop
+            } else {
+                $cmdExe = if ($env:ComSpec) { $env:ComSpec } else { Join-Path $env:SystemRoot "System32\cmd.exe" }
+                $tlist = [System.Collections.Generic.List[string]]::new()
+                [void]$tlist.Add((Format-CmdExeMetacharToken $FilePath))
+                foreach ($a in $ArgumentList) { [void]$tlist.Add((Format-CmdExeMetacharToken $a)) }
+                $cmdLine = $tlist -join " "
+                $p = Start-Process -FilePath $cmdExe -ArgumentList @("/d", "/s", "/c", $cmdLine) -WorkingDirectory $workDir -NoNewWindow -PassThru `
+                    -RedirectStandardOutput $outFile -RedirectStandardError $errFile -ErrorAction Stop
+            }
+        } catch {
+            return [pscustomobject]@{ ExitCode = -1; Text = "Start-Process: $($_.Exception.Message)" }
+        }
+        if (-not $p) { return [pscustomobject]@{ ExitCode = -1; Text = "Start-Process 未返回进程" } }
+        $t0 = [DateTime]::UtcNow
+        $lastDot = 0
+        while ($true) {
+            if ($p.WaitForExit(1000)) { break }
+            $elapsed = [int]([DateTime]::UtcNow - $t0).TotalSeconds
+            if ($elapsed -ge $MaxWaitSec) {
+                Stop-OpenClawProcessTree -ProcessId $p.Id
+                $o = ""
+                if (Test-Path -LiteralPath $outFile) { $o = [System.IO.File]::ReadAllText($outFile) }
+                $e = ""
+                if (Test-Path -LiteralPath $errFile) { $e = [System.IO.File]::ReadAllText($errFile) }
+                $m = "（已超时 $MaxWaitSec 秒，已 taskkill /T 终止进程树）" + [Environment]::NewLine + $o + [Environment]::NewLine + $e
+                return [pscustomobject]@{ ExitCode = -1; Text = $m.Trim() }
+            }
+            if (($elapsed - $lastDot) -ge 20) {
+                $lastDot = $elapsed
+                try {
+                    if (-not $p.HasExited) {
+                        Write-Host "  [..] 仍等待子进程 (PID=$($p.Id)) 已 $elapsed 秒 / 最长 $MaxWaitSec 秒…" -ForegroundColor DarkGray
+                    }
+                } catch { }
+            }
+        }
+        if (-not $p.HasExited) { $p.WaitForExit() }
+        $code = 0
+        if ($null -ne $p.ExitCode) { $code = [int]$p.ExitCode }
+        $o2 = ""
+        if (Test-Path -LiteralPath $outFile) { $o2 = [System.IO.File]::ReadAllText($outFile) }
+        $e2 = ""
+        if (Test-Path -LiteralPath $errFile) { $e2 = [System.IO.File]::ReadAllText($errFile) }
+        $merged = ($o2 + [Environment]::NewLine + $e2).Trim()
+        return [pscustomobject]@{ ExitCode = $code; Text = $merged }
+    } finally {
+        $ErrorActionPreference = $prevEap
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-NpmProcess {
     <#
     全局 $ErrorActionPreference 为 Stop。禁止在本脚本内改为直接 & npm / npm.cmd：
@@ -384,6 +491,36 @@ function Format-CmdExeMetacharToken([string]$Text) {
     if ($t -match '[\s"&|<>^]') { '"' + ($t -replace '"', '""') + '"' } else { $t }
 }
 
+# `gateway restart` 常不退出，但会后台完成；若用 Invoke-OpenClawWithRedirect 超时时 taskkill /T 会误杀已拉起的网关。本函数仅启动进程不等待，由 5.5 探测验活。
+function Start-OpenClawFireAndForget {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+    $workDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { (Get-Location).Path }
+    $prevE = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Set-NativeCommandStderrNoThrow
+        $ext = [System.IO.Path]::GetExtension($FilePath).ToLowerInvariant()
+        if ($ext -eq ".exe") {
+            [void](Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $workDir -NoNewWindow -ErrorAction Stop)
+        } else {
+            $cmdExe = if ($env:ComSpec) { $env:ComSpec } else { Join-Path $env:SystemRoot "System32\cmd.exe" }
+            $tlist = [System.Collections.Generic.List[string]]::new()
+            [void]$tlist.Add((Format-CmdExeMetacharToken $FilePath))
+            foreach ($a in $ArgumentList) { [void]$tlist.Add((Format-CmdExeMetacharToken $a)) }
+            $cmdLine = $tlist -join " "
+            [void](Start-Process -FilePath $cmdExe -ArgumentList @("/d", "/s", "/c", $cmdLine) -WorkingDirectory $workDir -NoNewWindow -ErrorAction Stop)
+        }
+    } catch {
+        Write-Warn "已触发子命令但 Start-Process 失败: $($_.Exception.Message)"
+    } finally {
+        $ErrorActionPreference = $prevE
+    }
+}
+
 function Read-DashboardUrlFromCliOutput([string]$Raw) {
     if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
     $c = [regex]::Replace($Raw, '\x1b\[[0-?]*[ -/]*[@-~]', '')
@@ -412,12 +549,15 @@ function Invoke-OpenClawLongRunning {
     param(
         [Parameter(Mandatory)][string]$ExePath,
         [Parameter(Mandatory)][string[]]$ArgumentList,
-        [string]$StepLabel = "openclaw"
+        [string]$StepLabel = "openclaw",
+        [int]$MaxWaitSecOverride = -1
     )
     $outPath = [System.IO.Path]::GetTempFileName()
     $errPath = $outPath + ".err"
     $maxSec = 1800
-    if ($env:OPENCLAW_ONBOARD_TIMEOUT_SEC) {
+    if ($MaxWaitSecOverride -ge 0) {
+        $maxSec = $MaxWaitSecOverride
+    } elseif ($env:OPENCLAW_ONBOARD_TIMEOUT_SEC) {
         $t = 0
         if ([int]::TryParse($env:OPENCLAW_ONBOARD_TIMEOUT_SEC, [ref]$t) -and $t -gt 0) { $maxSec = $t }
     }
@@ -466,25 +606,32 @@ function Get-MoonshotBaseUrl {
 
 function New-MoonshotKimi25BatchJson {
     param([Parameter(Mandatory)][string]$BaseUrl)
-    $val = [ordered]@{
+    # 1. secrets.providers.default: source=env（SecretRef 从环境变量解析所必须）
+    $providerDefault = [ordered]@{ path = "secrets.providers.default"; provider = [ordered]@{ source = "env" } }
+    # 2. models.providers.moonshot（不含 apiKey，由下一条 ref 单独写）
+    $providerVal = [ordered]@{
         baseUrl = $BaseUrl
         api     = "openai-completions"
-        apiKey  = '${MOONSHOT_API_KEY}'
         models  = @(
             [ordered]@{
-                id = "kimi-k2.5"
-                name = "Kimi K2.5"
-                reasoning = $false
-                input = @("text", "image")
-                cost = [ordered]@{ input = 0.6; output = 3; cacheRead = 0.1; cacheWrite = 0 }
+                id            = "kimi-k2.5"
+                name          = "Kimi K2.5"
+                reasoning     = $false
+                input         = @("text", "image")
+                cost          = [ordered]@{ input = 0.6; output = 3; cacheRead = 0.1; cacheWrite = 0 }
                 contextWindow = 262144
-                maxTokens = 262144
-                api = "openai-completions"
+                maxTokens     = 262144
+                api           = "openai-completions"
             }
         )
     }
-    $op = [ordered]@{ path = "models.providers.moonshot"; value = $val }
-    return (ConvertTo-Json -InputObject @($op) -Depth 30)
+    $opProvider = [ordered]@{ path = "models.providers.moonshot"; value = $providerVal }
+    # 3. models.providers.moonshot.apiKey 写成 SecretRef（ref 格式），而非字符串
+    $opApiKey = [ordered]@{
+        path = "models.providers.moonshot.apiKey"
+        ref  = [ordered]@{ source = "env"; provider = "default"; id = "MOONSHOT_API_KEY" }
+    }
+    return (ConvertTo-Json -InputObject @($providerDefault, $opProvider, $opApiKey) -Depth 30)
 }
 
 function Configure-OpenClawModel {
@@ -507,6 +654,10 @@ function Configure-OpenClawModel {
     } elseif (-not $env:OPENCLAW_MOONSHOT_REGION) {
         $env:OPENCLAW_MOONSHOT_REGION = "cn"
     }
+    # 持久化到用户级环境变量，让计划任务（网关进程）也能从环境读取 SecretRef
+    [Environment]::SetEnvironmentVariable("MOONSHOT_API_KEY", $env:MOONSHOT_API_KEY, "User")
+    Write-Ok "MOONSHOT_API_KEY 已写入用户环境变量（User 级），网关计划任务将从中读取"
+
     $baseUrl = Get-MoonshotBaseUrl
     $modelsAllowPath = "agents.defaults.models[""$kimiRef""]"
 
@@ -560,6 +711,12 @@ function Write-TemplatesAndSkills {
     New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
     Expand-Archive -LiteralPath $script:OpenClawSkillsZip -DestinationPath $skillsDir -Force
     Write-Ok "skills 已解压到: $skillsDir"
+
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "skills.entries.topic-sync.enabled", "true")) -ne 0) {
+        Write-Warn "skills.entries.topic-sync.enabled 设置返回非 0"
+    } else {
+        Write-Ok "skill 已启用: topic-sync"
+    }
     foreach ($name in @("AGENTS.md", "IDENTITY.md", "SOUL.md")) {
         $src = Join-Path $script:TemplatesDir $name
         if (Test-Path -LiteralPath $src) {
@@ -615,35 +772,76 @@ function Configure-Gateway {
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
 
-    try { [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "stop")) } catch {}
+    Write-Host "  [i] 5.1 openclaw gateway stop（无服务则忽略）…" -ForegroundColor DarkGray
+    [void](Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
     Start-Sleep -Seconds 4
 
+    Write-Host "  [i] 5.2 config：gateway.mode=local, gateway.tls.enabled=false…" -ForegroundColor DarkGray
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "gateway.mode", "local")) -ne 0) { Write-Warn "gateway.mode 设置返回非 0" }
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "gateway.tls.enabled", "false")) -ne 0) { Write-Warn "gateway.tls.enabled 设置返回非 0" }
 
-    $gwi = Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
-    if ($gwi -ne 0) {
-        Write-Warn "gateway install --force 失败，尝试无 --force"
-        [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "install", "--port", "$GatewayPort"))
+    Write-Host "  [i] 5.3 gateway install --force（计划任务/服务注册，可能需数十秒）…" -ForegroundColor DarkGray
+    $r1 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
+    $installOk = ($r1.ExitCode -eq 0)
+    if (-not $installOk) {
+        Write-Warn "gateway install --force 失败（退出码 $($r1.ExitCode)），将尝试无 --force"
+        Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r1.Text
+        $r2 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--port", "$GatewayPort")
+        $installOk = ($r2.ExitCode -eq 0)
+        if (-not $installOk) {
+            Write-Warn "gateway install 仍失败（退出码 $($r2.ExitCode)）"
+            Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r2.Text
+        }
     }
 
-    [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "restart"))
-    Start-Sleep -Seconds 5
+    $postInstallSec = 10
+    $pis = 0
+    if ($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC) {
+        if ([int]::TryParse($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC, [ref]$pis) -and $pis -ge 0) { $postInstallSec = $pis }
+    }
+    if ($installOk -and $env:OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART -ne "1") {
+        Write-Host "  [i] 5.4 省略 gateway restart：install 已成功，再 restart 会停再起计划任务/子进程、易与 5.3 窗口互关；5.5 前等待 ${postInstallSec}s（可设 OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC 或 OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART=1 强制多一步 restart）" -ForegroundColor DarkGray
+        Start-Sleep -Seconds $postInstallSec
+    } else {
+        Write-Host "  [i] 5.4 gateway restart（install 未成功或已设 FORCE；仅触发、不等待；5.5 探测）…" -ForegroundColor DarkGray
+        Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "restart")
+        Start-Sleep -Seconds 6
+    }
 
     $gPort = 0
     if (-not [int]::TryParse($GatewayPort, [ref]$gPort)) { $gPort = 18789 }
     if ($gPort -le 0) { $gPort = 18789 }
+    Write-Host "  [i] 5.5 探测本机网关 RPC/HTTP（未就绪时最多等待约 1 分钟）…" -ForegroundColor DarkGray
     if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort)) {
-        Write-Warn "网关就绪探测未通过，将执行 doctor 后重装网关（doctor 可能需数分钟，会有进度提示）"
-        Write-Host "  [i] openclaw doctor --non-interactive（长时任务，每 8s 打点）…" -ForegroundColor DarkGray
-        $docCode = Invoke-OpenClawLongRunning -ExePath $cmd -ArgumentList @("doctor", "--non-interactive") -StepLabel "openclaw doctor"
-        if ($docCode -ne 0) { Write-Warn "doctor 退出码 $docCode ，仍继续重装网关" }
-        Write-Host "  [i] gateway stop → install → restart …" -ForegroundColor DarkGray
-        try { [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "stop")) } catch {}
+        if ($env:OPENCLAW_INSTALLER_SKIP_DOCTOR -eq "1") {
+            Write-Warn "已设 OPENCLAW_INSTALLER_SKIP_DOCTOR=1，跳过 doctor，直接尝试重装网关"
+        } else {
+            Write-Warn "网关就绪探测未通过。接着将执行: openclaw doctor --non-interactive（可能 10–30+ 分钟；每 8s 打点；可用 OPENCLAW_INSTALLER_DOCTOR_MAX_SEC 或 OPENCLAW_ONBOARD_TIMEOUT_SEC 限时长；或设 OPENCLAW_INSTALLER_SKIP_DOCTOR=1 跳过）"
+            $docMax = -1
+            $dsec = 0
+            if ([int]::TryParse($env:OPENCLAW_INSTALLER_DOCTOR_MAX_SEC, [ref]$dsec) -and $dsec -gt 0) { $docMax = $dsec }
+            Write-Host "  [i] 5.6 openclaw doctor --non-interactive（长时）…" -ForegroundColor DarkGray
+            $docCode = Invoke-OpenClawLongRunning -ExePath $cmd -ArgumentList @("doctor", "--non-interactive") -StepLabel "openclaw doctor" -MaxWaitSecOverride $docMax
+            if ($docCode -ne 0) { Write-Warn "doctor 退出码 $docCode ，仍继续重装网关" }
+        }
+        Write-Host "  [i] 5.7 gateway stop → install --force → restart…" -ForegroundColor DarkGray
+        [void](Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
         Start-Sleep -Seconds 4
-        [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort"))
-        [void](Invoke-Native -FilePath $cmd -ArgumentList @("gateway", "restart"))
-        Start-Sleep -Seconds 5
+        $r3 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
+        if ($r3.ExitCode -ne 0) { Write-OpenClawCliBlob -Title "gateway install" -Text $r3.Text }
+        if (($r3.ExitCode -eq 0) -and $env:OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART -ne "1") {
+            $extra = 10
+            $ex = 0
+            if ($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC) {
+                if ([int]::TryParse($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC, [ref]$ex) -and $ex -ge 0) { $extra = $ex }
+            }
+            Write-Host "  [i] 5.7b 已重装成功，省略 restart，等待 ${extra}s 后探测…" -ForegroundColor DarkGray
+            Start-Sleep -Seconds $extra
+        } else {
+            Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "restart")
+            Start-Sleep -Seconds 6
+        }
+        Write-Host "  [i] 5.8 再次探测 RPC/HTTP…" -ForegroundColor DarkGray
         if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 12 -IntervalSec 5)) {
             Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；openclaw gateway restart；再执行 openclaw gateway status --deep。"
         }

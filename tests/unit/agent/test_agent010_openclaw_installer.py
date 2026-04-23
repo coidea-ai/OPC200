@@ -109,6 +109,16 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "gateway install --force --port" in s
     assert "config validate" in s
     assert "gateway install" in s
+    assert "Invoke-OpenClawWithRedirect" in s
+    assert "OPENCLAW_INSTALLER_GATE_CMD_MAX_SEC" in s
+    assert "Stop-OpenClawProcessTree" in s
+    assert "taskkill" in s
+    assert "Start-OpenClawFireAndForget" in s
+    assert "OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART" in s
+    assert "OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC" in s
+    assert "省略 gateway restart" in s
+    assert "OPENCLAW_INSTALLER_SKIP_DOCTOR" in s
+    assert "5.1 openclaw gateway stop" in s
 
 
 def test_openclaw_installer_sh_has_expected_steps():
