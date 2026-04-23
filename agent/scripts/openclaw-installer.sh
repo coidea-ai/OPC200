@@ -96,9 +96,33 @@ run_onboard() {
   fi
   base_url="$(moonshot_base_url)"
   openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
-  openclaw config set "models.providers.moonshot.baseUrl" "$base_url" || die "openclaw config set models.providers.moonshot.baseUrl 失败"
-  openclaw config set "models.providers.moonshot.api" "openai-completions" || die "openclaw config set models.providers.moonshot.api 失败"
-  openclaw config set "models.providers.moonshot.apiKey" '${MOONSHOT_API_KEY}' || die "openclaw config set models.providers.moonshot.apiKey 失败"
+  batch_f="$(mktemp "${TMPDIR:-/tmp}/oc-moon.XXXXXX.json")" || die "mktemp 失败"
+  export MSH_BASE_URL="$base_url"
+  python3 <<'PY' >"$batch_f"
+import json, os
+base = os.environ["MSH_BASE_URL"]
+val = {
+    "baseUrl": base,
+    "api": "openai-completions",
+    "apiKey": "${MOONSHOT_API_KEY}",
+    "models": [
+        {
+            "id": "kimi-k2.5",
+            "name": "Kimi K2.5",
+            "reasoning": False,
+            "input": ["text", "image"],
+            "cost": {"input": 0.6, "output": 3, "cacheRead": 0.1, "cacheWrite": 0},
+            "contextWindow": 262144,
+            "maxTokens": 262144,
+            "api": "openai-completions",
+        }
+    ],
+}
+print(json.dumps([{"path": "models.providers.moonshot", "value": val}]))
+PY
+  unset MSH_BASE_URL
+  openclaw config set --batch-file "$batch_f" || die "openclaw config set --batch-file（models.providers.moonshot）失败"
+  rm -f "$batch_f"
   openclaw config set "agents.defaults.models[\"${kimi_ref}\"]" "{}" --strict-json || die "openclaw config set agents.defaults.models 失败"
   openclaw config set agents.defaults.model.primary "$kimi_ref" || die "openclaw config set agents.defaults.model.primary 失败"
   openclaw models set "$kimi_ref" || die "openclaw models set 失败"

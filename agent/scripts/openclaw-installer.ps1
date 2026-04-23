@@ -464,6 +464,29 @@ function Get-MoonshotBaseUrl {
     return "https://api.moonshot.cn/v1"
 }
 
+function New-MoonshotKimi25BatchJson {
+    param([Parameter(Mandatory)][string]$BaseUrl)
+    $val = [ordered]@{
+        baseUrl = $BaseUrl
+        api     = "openai-completions"
+        apiKey  = '${MOONSHOT_API_KEY}'
+        models  = @(
+            [ordered]@{
+                id = "kimi-k2.5"
+                name = "Kimi K2.5"
+                reasoning = $false
+                input = @("text", "image")
+                cost = [ordered]@{ input = 0.6; output = 3; cacheRead = 0.1; cacheWrite = 0 }
+                contextWindow = 262144
+                maxTokens = 262144
+                api = "openai-completions"
+            }
+        )
+    }
+    $op = [ordered]@{ path = "models.providers.moonshot"; value = $val }
+    return (ConvertTo-Json -InputObject @($op) -Depth 30)
+}
+
 function Configure-OpenClawModel {
     Write-Step "3/6 模型配置（Kimi，config + models）"
     $cmd = Get-OpenClawCmd
@@ -490,14 +513,16 @@ function Configure-OpenClawModel {
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
         Write-Warn "config set models.mode merge 非 0，继续"
     }
-    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.baseUrl", $baseUrl)) -ne 0) {
-        Fail "openclaw config set models.providers.moonshot.baseUrl 失败"
-    }
-    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.api", "openai-completions")) -ne 0) {
-        Fail "openclaw config set models.providers.moonshot.api 失败"
-    }
-    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.apiKey", '${MOONSHOT_API_KEY}')) -ne 0) {
-        Fail "openclaw config set models.providers.moonshot.apiKey 失败"
+    $batchContent = New-MoonshotKimi25BatchJson -BaseUrl $baseUrl
+    $batchFile = [System.IO.Path]::GetTempFileName() + "openclaw-moonshot-batch.json"
+    try {
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($batchFile, $batchContent, $utf8NoBom)
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "--batch-file", $batchFile)) -ne 0) {
+            Fail "openclaw config set --batch-file（models.providers.moonshot）失败"
+        }
+    } finally {
+        Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
     }
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPath, "{}", "--strict-json")) -ne 0) {
         Fail "openclaw config set agents.defaults.models 失败"

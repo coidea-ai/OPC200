@@ -93,8 +93,8 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "Configure-OpenClawModel" in s
     assert "Kimi (Moonshot) API Key" in s
     assert "moonshot/kimi-k2.5" in s
-    assert "models.providers.moonshot.baseUrl" in s
-    assert "models.providers.moonshot.apiKey" in s
+    assert "New-MoonshotKimi25BatchJson" in s
+    assert "--batch-file" in s
     assert "Get-MoonshotBaseUrl" in s
     assert "openclaw config set" in s
     assert "openclaw models set" in s
@@ -118,6 +118,7 @@ def test_openclaw_installer_sh_has_expected_steps():
     assert "preinstall_assets" in s
     assert "configure_gateway" in s
     assert "openclaw config set" in s
+    assert '"--batch-file"' in s or "batch-file" in s
     assert "openclaw models set" in s
     assert "agents.defaults.model.primary" in s
     assert "模型配置（Kimi" in s
