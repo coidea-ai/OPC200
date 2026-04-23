@@ -54,7 +54,6 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "Install-NodeFromOfflineBundle" in s
     assert "node-v24.15.0" in s
     assert "node-v24.15.0-win-x64.zip" in s
-    assert "node-v24.15.0-win-x86.zip" in s
     assert "openclaw.ai" in s
     assert "Get-NetTCPConnection" in s
     assert "Try-ReleaseLocalPort" in s
@@ -176,7 +175,6 @@ def test_openclaw_release_pack_script_present():
     assert "openclaw-templates" in s
     assert "node-v24.15.0" in s
     assert "node-v24.15.0-win-x64.zip" in s
-    assert "node-v24.15.0-win-x86.zip" in s
 
 
 def test_openclaw_installer_win_local_release_script_present():

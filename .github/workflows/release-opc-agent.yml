@@ -82,10 +82,8 @@ jobs:
           $d = "agent/scripts/node-v24.15.0"
           New-Item -ItemType Directory -Force -Path $d | Out-Null
           $base = "https://nodejs.org/dist/v24.15.0"
-          foreach ($name in @("node-v24.15.0-win-x64.zip", "node-v24.15.0-win-x86.zip")) {
-            $out = Join-Path $d $name
-            Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
-          }
+          $name = "node-v24.15.0-win-x64.zip"
+          Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $d $name) -UseBasicParsing
 
       - name: Build OpenClawInstaller-win-YYYY.M.D.zip
         shell: pwsh

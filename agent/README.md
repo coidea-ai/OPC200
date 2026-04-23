@@ -497,7 +497,7 @@ sudo ./uninstall.sh
   - `agent/scripts/openclaw-npm-cache/`  
     npm 离线缓存目录（**不提交**；本地由上一脚本生成，Release 由 CI 生成）。
   - `agent/scripts/node-v24.15.0/`  
-    内置 Node 24.15.0 Windows zip（x64/x86），安装器在无/非 24.15.0 Node 时离线解压使用。
+    内置 Node 24.15.0 Windows zip（x64），安装器在无/非 24.15.0 Node 时离线解压使用。
   - `agent/scripts/openclaw-templates/`  
     安装时拷贝到用户 OpenClaw 配置目录的模板（如 `AGENTS.md` 等）。
 - OPC200 安装链路（保留）：
@@ -578,7 +578,7 @@ powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
 - `OpenClawUninstaller.exe`
 - `openclaw-npm-cache/`（`npm install -g openclaw@2026.4.15` 所需离线缓存）
 - `openclaw-templates/`
-- `node-v24.15.0/`（`node-v24.15.0-win-x64.zip` / `node-v24.15.0-win-x86.zip`，离线安装 Node 24.15.0 用）
+- `node-v24.15.0/`（`node-v24.15.0-win-x64.zip`，离线安装 Node 24.15.0 用）
 
 4) 用户安装行为（当前实现）：
 

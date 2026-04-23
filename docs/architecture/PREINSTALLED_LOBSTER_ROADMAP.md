@@ -199,7 +199,7 @@
   - OpenClaw 可执行性（安装后强校验）
 - [x] Node 离线兜底：
   - 若未安装或 `<24`，从 `agent/scripts/node-v24.15.0` 选择本地包安装。
-  - Windows 使用 `node-v24.15.0-win-x64.zip` / `node-v24.15.0-win-x86.zip` 自动按架构选择。
+  - Windows 使用 `node-v24.15.0-win-x64.zip`（官方 v24 已停止 x86 发行）。
 
 #### 2.10.4 桌面入口与 dashboard token
 
@@ -222,7 +222,7 @@
   - `OpenClawInstaller.exe`
   - `OpenClawUninstaller.exe`
 - [x] 单包交付：
-  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v24.15.0（win-x64/x86 zip）`
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v24.15.0（win-x64 zip）`
 - [x] 发布标签：
   - `openclaw-installer-v2026.4.15`
 - [x] 资产覆盖更新：

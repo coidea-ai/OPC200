@@ -340,9 +340,7 @@ function Install-NodeFromOfflineBundle {
     if (-not (Test-Path -LiteralPath $script:NodeOfflineDir)) {
         Fail "未找到离线 Node 目录: $($script:NodeOfflineDir)"
     }
-    $arch = $env:PROCESSOR_ARCHITECTURE
     $zipName = "node-v24.15.0-win-x64.zip"
-    if ($arch -eq "x86") { $zipName = "node-v24.15.0-win-x86.zip" }
     $zipPath = Join-Path $script:NodeOfflineDir $zipName
     if (-not (Test-Path -LiteralPath $zipPath)) {
         Fail "离线 Node 安装包缺失: $zipPath"
