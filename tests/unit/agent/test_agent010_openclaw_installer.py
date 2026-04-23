@@ -93,7 +93,8 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "Configure-OpenClawModel" in s
     assert "Kimi (Moonshot) API Key" in s
     assert "moonshot/kimi-k2.5" in s
-    assert "models.providers.moonshot" in s
+    assert "models.providers.moonshot.baseUrl" in s
+    assert "models.providers.moonshot.apiKey" in s
     assert "Get-MoonshotBaseUrl" in s
     assert "openclaw config set" in s
     assert "openclaw models set" in s

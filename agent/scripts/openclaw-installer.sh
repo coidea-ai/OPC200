@@ -95,9 +95,10 @@ run_onboard() {
     export OPENCLAW_MOONSHOT_REGION="cn"
   fi
   base_url="$(moonshot_base_url)"
-  prov_json="$(python3 -c 'import json,sys; print(json.dumps({"baseUrl":sys.argv[1],"api":"openai-completions","apiKey":"${MOONSHOT_API_KEY}"}))' "$base_url")"
   openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
-  openclaw config set "models.providers.moonshot" "$prov_json" --strict-json || die "openclaw config set models.providers.moonshot 失败"
+  openclaw config set "models.providers.moonshot.baseUrl" "$base_url" || die "openclaw config set models.providers.moonshot.baseUrl 失败"
+  openclaw config set "models.providers.moonshot.api" "openai-completions" || die "openclaw config set models.providers.moonshot.api 失败"
+  openclaw config set "models.providers.moonshot.apiKey" '${MOONSHOT_API_KEY}' || die "openclaw config set models.providers.moonshot.apiKey 失败"
   openclaw config set "agents.defaults.models[\"${kimi_ref}\"]" "{}" --strict-json || die "openclaw config set agents.defaults.models 失败"
   openclaw config set agents.defaults.model.primary "$kimi_ref" || die "openclaw config set agents.defaults.model.primary 失败"
   openclaw models set "$kimi_ref" || die "openclaw models set 失败"

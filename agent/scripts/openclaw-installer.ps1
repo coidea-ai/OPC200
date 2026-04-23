@@ -485,18 +485,19 @@ function Configure-OpenClawModel {
         $env:OPENCLAW_MOONSHOT_REGION = "cn"
     }
     $baseUrl = Get-MoonshotBaseUrl
-    $provJson = [ordered]@{
-        baseUrl = $baseUrl
-        api     = "openai-completions"
-        apiKey  = '${MOONSHOT_API_KEY}'
-    } | ConvertTo-Json -Compress -Depth 4
     $modelsAllowPath = "agents.defaults.models[""$kimiRef""]"
 
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
         Write-Warn "config set models.mode merge 非 0，继续"
     }
-    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot", $provJson, "--strict-json")) -ne 0) {
-        Fail "openclaw config set models.providers.moonshot 失败"
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.baseUrl", $baseUrl)) -ne 0) {
+        Fail "openclaw config set models.providers.moonshot.baseUrl 失败"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.api", "openai-completions")) -ne 0) {
+        Fail "openclaw config set models.providers.moonshot.api 失败"
+    }
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.moonshot.apiKey", '${MOONSHOT_API_KEY}')) -ne 0) {
+        Fail "openclaw config set models.providers.moonshot.apiKey 失败"
     }
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPath, "{}", "--strict-json")) -ne 0) {
         Fail "openclaw config set agents.defaults.models 失败"
