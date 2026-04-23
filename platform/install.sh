@@ -307,7 +307,7 @@ global:
 route:
   group_by: ['alertname', 'job']
   group_wait: 10s
-  group_interval: 5m
+  group_interval: 4h
   repeat_interval: 4h
   receiver: 'opc200-email'
 
@@ -320,6 +320,9 @@ route:
     - match:
         severity: warning
       receiver: 'opc200-email-p1'
+      group_wait: 10s
+      group_interval: 4h
+      repeat_interval: 4h
       continue: true
 
 receivers:

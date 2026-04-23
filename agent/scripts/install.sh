@@ -1464,7 +1464,6 @@ _register_launchd() {
         <string>${agent_bin}</string>
         <string>--config</string>
         <string>${config_yml}</string>
-        <string>service</string>
         <string>run</string>
     </array>
     <key>RunAtLoad</key>

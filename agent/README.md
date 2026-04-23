@@ -30,7 +30,7 @@ docker build -t opc-agent:latest .
 docker run -d \
   --name opc-agent \
   -v ~/.opc200:/data \
-  -e PLATFORM_URL=https://opc200.co \
+  -e PLATFORM_URL=http://opc200.meerkatai.cn:9091 \
   -e TENANT_ID=opc-001 \
   -e API_KEY=sk-xxx \
   opc-agent:latest
@@ -75,7 +75,7 @@ powershell -ExecutionPolicy Bypass -File .\opc200-install.ps1 -Version latest
 | `-OpenClawOnboard` | switch | `$false` | **静默**时等价于要求执行 OpenClaw onboard（与 `OPENCLAW_ONBOARD=1` 一致）。**交互安装默认就会 onboard**，一般不必传。 |
 | `-SkipOpenClawOnboard` | switch | `$false` | 跳过 OpenClaw 首次配置（`openclaw onboard`）；也可设环境变量 `OPENCLAW_ONBOARD=0`。 |
 | `-OpenClawAuthChoice` | string | `""` | 与 `OPENCLAW_AUTH_CHOICE` 相同，静默 onboard 时常用。取值：`apiKey`、`openai-api-key`、`gemini-api-key`、`custom-api-key`（须配合对应密钥环境变量，**不再支持 skip**）。 |
-| `-OPC200PlatformUrl` | string | `""` | **OPC200-Agent 服务**时写入 `config.yml` 的平台根地址。交互时可回车使用默认 `https://platform.opc200.co`；**静默**时若省略则脚本内使用上述默认 URL。 |
+| `-OPC200PlatformUrl` | string | `""` | **OPC200-Agent 服务**时写入 `config.yml` 的平台根地址。交互时可回车使用默认 `http://opc200.meerkatai.cn:9091`；**静默**时若省略则脚本内使用上述默认 URL。 |
 | `-OPC200TenantId` | string | `""` | **OPC200-Agent 服务**租户 ID（**勿**与 OpenClaw `custom-*` 混淆）。静默必填时可用环境变量 `OPC200_TENANT_ID`；交互安装在第三部分采集。租户值落盘位置与 YAML 键名以 `docs/INSTALL_SCRIPT_SPEC.md` 模板为准（运行时由 `opc_agent` 映射为 `TENANT_ID`）。 |
 | `-OPC200ApiKey` | string | `""` | **OPC200-Agent 服务**推送指标用的平台密钥，写入安装目录 `.env`（`OPC200_API_KEY`）。若前面 OpenClaw onboard 已把模型密钥记入脚本内部变量，可与平台共用而不再传；也可用环境变量 `OPC200_API_KEY` 代替（静默）。 |
 | `-OPC200Port` | int | `8080` | OPC200-Agent 服务 **健康检查**端口；安装前会检测占用。 |
@@ -111,7 +111,7 @@ cd E:\projects\OPC200\agent\scripts
 
 # 静默 + 指定平台 URL
 .\install.ps1 -Silent `
-  -OPC200PlatformUrl "https://platform.opc200.co" `
+  -OPC200PlatformUrl "http://opc200.meerkatai.cn:9091" `
   -OPC200TenantId "tenant-001" `
   -OPC200ApiKey "your-platform-key"
 
@@ -120,7 +120,7 @@ $env:OPENCLAW_ONBOARD = "1" 			# 1 -> 执行 openclaw onboard
 $env:OPENCLAW_AUTH_CHOICE = "apiKey"	# 指当前是 Anthropic
 $env:ANTHROPIC_API_KEY = "sk-ant-..."	# Anthropic 的 apikey（勿提交仓库）
 .\install.ps1 -Silent `
-  -OPC200PlatformUrl "https://platform.opc200.co" `
+  -OPC200PlatformUrl "http://opc200.meerkatai.cn:9091" `
   -OPC200TenantId "tenant-001" `
   -OPC200ApiKey "your-platform-key"
   
@@ -140,7 +140,7 @@ cd C:\path\to\OPC200\agent\scripts
 
 .\install.ps1 -Silent -OpenClawOnboard -OpenClawAuthChoice "custom-api-key" `
   -RepoRoot "C:\path\to\OPC200" `
-  -OPC200PlatformUrl "https://platform.opc200.co" `
+  -OPC200PlatformUrl "http://opc200.meerkatai.cn:9091" `
   -OPC200TenantId "your-tenant-id" `
   -OPC200ApiKey "your-opc200-platform-key"
 ```
@@ -218,7 +218,7 @@ bash /path/to/opc200-install.sh --version latest --silent \
 | `--silent` | 静默安装；第三部分须 `--opc200-tenant-id` / `OPC200_TENANT_ID` 与平台 ApiKey；OpenClaw onboard 默认不执行，除非 `--openclaw-onboard` 或 `OPENCLAW_ONBOARD=1`。 |
 | `--install-dir DIR` | 安装根目录，默认 `$HOME/.opc200`。 |
 | `--repo-root DIR` | OPC200 仓库根（含 `agent/`），默认脚本所在目录的 `../..`。 |
-| `--opc200-platform-url URL` | 平台根地址；静默时可省略则用默认 `https://platform.opc200.co`。 |
+| `--opc200-platform-url URL` | 平台根地址；静默时可省略则用默认 `http://opc200.meerkatai.cn:9091`。 |
 | `--opc200-tenant-id ID` | 租户 ID；兼容旧名 `--customer-id`。 |
 | `--opc200-api-key KEY` | 平台密钥；兼容 `--api-key`。 |
 | `--opc200-port N` | Agent HTTP 健康检查端口，默认 `8080`；兼容 `--port`。 |
@@ -239,7 +239,7 @@ sudo ./install.sh
 
 # 静默安装 + 不跑 openclaw onboard
 sudo ./install.sh --silent \
-  --opc200-platform-url "https://platform.opc200.co" \
+  --opc200-platform-url "http://opc200.meerkatai.cn:9091" \
   --opc200-tenant-id "tenant-001" \
   --opc200-api-key "your-platform-key"
 
@@ -251,7 +251,7 @@ sudo env \
   OPENCLAW_CUSTOM_MODEL_ID="your-model-id" \
   CUSTOM_API_KEY="sk-your-inference-key" \
   ./install.sh --silent --openclaw-onboard \
-  --opc200-platform-url "https://platform.opc200.co" \
+  --opc200-platform-url "http://opc200.meerkatai.cn:9091" \
   --opc200-tenant-id "your-tenant-id" \
   --opc200-api-key "your-opc200-platform-key"
 ```
@@ -366,7 +366,7 @@ chmod +x ~/data/opc200/opc200-install.sh
      -Silent `
      -OpenClawOnboard `
      -OpenClawAuthChoice "custom-api-key" `
-     -OPC200PlatformUrl "https://platform.opc200.co" `
+     -OPC200PlatformUrl "http://opc200.meerkatai.cn:9091" `
      -OPC200TenantId "your-tenant-id" `
      -OPC200ApiKey "your-opc200-platform-key"
    ```
@@ -406,7 +406,7 @@ chmod +x ~/data/opc200/opc200-install.sh
      --extract-parent "~/data/opc200" \
      --silent \
      --openclaw-onboard \
-     --opc200-platform-url "https://platform.opc200.co" \
+     --opc200-platform-url "http://opc200.meerkatai.cn:9091" \
      --opc200-tenant-id "your-tenant-id" \
      --opc200-api-key "your-opc200-platform-key"
    ```
