@@ -110,10 +110,9 @@ run_onboard() {
     ref_key="${pid}/${mid}"
     prov_json="$(python3 -c 'import json,sys; b,a,m=sys.argv[1:4]; print(json.dumps({"baseUrl":b,"api":a,"apiKey":"${CUSTOM_API_KEY}","models":[{"id":m,"name":m}]}))' \
       "$base" "$api_mode" "$mid")"
-    allow_json="$(python3 -c 'import json,sys; k=sys.argv[1]; print(json.dumps({k: {}}))' "$ref_key")"
     openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
-    openclaw config set "models.providers.${pid}" "$prov_json" --strict-json --merge || die "openclaw config set models.providers 失败"
-    openclaw config set agents.defaults.models "$allow_json" --strict-json --merge || die "openclaw config set agents.defaults.models 失败"
+    openclaw config set "models.providers.${pid}" "$prov_json" --strict-json || die "openclaw config set models.providers 失败"
+    openclaw config set "agents.defaults.models[\"${ref_key}\"]" "{}" --strict-json || die "openclaw config set agents.defaults.models 失败"
     openclaw config set agents.defaults.model.primary "$ref_key" || die "openclaw config set agents.defaults.model.primary 失败"
     openclaw models set "$ref_key" || die "openclaw models set 失败"
   else
@@ -154,8 +153,7 @@ run_onboard() {
         mr="$_mr"
       fi
     fi
-    allow_json="$(python3 -c 'import json,sys; k=sys.argv[1]; print(json.dumps({k: {}}))' "$mr")"
-    openclaw config set agents.defaults.models "$allow_json" --strict-json --merge || warn "agents.defaults.models merge 非 0，继续"
+    openclaw config set "agents.defaults.models[\"${mr}\"]" "{}" --strict-json || warn "agents.defaults.models[…] 非 0，继续"
     openclaw config set agents.defaults.model.primary "$mr" || die "openclaw config set agents.defaults.model.primary 失败"
     openclaw models set "$mr" || die "openclaw models set 失败"
   fi

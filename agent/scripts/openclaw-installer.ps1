@@ -522,17 +522,16 @@ function Configure-OpenClawModel {
         }
         $provJson = ($provObj | ConvertTo-Json -Compress -Depth 8)
         $refKey = "$providerId/$mid"
-        $allowMerge = @{}
-        $allowMerge[$refKey] = @{}
-        $allowJson = $allowMerge | ConvertTo-Json -Compress -Depth 5
+        if ($refKey -match '["\[\]\\]') { Fail "模型引用含非法字符: $refKey" }
+        $modelsAllowPath = "agents.defaults.models[""$refKey""]"
 
         if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
             Write-Warn "config set models.mode merge 非 0，继续"
         }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.$providerId", $provJson, "--strict-json", "--merge")) -ne 0) {
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.$providerId", $provJson, "--strict-json")) -ne 0) {
             Fail "openclaw config set models.providers 失败"
         }
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.models", $allowJson, "--strict-json", "--merge")) -ne 0) {
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPath, "{}", "--strict-json")) -ne 0) {
             Fail "openclaw config set agents.defaults.models 失败"
         }
         if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $refKey)) -ne 0) {
@@ -560,11 +559,10 @@ function Configure-OpenClawModel {
             $hint = Read-Host "模型 provider/model [回车=$modelRef]"
             if (-not [string]::IsNullOrWhiteSpace($hint)) { $modelRef = $hint.Trim() }
         }
-        $allowBundled = @{}
-        $allowBundled[$modelRef] = @{}
-        $allowOne = $allowBundled | ConvertTo-Json -Compress -Depth 5
-        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.models", $allowOne, "--strict-json", "--merge")) -ne 0) {
-            Write-Warn "agents.defaults.models merge 非 0，继续"
+        if ($modelRef -match '["\[\]\\]') { Fail "模型引用含非法字符: $modelRef" }
+        $modelsAllowPathBundled = "agents.defaults.models[""$modelRef""]"
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", $modelsAllowPathBundled, "{}", "--strict-json")) -ne 0) {
+            Write-Warn "agents.defaults.models[…] 非 0，继续"
         }
         if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $modelRef)) -ne 0) {
             Fail "openclaw config set agents.defaults.model.primary 失败"
