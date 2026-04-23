@@ -181,12 +181,41 @@ function Invoke-NpmProcess {
         if (-not $p) { return 1 }
         $t0 = Get-Date
         $id = 91
+        $spinChars = @('|','/','-','\')
+        $spinIdx = 0
+        $lastPrintSec = -1
+        $warned15 = $false
+        $maxSec = 1800
         while ($true) {
-            if ($p.WaitForExit(1000)) { break }
+            if ($p.WaitForExit(300)) { break }
             $sec = [int]((Get-Date) - $t0).TotalSeconds
-            Write-Progress -Id $id -Activity "OpenClaw npm 离线安装" -Status "进行中… 已 $sec 秒（大缓存可能需数分钟，请勿关闭）" -PercentComplete -1 -ErrorAction SilentlyContinue
+            $ch = $spinChars[$spinIdx % $spinChars.Count]
+            $spinIdx++
+            if (-not $warned15 -and $sec -ge 900) {
+                $warned15 = $true
+                Write-Host ""
+                Write-Warn "程序已安装 15 分钟，将在 15 分钟后强制退出"
+            }
+            if ($sec -ge $maxSec) {
+                Write-Host ""
+                Stop-OpenClawProcessTree -ProcessId $p.Id
+                Write-Host "`r                                                          `r" -NoNewline
+                Write-Progress -Id $id -Activity "OpenClaw npm 安装" -Completed -ErrorAction SilentlyContinue
+                Invoke-InstallRollback
+                Fail "npm install 超时（已等待 30 分钟），已强制终止并回滚。请检查网络或重试。"
+            }
+            if ($sec -ne $lastPrintSec) {
+                $lastPrintSec = $sec
+                $min = [int][Math]::Floor($sec / 60)
+                $remSec = $sec % 60
+                Write-Host "`r  [$ch] npm install 进行中… 已 ${min}m${remSec}s（请勿关闭）" -NoNewline -ForegroundColor DarkGray
+            } else {
+                Write-Host "`r  [$ch]" -NoNewline -ForegroundColor DarkGray
+            }
+            Write-Progress -Id $id -Activity "OpenClaw npm 安装" -Status "进行中… 已 $sec 秒" -PercentComplete -1 -ErrorAction SilentlyContinue
         }
-        Write-Progress -Id $id -Activity "OpenClaw npm 离线安装" -Completed -ErrorAction SilentlyContinue
+        Write-Host "`r                                                          `r" -NoNewline
+        Write-Progress -Id $id -Activity "OpenClaw npm 安装" -Completed -ErrorAction SilentlyContinue
         if ($p.ExitCode -is [int]) { return $p.ExitCode }
         if ($null -ne $p.ExitCode) { return [int]$p.ExitCode }
         return 0
@@ -222,6 +251,39 @@ function Write-Step([string]$m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m) { Write-Host "  [OK] $m" -ForegroundColor Green }
 function Write-Warn([string]$m) { Write-Host " [WARN] $m" -ForegroundColor Yellow }
 function Fail([string]$m) { Write-Host "  [ERR] $m" -ForegroundColor Red; exit 1 }
+
+function Invoke-InstallRollback {
+    Write-Warn "正在回滚已安装的内容…"
+    $oc = Get-Command openclaw -ErrorAction SilentlyContinue
+    if ($oc) {
+        $ocPath = if ($oc.Source) { $oc.Source } else { "openclaw" }
+        $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        try {
+            Set-NativeCommandStderrNoThrow
+            $null = & $ocPath gateway stop 2>$null
+            $null = & $ocPath uninstall --all --yes --non-interactive 2>$null
+        } catch {} finally { $ErrorActionPreference = $prevEap }
+    }
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction SilentlyContinue }
+    if ($npmCmd) {
+        $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        try {
+            Set-NativeCommandStderrNoThrow
+            $null = & $npmCmd.Source uninstall -g openclaw 2>$null
+        } catch {} finally { $ErrorActionPreference = $prevEap }
+    }
+    foreach ($varName in @("MOONSHOT_API_KEY", "OPENCLAW_MOONSHOT_REGION")) {
+        if ($null -ne [Environment]::GetEnvironmentVariable($varName, "User")) {
+            [Environment]::SetEnvironmentVariable($varName, $null, "User")
+        }
+    }
+    $localDir = Join-Path $env:LOCALAPPDATA "OpenClaw"
+    if (Test-Path -LiteralPath $localDir) { Remove-Item -LiteralPath $localDir -Recurse -Force -ErrorAction SilentlyContinue }
+    $profileDir = if ($env:OPENCLAW_PROFILE_DIR) { $env:OPENCLAW_PROFILE_DIR } else { Join-Path $HOME ".openclaw" }
+    if (Test-Path -LiteralPath $profileDir) { Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Ok "回滚完成"
+}
 
 function Get-CommandInvocationPath {
     param($Cmd)
@@ -416,50 +478,83 @@ function Run-HardChecks {
     }
     Write-Ok "Node 版本: $(Get-NodeVersionLine)"
 
+    $npmCmd0 = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npmCmd0) { $npmCmd0 = Get-Command npm -ErrorAction SilentlyContinue }
+    if ($npmCmd0) {
+        $npmPath0 = Get-CommandInvocationPath $npmCmd0
+        $regOut = Invoke-NativeText -FilePath $npmPath0 -ArgumentList @("config", "get", "registry")
+        $curReg = if ($regOut.ExitCode -eq 0 -and $regOut.Output) { "$($regOut.Output)".Trim().TrimEnd('/') } else { "" }
+        if ($curReg -eq "https://registry.npmjs.org") {
+            Write-Warn "npm 源为官方源，切换为淘宝源"
+            [void](Invoke-Native -FilePath $npmPath0 -ArgumentList @("config", "set", "registry", "https://registry.npmmirror.com/"))
+            Write-Ok "npm registry: https://registry.npmmirror.com/"
+        } else {
+            Write-Ok "npm registry: $curReg"
+        }
+    }
+
     $script:SkipInstallOpenClawFromNpm = $false
     $ocExe = Get-OpenClawCmd
     if ($ocExe) {
         $ov = ""
         $verOut = Invoke-NativeText -FilePath $ocExe -ArgumentList @("--version")
-        $vtext = if ($null -eq $verOut.Output) { "" } elseif ($verOut.Output -is [string]) { $verOut.Output } else { ($verOut.Output | ForEach-Object { "$_" }) -join [Environment]::NewLine }
-        foreach ($line in ($vtext -split "\r?\n")) {
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                $ov = $line.Trim()
-                break
+        if ($verOut.ExitCode -eq 0) {
+            $vtext = if ($null -eq $verOut.Output) { "" } elseif ($verOut.Output -is [string]) { $verOut.Output } else { ($verOut.Output | ForEach-Object { "$_" }) -join [Environment]::NewLine }
+            foreach ($line in ($vtext -split "\r?\n")) {
+                if (-not [string]::IsNullOrWhiteSpace($line)) {
+                    $ov = $line.Trim()
+                    break
+                }
             }
         }
-        if ([string]::IsNullOrWhiteSpace($ov)) { $ov = "（未能读取版本）" }
-        Write-Ok "OpenClaw 版本: $ov"
-        $script:SkipInstallOpenClawFromNpm = $true
+        if (-not [string]::IsNullOrWhiteSpace($ov)) {
+            Write-Ok "OpenClaw 版本: $ov"
+            $script:SkipInstallOpenClawFromNpm = $true
+        } else {
+            Write-Warn "检测到 openclaw 命令但无法正常运行（模块可能损坏），将重新安装"
+        }
     }
 }
 
 function Install-OpenClawFromOfflineNpm {
-    Write-Step "2/6 安装 OpenClaw（npm 离线缓存，openclaw@$($script:OpenClawNpmVersion)）"
-    if (-not (Test-Path -LiteralPath $script:NpmCacheDir)) {
-        Fail "未找到 npm 离线缓存目录: $($script:NpmCacheDir)（发布前需执行 fetch-openclaw-npm-cache.ps1 灌 cache）"
-    }
-    $cacheProbe = Get-ChildItem -LiteralPath $script:NpmCacheDir -ErrorAction SilentlyContinue
-    if (-not $cacheProbe -or $cacheProbe.Count -eq 0) {
-        Fail "npm 离线缓存目录为空: $($script:NpmCacheDir)"
-    }
+    $spec = "openclaw@$($script:OpenClawNpmVersion)"
     $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction SilentlyContinue }
     if (-not $npmCmd) {
         Fail "未找到 npm 命令，请确认 Node 22.22.2 安装目录含 npm.cmd"
     }
-    $cacheFull = (Resolve-Path -LiteralPath $script:NpmCacheDir).Path
-    $env:npm_config_cache = $cacheFull
-    $env:npm_config_registry = "https://registry.npmjs.org/"
-    $env:npm_config_loglevel = "warn"
-    $spec = "openclaw@$($script:OpenClawNpmVersion)"
     $npmPath = Get-CommandInvocationPath $npmCmd
     if ([string]::IsNullOrWhiteSpace($npmPath)) { Fail "无法解析 npm 可执行文件路径" }
-    $npmExit = Invoke-NpmProcess -NpmPath $npmPath -ArgumentList @(
-        "install", "-g", $spec, "--offline", "--prefer-offline", "--no-audit", "--no-fund"
-    )
-    if ($npmExit -ne 0) {
-        Fail "npm install -g $spec 失败（离线）。请确认 cache 与当前 Windows/Node 22.22.2 匹配。"
+
+    $hasCache = $false
+    if ((Test-Path -LiteralPath $script:NpmCacheDir)) {
+        $cacheProbe = Get-ChildItem -LiteralPath $script:NpmCacheDir -ErrorAction SilentlyContinue
+        if ($cacheProbe -and $cacheProbe.Count -gt 0) { $hasCache = $true }
+    }
+
+    if ($hasCache) {
+        Write-Step "2/6 安装 OpenClaw（npm 离线缓存，$spec）"
+        $cacheFull = (Resolve-Path -LiteralPath $script:NpmCacheDir).Path
+        $env:npm_config_cache = $cacheFull
+        $env:npm_config_registry = "https://registry.npmjs.org/"
+        $env:npm_config_loglevel = "warn"
+        $npmExit = Invoke-NpmProcess -NpmPath $npmPath -ArgumentList @(
+            "install", "-g", $spec, "--offline", "--prefer-offline", "--no-audit", "--no-fund"
+        )
+        if ($npmExit -ne 0) {
+            Write-Warn "离线安装失败，回退到在线安装"
+            $hasCache = $false
+        }
+    }
+
+    if (-not $hasCache) {
+        Write-Step "2/6 安装 OpenClaw（在线，$spec）"
+        $npmExit = Invoke-NpmProcess -NpmPath $npmPath -ArgumentList @(
+            "install", "-g", $spec, "--force", "--no-audit", "--no-fund"
+        )
+        if ($npmExit -ne 0) {
+            Fail "npm install -g $spec 失败（在线）。请检查网络连接。"
+        }
     }
     $npmGlobalBin = Join-Path $env:APPDATA "npm"
     if (Test-Path -LiteralPath $npmGlobalBin) {
@@ -767,52 +862,74 @@ function Wait-GatewayRpcReady {
     return $false
 }
 
+function Stop-GatewayAndConfirm {
+    param([Parameter(Mandatory)][string]$OpenClawExe, [string]$Label = "gateway stop")
+    [void](Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
+    Start-Sleep -Seconds 5
+    if ((Test-GatewayRpcOk -OpenClawExe $OpenClawExe)) {
+        Write-Warn "$Label 后网关仍在运行，再次执行 stop"
+        [void](Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
+        Start-Sleep -Seconds 5
+    }
+}
+
+function Kill-PortOccupier {
+    param([Parameter(Mandatory)][int]$Port)
+    if (Test-NoListenerOnGatewayPort $Port) { return }
+    Write-Warn "端口 $Port 被占用，正在强制结束占用进程"
+    if (-not (Try-ReleaseLocalPort -Port $Port)) {
+        $detail = Get-LocalPortConnSummary -Port $Port
+        Write-Warn "端口 $Port 仍被占用: $detail"
+    }
+    if (Test-NoListenerOnGatewayPort $Port) {
+        Write-Ok "端口 $Port 已释放"
+    } else {
+        Write-Warn "端口 $Port 释放失败，继续尝试"
+    }
+}
+
+function Install-GatewayWithFallback {
+    param([Parameter(Mandatory)][string]$OpenClawExe, [Parameter(Mandatory)][string]$Port)
+    $r1 = Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "install", "--force", "--port", $Port)
+    if ($r1.ExitCode -eq 0) { return }
+    Write-Warn "gateway install --force 失败（退出码 $($r1.ExitCode)），将尝试无 --force"
+    Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r1.Text
+    $r2 = Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "install", "--port", $Port)
+    if ($r2.ExitCode -ne 0) {
+        Write-Warn "gateway install 仍失败（退出码 $($r2.ExitCode)）"
+        Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r2.Text
+    }
+}
+
 function Configure-Gateway {
     Write-Step "5/6 网关配置与验证"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令" }
 
-    Write-Host "  [i] 5.1 openclaw gateway stop（无服务则忽略）…" -ForegroundColor DarkGray
-    [void](Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
-    Start-Sleep -Seconds 4
+    $gPort = 0
+    if (-not [int]::TryParse($GatewayPort, [ref]$gPort)) { $gPort = 18789 }
+    if ($gPort -le 0) { $gPort = 18789 }
 
+    # 5.1 gateway stop + 确认关闭
+    Write-Host "  [i] 5.1 openclaw gateway stop + 确认关闭…" -ForegroundColor DarkGray
+    Stop-GatewayAndConfirm -OpenClawExe $cmd
+
+    # 5.2 config
     Write-Host "  [i] 5.2 config：gateway.mode=local, gateway.tls.enabled=false…" -ForegroundColor DarkGray
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "gateway.mode", "local")) -ne 0) { Write-Warn "gateway.mode 设置返回非 0" }
     if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "gateway.tls.enabled", "false")) -ne 0) { Write-Warn "gateway.tls.enabled 设置返回非 0" }
 
-    Write-Host "  [i] 5.3 gateway install --force（计划任务/服务注册，可能需数十秒）…" -ForegroundColor DarkGray
-    $r1 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
-    $installOk = ($r1.ExitCode -eq 0)
-    if (-not $installOk) {
-        Write-Warn "gateway install --force 失败（退出码 $($r1.ExitCode)），将尝试无 --force"
-        Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r1.Text
-        $r2 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--port", "$GatewayPort")
-        $installOk = ($r2.ExitCode -eq 0)
-        if (-not $installOk) {
-            Write-Warn "gateway install 仍失败（退出码 $($r2.ExitCode)）"
-            Write-OpenClawCliBlob -Title "openclaw 输出（供排查）" -Text $r2.Text
-        }
-    }
+    # 5.3 端口查杀
+    Write-Host "  [i] 5.3 检测端口 $gPort 占用…" -ForegroundColor DarkGray
+    Kill-PortOccupier -Port $gPort
 
-    $postInstallSec = 10
-    $pis = 0
-    if ($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC) {
-        if ([int]::TryParse($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC, [ref]$pis) -and $pis -ge 0) { $postInstallSec = $pis }
-    }
-    if ($installOk -and $env:OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART -ne "1") {
-        Write-Host "  [i] 5.4 省略 gateway restart：install 已成功，再 restart 会停再起计划任务/子进程、易与 5.3 窗口互关；5.5 前等待 ${postInstallSec}s（可设 OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC 或 OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART=1 强制多一步 restart）" -ForegroundColor DarkGray
-        Start-Sleep -Seconds $postInstallSec
-    } else {
-        Write-Host "  [i] 5.4 gateway restart（install 未成功或已设 FORCE；仅触发、不等待；5.5 探测）…" -ForegroundColor DarkGray
-        Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "restart")
-        Start-Sleep -Seconds 6
-    }
+    # 5.4 gateway install
+    Write-Host "  [i] 5.4 gateway install --force --port $GatewayPort（计划任务/服务注册）…" -ForegroundColor DarkGray
+    Install-GatewayWithFallback -OpenClawExe $cmd -Port "$GatewayPort"
 
-    $gPort = 0
-    if (-not [int]::TryParse($GatewayPort, [ref]$gPort)) { $gPort = 18789 }
-    if ($gPort -le 0) { $gPort = 18789 }
-    Write-Host "  [i] 5.5 探测本机网关 RPC/HTTP（未就绪时最多等待约 1 分钟）…" -ForegroundColor DarkGray
-    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort)) {
+    # 5.5 探测本机网关 RPC/HTTP（8 分钟）
+    Write-Host "  [i] 5.5 探测本机网关 RPC/HTTP（未就绪时最多等待约 8 分钟）…" -ForegroundColor DarkGray
+    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8)) {
         if ($env:OPENCLAW_INSTALLER_SKIP_DOCTOR -eq "1") {
             Write-Warn "已设 OPENCLAW_INSTALLER_SKIP_DOCTOR=1，跳过 doctor，直接尝试重装网关"
         } else {
@@ -824,26 +941,17 @@ function Configure-Gateway {
             $docCode = Invoke-OpenClawLongRunning -ExePath $cmd -ArgumentList @("doctor", "--non-interactive") -StepLabel "openclaw doctor" -MaxWaitSecOverride $docMax
             if ($docCode -ne 0) { Write-Warn "doctor 退出码 $docCode ，仍继续重装网关" }
         }
-        Write-Host "  [i] 5.7 gateway stop → install --force → restart…" -ForegroundColor DarkGray
-        [void](Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
-        Start-Sleep -Seconds 4
-        $r3 = Invoke-OpenClawWithRedirect -FilePath $cmd -ArgumentList @("gateway", "install", "--force", "--port", "$GatewayPort")
-        if ($r3.ExitCode -ne 0) { Write-OpenClawCliBlob -Title "gateway install" -Text $r3.Text }
-        if (($r3.ExitCode -eq 0) -and $env:OPENCLAW_INSTALLER_FORCE_GATEWAY_RESTART -ne "1") {
-            $extra = 10
-            $ex = 0
-            if ($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC) {
-                if ([int]::TryParse($env:OPENCLAW_INSTALLER_POST_INSTALL_SLEEP_SEC, [ref]$ex) -and $ex -ge 0) { $extra = $ex }
-            }
-            Write-Host "  [i] 5.7b 已重装成功，省略 restart，等待 ${extra}s 后探测…" -ForegroundColor DarkGray
-            Start-Sleep -Seconds $extra
-        } else {
-            Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "restart")
-            Start-Sleep -Seconds 6
-        }
-        Write-Host "  [i] 5.8 再次探测 RPC/HTTP…" -ForegroundColor DarkGray
-        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 12 -IntervalSec 5)) {
-            Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；openclaw gateway restart；再执行 openclaw gateway status --deep。"
+
+        # 5.7 重复：stop + 确认 → 端口查杀 → install
+        Write-Host "  [i] 5.7 gateway stop + 端口查杀 + install --force…" -ForegroundColor DarkGray
+        Stop-GatewayAndConfirm -OpenClawExe $cmd -Label "5.7 gateway stop"
+        Kill-PortOccupier -Port $gPort
+        Install-GatewayWithFallback -OpenClawExe $cmd -Port "$GatewayPort"
+
+        # 5.8 再次探测 RPC/HTTP（8 分钟）
+        Write-Host "  [i] 5.8 再次探测 RPC/HTTP（最多约 8 分钟）…" -ForegroundColor DarkGray
+        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8)) {
+            Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；再执行 openclaw gateway status --deep。"
         }
     }
     Write-Ok "OpenClaw 安装完成: http://127.0.0.1:$GatewayPort"
