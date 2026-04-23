@@ -24,7 +24,7 @@ function Invoke-Native {
     $ErrorActionPreference = "Continue"
     try {
         Set-NativeCommandStderrNoThrow
-        & $FilePath @ArgumentList 2>$null
+        $null = & $FilePath @ArgumentList 2>$null
         if ($null -eq $LASTEXITCODE) { return 0 }
         return [int]$LASTEXITCODE
     } finally {

@@ -41,6 +41,7 @@ def _pack_mac_sh() -> str:
 
 def test_openclaw_installer_ps1_has_expected_steps():
     s = _ps1()
+    assert '$null = & $FilePath @ArgumentList 2>$null' in s
     assert "Get-CommandInvocationPath" in s
     assert "Run-HardChecks" in s
     assert 'Write-Step "1/6 环境检测（硬检测）"' in s
