@@ -246,6 +246,7 @@ $script:OpenClawNpmVersion = "2026.4.15"
 $script:DefaultSkills = "skill-vetter"
 $script:DashboardUrl = ""
 $script:SkipInstallOpenClawFromNpm = $false
+$script:OpenClawExePath = ""
 
 function Write-Step([string]$m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m) { Write-Host "  [OK] $m" -ForegroundColor Green }
@@ -304,6 +305,9 @@ function Get-CommandInvocationPath {
 }
 
 function Get-OpenClawCmd {
+    if (-not [string]::IsNullOrWhiteSpace($script:OpenClawExePath) -and (Test-Path -LiteralPath $script:OpenClawExePath)) {
+        return $script:OpenClawExePath
+    }
     foreach ($name in @("openclaw.cmd", "openclaw.exe", "openclaw")) {
         $rows = @(Get-Command -Name $name -CommandType Application -ErrorAction SilentlyContinue)
         foreach ($row in $rows) {
@@ -429,8 +433,20 @@ function Test-IsAdministrator {
     return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Ensure-System32InPath {
+    $sys32 = Join-Path $env:SystemRoot "System32"
+    if (-not (Test-Path -LiteralPath $sys32)) { return }
+    $pathLower = ";$($env:Path.ToLowerInvariant());"
+    $sys32Lower = ";$($sys32.ToLowerInvariant());"
+    if ($pathLower -notlike "*$sys32Lower*") {
+        $env:Path = "$sys32;$env:Path"
+        Write-Warn "进程 PATH 缺少 System32，已临时补齐: $sys32"
+    }
+}
+
 function Run-HardChecks {
     Write-Step "1/6 环境检测（硬检测）"
+    Ensure-System32InPath
     if (-not (Test-IsAdministrator)) {
         Fail "请使用管理员身份运行本安装脚本（右键「以管理员身份运行」打开 PowerShell 后再执行）。"
     }
@@ -514,6 +530,9 @@ function Run-HardChecks {
         }
         if (-not [string]::IsNullOrWhiteSpace($ov)) {
             Write-Ok "OpenClaw 版本: $ov"
+            if (-not $ocExe.ToLowerInvariant().EndsWith(".ps1") -and (Test-Path -LiteralPath $ocExe)) {
+                $script:OpenClawExePath = $ocExe
+            }
             $script:SkipInstallOpenClawFromNpm = $true
         } else {
             Write-Warn "检测到 openclaw 命令但无法正常运行（模块可能损坏），将重新安装"
@@ -561,21 +580,65 @@ function Install-OpenClawFromOfflineNpm {
             Fail "npm install -g $spec 失败（在线）。请检查网络连接。"
         }
     }
-    $npmGlobalBin = Join-Path $env:APPDATA "npm"
-    if (Test-Path -LiteralPath $npmGlobalBin) {
-        $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-        $env:Path = "$npmGlobalBin;$machinePath;$userPath"
-        $oldUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-        if (-not "$oldUserPath".ToLower().Contains($npmGlobalBin.ToLower())) {
-            [Environment]::SetEnvironmentVariable("Path", "$npmGlobalBin;$oldUserPath", "User")
+    # 动态查询 npm 真实全局 prefix（便携式 node 与 MSI 安装差异很大）
+    $npmGlobalBins = New-Object System.Collections.Generic.List[string]
+    $prOut = Invoke-NativeText -FilePath $npmPath -ArgumentList @("prefix", "-g")
+    if ($prOut.ExitCode -eq 0 -and $prOut.Output) {
+        $prefixText = if ($prOut.Output -is [string]) { $prOut.Output } else { ($prOut.Output | ForEach-Object { "$_" }) -join [Environment]::NewLine }
+        foreach ($line in ($prefixText -split "\r?\n")) {
+            $t = $line.Trim()
+            if ([string]::IsNullOrWhiteSpace($t)) { continue }
+            if (Test-Path -LiteralPath $t) {
+                [void]$npmGlobalBins.Add($t)
+                $binSub = Join-Path $t "bin"
+                if (Test-Path -LiteralPath $binSub) { [void]$npmGlobalBins.Add($binSub) }
+            }
+            break
         }
     }
+    # 兜底候选：便携式 node 目录 + MSI 的 %APPDATA%\npm
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    $nodePath = Get-CommandInvocationPath $nodeCmd
+    if (-not [string]::IsNullOrWhiteSpace($nodePath)) {
+        $nodeBin = Split-Path -Parent $nodePath
+        if ((Test-Path -LiteralPath $nodeBin) -and ($npmGlobalBins -notcontains $nodeBin)) {
+            [void]$npmGlobalBins.Add($nodeBin)
+        }
+    }
+    $msiBin = Join-Path $env:APPDATA "npm"
+    if ((Test-Path -LiteralPath $msiBin) -and ($npmGlobalBins -notcontains $msiBin)) {
+        [void]$npmGlobalBins.Add($msiBin)
+    }
+
+    foreach ($bin in $npmGlobalBins) {
+        if ($env:Path -notlike "*$bin*") {
+            $env:Path = "$bin;$env:Path"
+        }
+        $oldUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        if (-not "$oldUserPath".ToLower().Contains($bin.ToLower())) {
+            [Environment]::SetEnvironmentVariable("Path", "$bin;$oldUserPath", "User")
+        }
+    }
+
+    # 绝对路径直接定位 openclaw.cmd / .exe，不依赖 PATH
+    $script:OpenClawExePath = ""
+    foreach ($bin in $npmGlobalBins) {
+        foreach ($fname in @("openclaw.cmd", "openclaw.exe")) {
+            $cand = Join-Path $bin $fname
+            if (Test-Path -LiteralPath $cand) {
+                $script:OpenClawExePath = $cand
+                break
+            }
+        }
+        if ($script:OpenClawExePath) { break }
+    }
+
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
-        Fail "未找到 openclaw 命令。请确认 npm 全局目录在 PATH: $npmGlobalBin"
+        $binsSummary = if ($npmGlobalBins.Count -gt 0) { $npmGlobalBins -join "; " } else { "(未查询到)" }
+        Fail "未找到 openclaw 命令。已尝试的 npm 全局目录: $binsSummary"
     }
-    Write-Ok "openclaw 命令可用"
+    Write-Ok "openclaw 命令可用: $cmd"
 }
 
 function Read-RequiredLine([string]$prompt) {
@@ -869,18 +932,28 @@ function Wait-GatewayRpcReady {
             Write-Host "  [..] 已超总等待上限 ${MaxTotalSec}s（第 $i 次尝试前），中止等待" -ForegroundColor DarkGray
             return $false
         }
-        if (Test-GatewayRpcOk -OpenClawExe $OpenClawExe) { return $true }
-        if (Test-GatewayHttpOk -ListenPort $ListenPort) { return $true }
-        Write-Host "  [..] 等待网关就绪（$i/$MaxAttempts，已 ${elapsed}s/${MaxTotalSec}s，RPC 与 HTTP 每 ${IntervalSec}s 探测）…" -ForegroundColor DarkGray
+        # 前置门：端口必须真的在 Listen，才允许进入 RPC/HTTP 探测
+        # （避免系统代理/shim 退出码异常导致的假通过）
+        if (-not (Test-NoListenerOnGatewayPort $ListenPort)) {
+            if (Test-GatewayRpcOk -OpenClawExe $OpenClawExe) { return $true }
+            if (Test-GatewayHttpOk -ListenPort $ListenPort) { return $true }
+        }
+        Write-Host "  [..] 等待网关就绪（$i/$MaxAttempts，已 ${elapsed}s/${MaxTotalSec}s，端口+RPC+HTTP 每 ${IntervalSec}s 探测）…" -ForegroundColor DarkGray
         Start-Sleep -Seconds $IntervalSec
     }
     return $false
 }
 
 function Stop-GatewayAndConfirm {
-    param([Parameter(Mandatory)][string]$OpenClawExe, [string]$Label = "gateway stop")
+    param(
+        [Parameter(Mandatory)][string]$OpenClawExe,
+        [Parameter(Mandatory)][int]$ListenPort,
+        [string]$Label = "gateway stop"
+    )
     [void](Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
     Start-Sleep -Seconds 5
+    # 端口门：没人在 Listen 就认定已停止，忽略 RPC 可能的假报
+    if (Test-NoListenerOnGatewayPort $ListenPort) { return }
     if ((Test-GatewayRpcOk -OpenClawExe $OpenClawExe)) {
         Write-Warn "$Label 后网关仍在运行，再次执行 stop"
         [void](Invoke-OpenClawWithRedirect -FilePath $OpenClawExe -ArgumentList @("gateway", "stop") -MaxWaitSec 90)
@@ -927,7 +1000,7 @@ function Configure-Gateway {
 
     # 5.1 gateway stop + 确认关闭
     Write-Host "  [i] 5.1 openclaw gateway stop + 确认关闭…" -ForegroundColor DarkGray
-    Stop-GatewayAndConfirm -OpenClawExe $cmd
+    Stop-GatewayAndConfirm -OpenClawExe $cmd -ListenPort $gPort
 
     # 5.2 config
     Write-Host "  [i] 5.2 config：gateway.mode=local, gateway.tls.enabled=false…" -ForegroundColor DarkGray
@@ -983,7 +1056,7 @@ function Configure-Gateway {
 
         # 5.7 重复：stop + 确认 → 端口查杀 → install
         Write-Host "  [i] 5.7 gateway stop + 端口查杀 + install --force…" -ForegroundColor DarkGray
-        Stop-GatewayAndConfirm -OpenClawExe $cmd -Label "5.7 gateway stop"
+        Stop-GatewayAndConfirm -OpenClawExe $cmd -ListenPort $gPort -Label "5.7 gateway stop"
         Kill-PortOccupier -Port $gPort
         Install-GatewayWithFallback -OpenClawExe $cmd -Port "$GatewayPort"
 
