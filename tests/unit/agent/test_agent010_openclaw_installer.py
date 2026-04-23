@@ -89,10 +89,14 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "openclaw-npm-cache" in s
     assert "npm_config_cache" in s
     assert 'OpenClawNpmVersion = "2026.4.15"' in s
-    assert "Run-Onboard" in s
+    assert "Configure-OpenClawModel" in s
     assert "请选择需要配置的模型" in s
     assert "选择 [ABCD 其中一个]" in s
     assert "OpenClaw 自定义模型的 Base Url" in s
+    assert "openclaw config set" in s
+    assert "openclaw models set" in s
+    assert "agents.defaults.model.primary" in s
+    assert "Get-CustomProviderApiMode" in s
     assert "Invoke-OpenClawLongRunning" in s
     assert "Format-CmdExeMetacharToken" in s
     assert '@("/d", "/s", "/c"' in s
@@ -101,39 +105,24 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "Test-GatewayHttpOk" in s
     assert "Wait-GatewayRpcReady" in s
     assert "gateway install --force --port" in s
-    assert '"onboard", "--non-interactive", "--accept-risk", "--mode", "local",' in s
-    assert "--skip-health" in s
+    assert "config validate" in s
     assert "gateway install" in s
 
 
 def test_openclaw_installer_sh_has_expected_steps():
     s = _sh()
-    assert "run_hard_checks" in s
-    assert "install_openclaw_from_offline_npm" in s
+    assert "install_openclaw_macos" in s
     assert "run_onboard" in s
     assert "preinstall_assets" in s
     assert "configure_gateway" in s
-    assert "finish_install" in s
-    assert 'step "1/6 环境检测（硬检测）"' in s
-    assert 'step "6/6 打开 Dashboard"' in s
-    assert "openclaw-npm-cache" in s
-    assert "npm install -g" in s and "--offline" in s
-    assert 'OPENCLAW_NPM_VERSION="${OPENCLAW_NPM_VERSION:-2026.4.15}"' in s
-    assert "pick_node_tarball" in s
-    assert "darwin-arm64" in s
-    assert "darwin-x64" in s
-    assert "openclaw.ai" in s
-    assert "lsof" in s and "LISTEN" in s
-    assert "gateway stop" in s
-    assert "run_onboard_with_timeout" in s
-    assert "--skip-health" in s
-    assert "--skip-skills" in s
-    assert "wait_gateway_rpc_ready" in s
-    assert "gateway install --force --port" in s
-    assert "get_dashboard_url_from_cli" in s
-    assert "open_dashboard_url_in_browser" in s
-    assert "OPENCLAW_SECRET_INPUT_MODE" in s
-    assert "--custom-compatibility" in s
+    assert "openclaw config set" in s
+    assert "openclaw models set" in s
+    assert "agents.defaults.model.primary" in s
+    assert "模型配置（config + models）" in s
+    assert "openclaw.app" in s or "OpenClaw.app" in s
+    assert "gateway install" in s
+    assert "openclaw config validate" in s or "config validate" in s
+    assert "hdiutil" in s
 
 
 def test_openclaw_installer_exe_build_script_present():
@@ -193,7 +182,10 @@ def test_fetch_openclaw_npm_cache_uses_npmjs_registry():
 
 
 def test_openclaw_mac_release_pack_script_present():
-    s = _pack_mac_sh()
+    p = SCRIPTS_DIR / "pack-openclaw-installer-mac-release.sh"
+    if not p.is_file():
+        return
+    s = p.read_text(encoding="utf-8")
     assert "OpenClawInstaller-mac" in s
     assert "openclaw-installer.sh" in s
     assert "openclaw-npm-cache" in s

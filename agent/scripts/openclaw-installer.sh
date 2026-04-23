@@ -59,8 +59,27 @@ install_openclaw_macos() {
   ok "OpenClaw.app 已安装到 /Applications"
 }
 
+custom_provider_api() {
+  local c
+  c="$(echo -n "${OPENCLAW_CUSTOM_COMPATIBILITY:-openai}" | tr '[:upper:]' '[:lower:]')"
+  case "$c" in
+    anthropic*) echo "anthropic-messages" ;;
+    *) echo "openai-completions" ;;
+  esac
+}
+
+safe_provider_id() {
+  local r="${1:-custom}"
+  r="$(echo -n "$r" | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+  if [[ ! "$r" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+    echo "custom"
+  else
+    echo "$r"
+  fi
+}
+
 run_onboard() {
-  step "2/4 模型配置（onboard）"
+  step "2/4 模型配置（config + models）"
   ensure_openclaw
   local auth="$OPENCLAW_AUTH_CHOICE"
   if [[ -z "$auth" && "$SILENT" == false ]]; then
@@ -82,11 +101,67 @@ run_onboard() {
     [[ -n "${OPENCLAW_CUSTOM_MODEL_ID:-}" ]] || OPENCLAW_CUSTOM_MODEL_ID="$(read_required OPENCLAW_CUSTOM_MODEL_ID)"
     [[ -n "${CUSTOM_API_KEY:-}" ]] || CUSTOM_API_KEY="$(read_required CUSTOM_API_KEY)"
     export OPENCLAW_CUSTOM_BASE_URL OPENCLAW_CUSTOM_MODEL_ID CUSTOM_API_KEY
-    openclaw onboard --non-interactive --accept-risk --mode local --auth-choice custom-api-key --gateway-port "$GATEWAY_PORT" --gateway-bind loopback --custom-base-url "$OPENCLAW_CUSTOM_BASE_URL" --custom-model-id "$OPENCLAW_CUSTOM_MODEL_ID"
+    local api_mode pid base mid ref_key prov_json allow_json
+    api_mode="$(custom_provider_api)"
+    pid="$(safe_provider_id "${OPENCLAW_CUSTOM_PROVIDER_ID:-custom}")"
+    base="${OPENCLAW_CUSTOM_BASE_URL// /}"
+    base="${base%/}"
+    mid="${OPENCLAW_CUSTOM_MODEL_ID// /}"
+    ref_key="${pid}/${mid}"
+    prov_json="$(python3 -c 'import json,sys; b,a,m=sys.argv[1:4]; print(json.dumps({"baseUrl":b,"api":a,"apiKey":"${CUSTOM_API_KEY}","models":[{"id":m,"name":m}]}))' \
+      "$base" "$api_mode" "$mid")"
+    allow_json="$(python3 -c 'import json,sys; k=sys.argv[1]; print(json.dumps({k: {}}))' "$ref_key")"
+    openclaw config set models.mode merge || warn "config set models.mode merge 非 0，继续"
+    openclaw config set "models.providers.${pid}" "$prov_json" --strict-json --merge || die "openclaw config set models.providers 失败"
+    openclaw config set agents.defaults.models "$allow_json" --strict-json --merge || die "openclaw config set agents.defaults.models 失败"
+    openclaw config set agents.defaults.model.primary "$ref_key" || die "openclaw config set agents.defaults.model.primary 失败"
+    openclaw models set "$ref_key" || die "openclaw models set 失败"
   else
-    openclaw onboard --non-interactive --accept-risk --mode local --auth-choice "$auth" --gateway-port "$GATEWAY_PORT" --gateway-bind loopback
+    case "$auth" in
+      apiKey)
+        if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+          read -r -p "ANTHROPIC_API_KEY: " ANTHROPIC_API_KEY
+          export ANTHROPIC_API_KEY
+        fi
+        [[ -n "${ANTHROPIC_API_KEY:-}" ]] || die "需要 ANTHROPIC_API_KEY"
+        ;;
+      openai-api-key)
+        if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+          read -r -p "OPENAI_API_KEY: " OPENAI_API_KEY
+          export OPENAI_API_KEY
+        fi
+        [[ -n "${OPENAI_API_KEY:-}" ]] || die "需要 OPENAI_API_KEY"
+        ;;
+      gemini-api-key)
+        if [[ -z "${GEMINI_API_KEY:-}" ]]; then
+          read -r -p "GEMINI_API_KEY: " GEMINI_API_KEY
+          export GEMINI_API_KEY
+        fi
+        [[ -n "${GEMINI_API_KEY:-}" ]] || die "需要 GEMINI_API_KEY"
+        ;;
+      *) die "不支持的 OPENCLAW_AUTH_CHOICE: $auth" ;;
+    esac
+    local def mr
+    case "$auth" in
+      apiKey) def="anthropic/claude-sonnet-4-5" ;;
+      openai-api-key) def="openai/gpt-4.1" ;;
+      *) def="google/gemini-2.5-flash" ;;
+    esac
+    mr="${OPENCLAW_MODEL_REF:-$def}"
+    if [[ "$SILENT" == false ]]; then
+      read -r -p "模型 provider/model [回车=$mr]: " _mr
+      if [[ -n "$_mr" ]]; then
+        mr="$_mr"
+      fi
+    fi
+    allow_json="$(python3 -c 'import json,sys; k=sys.argv[1]; print(json.dumps({k: {}}))' "$mr")"
+    openclaw config set agents.defaults.models "$allow_json" --strict-json --merge || warn "agents.defaults.models merge 非 0，继续"
+    openclaw config set agents.defaults.model.primary "$mr" || die "openclaw config set agents.defaults.model.primary 失败"
+    openclaw models set "$mr" || die "openclaw models set 失败"
   fi
-  ok "onboard 完成"
+  openclaw config validate || warn "openclaw config validate 非 0，请检查 openclaw.json"
+  openclaw models status || true
+  ok "模型配置完成（config + models）"
 }
 
 preinstall_assets() {

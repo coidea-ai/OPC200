@@ -458,8 +458,23 @@ function Invoke-OpenClawLongRunning {
     }
 }
 
-function Run-Onboard {
-    Write-Step "3/6 模型配置（onboard）"
+function Get-CustomProviderApiMode {
+    param([string]$Compat)
+    $c = if ($Compat) { $Compat.Trim().ToLowerInvariant() } else { "openai" }
+    if ($c -like "anthropic*") { return "anthropic-messages" }
+    return "openai-completions"
+}
+
+function New-SafeProviderId {
+    param([string]$Raw, [string]$Fallback = "custom")
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return $Fallback }
+    $s = $Raw.Trim().ToLowerInvariant() -replace "\.+", "-"
+    if ($s -notmatch "^[a-z][a-z0-9_-]*$") { return $Fallback }
+    return $s
+}
+
+function Configure-OpenClawModel {
+    Write-Step "3/6 模型配置（config + models）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) { Fail "未找到 openclaw 命令，请重新打开 PowerShell 后重试" }
 
@@ -482,9 +497,10 @@ function Run-Onboard {
     }
     if (-not $auth) { Fail "静默模式必须指定 OpenClawAuthChoice 或 OPENCLAW_AUTH_CHOICE" }
 
-    $secretMode = if ($env:OPENCLAW_SECRET_INPUT_MODE) { $env:OPENCLAW_SECRET_INPUT_MODE.Trim() } else { "plaintext" }
-    if ($secretMode -ne "plaintext" -and $secretMode -ne "ref") {
-        Fail "OPENCLAW_SECRET_INPUT_MODE 仅支持 plaintext 或 ref"
+    $defaultBundled = @{
+        "apiKey"            = "anthropic/claude-sonnet-4-5"
+        "openai-api-key"    = "openai/gpt-4.1"
+        "gemini-api-key"    = "google/gemini-2.5-flash"
     }
 
     if ($auth -eq "custom-api-key") {
@@ -492,33 +508,78 @@ function Run-Onboard {
         if (-not $env:OPENCLAW_CUSTOM_MODEL_ID) { $env:OPENCLAW_CUSTOM_MODEL_ID = Read-RequiredLine "OpenClaw 自定义模型的 ID" }
         if (-not $env:CUSTOM_API_KEY) { $env:CUSTOM_API_KEY = Read-RequiredLine "OpenClaw 自定义模型的 api key" }
         $compat = if ($env:OPENCLAW_CUSTOM_COMPATIBILITY) { $env:OPENCLAW_CUSTOM_COMPATIBILITY.Trim() } else { "openai" }
-        $ocArgs = @(
-            "onboard", "--non-interactive", "--accept-risk", "--mode", "local",
-            "--auth-choice", "custom-api-key",
-            "--secret-input-mode", $secretMode,
-            "--gateway-port", "$GatewayPort", "--gateway-bind", "loopback",
-            "--skip-health", "--skip-skills",
-            "--custom-base-url", $env:OPENCLAW_CUSTOM_BASE_URL,
-            "--custom-model-id", $env:OPENCLAW_CUSTOM_MODEL_ID,
-            "--custom-compatibility", $compat
-        )
-        if ($env:OPENCLAW_CUSTOM_PROVIDER_ID) {
-            $ocArgs += @("--custom-provider-id", $env:OPENCLAW_CUSTOM_PROVIDER_ID.Trim())
+        $apiMode = Get-CustomProviderApiMode -Compat $compat
+        $providerId = New-SafeProviderId -Raw $(if ($env:OPENCLAW_CUSTOM_PROVIDER_ID) { $env:OPENCLAW_CUSTOM_PROVIDER_ID } else { "custom" })
+        $baseUrl = $env:OPENCLAW_CUSTOM_BASE_URL.Trim().TrimEnd("/")
+        $mid = $env:OPENCLAW_CUSTOM_MODEL_ID.Trim()
+        $provObj = [ordered]@{
+            baseUrl = $baseUrl
+            api     = $apiMode
+            apiKey  = '${CUSTOM_API_KEY}'
+            models  = @(
+                [ordered]@{ id = $mid; name = $mid }
+            )
         }
-        $exitCode = Invoke-OpenClawLongRunning -ExePath $cmd -ArgumentList $ocArgs -StepLabel "onboard"
+        $provJson = ($provObj | ConvertTo-Json -Compress -Depth 8)
+        $refKey = "$providerId/$mid"
+        $allowMerge = @{}
+        $allowMerge[$refKey] = @{}
+        $allowJson = $allowMerge | ConvertTo-Json -Compress -Depth 5
+
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.mode", "merge")) -ne 0) {
+            Write-Warn "config set models.mode merge 非 0，继续"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "models.providers.$providerId", $provJson, "--strict-json", "--merge")) -ne 0) {
+            Fail "openclaw config set models.providers 失败"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.models", $allowJson, "--strict-json", "--merge")) -ne 0) {
+            Fail "openclaw config set agents.defaults.models 失败"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $refKey)) -ne 0) {
+            Fail "openclaw config set agents.defaults.model.primary 失败"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("models", "set", $refKey)) -ne 0) {
+            Fail "openclaw models set 失败: $refKey"
+        }
     } else {
-        $ocArgs = @(
-            "onboard", "--non-interactive", "--accept-risk", "--mode", "local",
-            "--auth-choice", $auth,
-            "--secret-input-mode", $secretMode,
-            "--gateway-port", "$GatewayPort",
-            "--gateway-bind", "loopback",
-            "--skip-health", "--skip-skills"
-        )
-        $exitCode = Invoke-OpenClawLongRunning -ExePath $cmd -ArgumentList $ocArgs -StepLabel "onboard"
+        switch ($auth) {
+            "apiKey" {
+                if (-not $env:ANTHROPIC_API_KEY) { $env:ANTHROPIC_API_KEY = Read-RequiredLine "ANTHROPIC_API_KEY" }
+            }
+            "openai-api-key" {
+                if (-not $env:OPENAI_API_KEY) { $env:OPENAI_API_KEY = Read-RequiredLine "OPENAI_API_KEY" }
+            }
+            "gemini-api-key" {
+                if (-not $env:GEMINI_API_KEY) { $env:GEMINI_API_KEY = Read-RequiredLine "GEMINI_API_KEY" }
+            }
+            default { Fail "不支持的 OPENCLAW_AUTH_CHOICE: $auth（预期 apiKey / openai-api-key / gemini-api-key / custom-api-key）" }
+        }
+        $modelRef = if ($env:OPENCLAW_MODEL_REF -and $env:OPENCLAW_MODEL_REF.Trim()) { $env:OPENCLAW_MODEL_REF.Trim() } else { $defaultBundled[$auth] }
+        if (-not $modelRef) { Fail "无法解析默认模型引用（auth=$auth）" }
+        if (-not $Silent) {
+            $hint = Read-Host "模型 provider/model [回车=$modelRef]"
+            if (-not [string]::IsNullOrWhiteSpace($hint)) { $modelRef = $hint.Trim() }
+        }
+        $allowBundled = @{}
+        $allowBundled[$modelRef] = @{}
+        $allowOne = $allowBundled | ConvertTo-Json -Compress -Depth 5
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.models", $allowOne, "--strict-json", "--merge")) -ne 0) {
+            Write-Warn "agents.defaults.models merge 非 0，继续"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "set", "agents.defaults.model.primary", $modelRef)) -ne 0) {
+            Fail "openclaw config set agents.defaults.model.primary 失败"
+        }
+        if ((Invoke-Native -FilePath $cmd -ArgumentList @("models", "set", $modelRef)) -ne 0) {
+            Fail "openclaw models set 失败: $modelRef"
+        }
     }
-    if ($exitCode -ne 0) { Fail "openclaw onboard 失败（退出码 $exitCode）" }
-    Write-Ok "onboard 完成"
+    if ((Invoke-Native -FilePath $cmd -ArgumentList @("config", "validate")) -ne 0) {
+        Write-Warn "openclaw config validate 非 0，请检查 openclaw.json"
+    } else {
+        Write-Ok "openclaw config validate 通过"
+    }
+    [void](Invoke-Native -FilePath $cmd -ArgumentList @("models", "status"))
+    Write-Ok "模型配置完成（config + models）"
 }
 
 function Write-TemplatesAndSkills {
@@ -838,7 +899,7 @@ if (-not $script:SkipInstallOpenClawFromNpm) {
 } else {
     Write-Ok "已检测到 openclaw，跳过步骤 2/6（npm 离线安装）"
 }
-Run-Onboard
+Configure-OpenClawModel
 Write-TemplatesAndSkills
 Configure-Gateway
 Start-Sleep -Seconds 4
