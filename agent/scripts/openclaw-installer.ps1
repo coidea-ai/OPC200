@@ -833,8 +833,10 @@ function Write-TemplatesAndSkills {
 
 function Test-GatewayRpcOk {
     param([Parameter(Mandatory)][string]$OpenClawExe)
-    $code = Invoke-Native -FilePath $OpenClawExe -ArgumentList @("gateway", "status", "--json", "--require-rpc")
-    return ($code -eq 0)
+    $r = Invoke-OpenClawWithRedirect -FilePath $OpenClawExe `
+        -ArgumentList @("gateway", "status", "--json", "--require-rpc", "--timeout", "5000") `
+        -MaxWaitSec 15
+    return ($r.ExitCode -eq 0)
 }
 
 function Test-GatewayHttpOk {
@@ -856,12 +858,20 @@ function Wait-GatewayRpcReady {
         [Parameter(Mandatory)][string]$OpenClawExe,
         [Parameter(Mandatory)][int]$ListenPort,
         [int]$MaxAttempts = 15,
-        [int]$IntervalSec = 4
+        [int]$IntervalSec = 4,
+        [int]$MaxTotalSec = 0
     )
+    if ($MaxTotalSec -le 0) { $MaxTotalSec = $MaxAttempts * ($IntervalSec + 20) }
+    $t0 = [DateTime]::UtcNow
     for ($i = 1; $i -le $MaxAttempts; $i++) {
+        $elapsed = [int]([DateTime]::UtcNow - $t0).TotalSeconds
+        if ($elapsed -ge $MaxTotalSec) {
+            Write-Host "  [..] 已超总等待上限 ${MaxTotalSec}s（第 $i 次尝试前），中止等待" -ForegroundColor DarkGray
+            return $false
+        }
         if (Test-GatewayRpcOk -OpenClawExe $OpenClawExe) { return $true }
         if (Test-GatewayHttpOk -ListenPort $ListenPort) { return $true }
-        Write-Host "  [..] 等待网关就绪（$i/$MaxAttempts，RPC 与 HTTP 每 ${IntervalSec}s 探测）…" -ForegroundColor DarkGray
+        Write-Host "  [..] 等待网关就绪（$i/$MaxAttempts，已 ${elapsed}s/${MaxTotalSec}s，RPC 与 HTTP 每 ${IntervalSec}s 探测）…" -ForegroundColor DarkGray
         Start-Sleep -Seconds $IntervalSec
     }
     return $false
@@ -932,9 +942,33 @@ function Configure-Gateway {
     Write-Host "  [i] 5.4 gateway install --force --port $GatewayPort（计划任务/服务注册）…" -ForegroundColor DarkGray
     Install-GatewayWithFallback -OpenClawExe $cmd -Port "$GatewayPort"
 
-    # 5.5 探测本机网关 RPC/HTTP（8 分钟）
+    # 5.4.a 网关启动探测（3 分钟墙钟）
+    Write-Host "  [i] 5.4.a 网关启动探测（最多 3 分钟）…" -ForegroundColor DarkGray
+    if (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 40 -IntervalSec 5 -MaxTotalSec 180) {
+        Write-Ok "OpenClaw 安装完成: http://127.0.0.1:$GatewayPort"
+        return
+    }
+
+    # 5.4.b 端口占用分流
+    if (Test-NoListenerOnGatewayPort $gPort) {
+        Write-Host "  [i] 5.4.b 端口 $gPort 未被占用，gateway 未启动，执行 gateway start…" -ForegroundColor DarkGray
+        Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "start")
+        Start-Sleep -Seconds 6
+    } else {
+        Write-Host "  [i] 5.4.b 端口 $gPort 已被占用（疑似启动中），再探测 2 分钟…" -ForegroundColor DarkGray
+        if (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 30 -IntervalSec 5 -MaxTotalSec 120) {
+            Write-Ok "OpenClaw 安装完成: http://127.0.0.1:$GatewayPort"
+            return
+        }
+        Write-Warn "2 分钟后仍未就绪，强制释放端口 $gPort 并 gateway restart"
+        Kill-PortOccupier -Port $gPort
+        Start-OpenClawFireAndForget -FilePath $cmd -ArgumentList @("gateway", "restart")
+        Start-Sleep -Seconds 6
+    }
+
+    # 5.5 探测本机网关 RPC/HTTP（8 分钟墙钟）
     Write-Host "  [i] 5.5 探测本机网关 RPC/HTTP（未就绪时最多等待约 8 分钟）…" -ForegroundColor DarkGray
-    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8)) {
+    if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8 -MaxTotalSec 480)) {
         if ($env:OPENCLAW_INSTALLER_SKIP_DOCTOR -eq "1") {
             Write-Warn "已设 OPENCLAW_INSTALLER_SKIP_DOCTOR=1，跳过 doctor，直接尝试重装网关"
         } else {
@@ -953,9 +987,9 @@ function Configure-Gateway {
         Kill-PortOccupier -Port $gPort
         Install-GatewayWithFallback -OpenClawExe $cmd -Port "$GatewayPort"
 
-        # 5.8 再次探测 RPC/HTTP（8 分钟）
+        # 5.8 再次探测 RPC/HTTP（8 分钟墙钟）
         Write-Host "  [i] 5.8 再次探测 RPC/HTTP（最多约 8 分钟）…" -ForegroundColor DarkGray
-        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8)) {
+        if (-not (Wait-GatewayRpcReady -OpenClawExe $cmd -ListenPort $gPort -MaxAttempts 60 -IntervalSec 8 -MaxTotalSec 480)) {
             Fail "网关启动失败（RPC 多次探测仍超时）。可手动: openclaw gateway stop；openclaw gateway install --force --port $GatewayPort；再执行 openclaw gateway status --deep。"
         }
     }
