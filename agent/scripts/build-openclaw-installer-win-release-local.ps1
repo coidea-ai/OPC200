@@ -10,9 +10,9 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $cache = Join-Path $scriptDir "openclaw-npm-cache"
-$nodeDir = Join-Path $scriptDir "node-v22.22.2"
-$z64 = Join-Path $nodeDir "node-v22.22.2-win-x64.zip"
-$z86 = Join-Path $nodeDir "node-v22.22.2-win-x86.zip"
+$nodeDir = Join-Path $scriptDir "node-v24.15.0"
+$z64 = Join-Path $nodeDir "node-v24.15.0-win-x64.zip"
+$z86 = Join-Path $nodeDir "node-v24.15.0-win-x86.zip"
 $openclawNpm = "2026.4.15"
 
 <# ── openclaw-npm-cache 已不再打包，以下逻辑注释保留 ──
@@ -51,8 +51,8 @@ if (-not $ForceNodeDownload -and (Test-Path -LiteralPath $z64) -and (Test-Path -
 }
 if ($getNode) {
     New-Item -ItemType Directory -Force -Path $nodeDir | Out-Null
-    $base = "https://nodejs.org/dist/v22.22.2"
-    foreach ($name in @("node-v22.22.2-win-x64.zip", "node-v22.22.2-win-x86.zip")) {
+    $base = "https://nodejs.org/dist/v24.15.0"
+    foreach ($name in @("node-v24.15.0-win-x64.zip", "node-v24.15.0-win-x86.zip")) {
         Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $nodeDir $name) -UseBasicParsing
     }
 }
@@ -63,9 +63,9 @@ function New-LocalOpenClawInstallerFolder {
     $installerExe = Join-Path $distDir "OpenClawInstaller.exe"
     $uninstallerExe = Join-Path $distDir "OpenClawUninstaller.exe"
     $templatesDir = Join-Path $scriptDir "openclaw-templates"
-    $nodeOfflineDir = Join-Path $scriptDir "node-v22.22.2"
-    $nodeZip64 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x64.zip"
-    $nodeZip86 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x86.zip"
+    $nodeOfflineDir = Join-Path $scriptDir "node-v24.15.0"
+    $nodeZip64 = Join-Path $nodeOfflineDir "node-v24.15.0-win-x64.zip"
+    $nodeZip86 = Join-Path $nodeOfflineDir "node-v24.15.0-win-x86.zip"
     # $npmCacheDir = Join-Path $scriptDir "openclaw-npm-cache"  # 不再打包
     $skillsDir = Join-Path $scriptDir "openclaw-skills"
     if (-not (Test-Path -LiteralPath $installerExe)) { throw "missing exe: $installerExe" }
@@ -82,10 +82,10 @@ function New-LocalOpenClawInstallerFolder {
     Copy-Item -LiteralPath $installerExe -Destination (Join-Path $stageDir "OpenClawInstaller.exe") -Force
     Copy-Item -LiteralPath $uninstallerExe -Destination (Join-Path $stageDir "OpenClawUninstaller.exe") -Force
     Copy-Item -LiteralPath $templatesDir -Destination (Join-Path $stageDir "openclaw-templates") -Recurse -Force
-    $stageNodeDir = Join-Path $stageDir "node-v22.22.2"
+    $stageNodeDir = Join-Path $stageDir "node-v24.15.0"
     New-Item -ItemType Directory -Path $stageNodeDir -Force | Out-Null
-    Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x64.zip") -Force
-    Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x86.zip") -Force
+    Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v24.15.0-win-x64.zip") -Force
+    Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v24.15.0-win-x86.zip") -Force
     # Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force  # 不再打包
     Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
     Remove-Item -LiteralPath $installerExe, $uninstallerExe -Force

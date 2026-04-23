@@ -69,8 +69,8 @@ qdrant_storage/
 *.zip
 !agent/scripts/openclaw-releases/*.zip
 !agent/scripts/openclaw-skills/*.zip
-!agent/scripts/node-v22.22.2/*.zip
-!agent/scripts/node-v22.22.2/*.gz
+!agent/scripts/node-v24.15.0/*.zip
+!agent/scripts/node-v24.15.0/*.gz
 
 # npm cache for OpenClaw offline installer (run fetch-openclaw-npm-cache.ps1 locally or CI)
 agent/scripts/openclaw-npm-cache/

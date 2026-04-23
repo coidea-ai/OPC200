@@ -238,7 +238,7 @@ if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
     $script:ScriptDir = (Get-Location).Path
 }
 $script:TemplatesDir = Join-Path $script:ScriptDir "openclaw-templates"
-$script:NodeOfflineDir = Join-Path $script:ScriptDir "node-v22.22.2"
+$script:NodeOfflineDir = Join-Path $script:ScriptDir "node-v24.15.0"
 $script:NpmCacheDir = Join-Path $script:ScriptDir "openclaw-npm-cache"
 $script:OpenClawSkillsDir = Join-Path $script:ScriptDir "openclaw-skills"
 $script:OpenClawSkillsZip = Join-Path $script:OpenClawSkillsDir "skills.zip"
@@ -332,7 +332,7 @@ function Get-NodeVersionLine {
 function Test-NodeMatchesPinned {
     $v = Get-NodeVersionLine
     if ([string]::IsNullOrWhiteSpace($v)) { return $false }
-    return $v.StartsWith("v22.22.2")
+    return $v.StartsWith("v24.15.0")
 }
 
 function Install-NodeFromOfflineBundle {
@@ -341,14 +341,14 @@ function Install-NodeFromOfflineBundle {
         Fail "未找到离线 Node 目录: $($script:NodeOfflineDir)"
     }
     $arch = $env:PROCESSOR_ARCHITECTURE
-    $zipName = "node-v22.22.2-win-x64.zip"
-    if ($arch -eq "x86") { $zipName = "node-v22.22.2-win-x86.zip" }
+    $zipName = "node-v24.15.0-win-x64.zip"
+    if ($arch -eq "x86") { $zipName = "node-v24.15.0-win-x86.zip" }
     $zipPath = Join-Path $script:NodeOfflineDir $zipName
     if (-not (Test-Path -LiteralPath $zipPath)) {
         Fail "离线 Node 安装包缺失: $zipPath"
     }
     Write-Ok "使用离线 Node 安装包: $zipPath"
-    $nodeRoot = Join-Path $env:LOCALAPPDATA "node-v22.22.2"
+    $nodeRoot = Join-Path $env:LOCALAPPDATA "node-v24.15.0"
     if (Test-Path -LiteralPath $nodeRoot) {
         Remove-Item -LiteralPath $nodeRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -491,10 +491,10 @@ function Run-HardChecks {
 
     if (-not (Test-NodeMatchesPinned)) {
         $cur = Get-NodeVersionLine
-        Write-Warn "Node 未对齐 22.22.2 LTS（当前: $cur），使用离线 Node 安装包"
+        Write-Warn "Node 未对齐 24.15.0（当前: $cur），使用离线 Node 安装包"
         Install-NodeFromOfflineBundle
         if (-not (Test-NodeMatchesPinned)) {
-            Fail "Node 版本仍非 22.22.2，请检查离线 Node 包或 PATH"
+            Fail "Node 版本仍非 24.15.0，请检查离线 Node 包或 PATH"
         }
     }
     Write-Ok "Node 版本: $(Get-NodeVersionLine)"
@@ -545,7 +545,7 @@ function Install-OpenClawFromOfflineNpm {
     $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction SilentlyContinue }
     if (-not $npmCmd) {
-        Fail "未找到 npm 命令，请确认 Node 22.22.2 安装目录含 npm.cmd"
+        Fail "未找到 npm 命令，请确认 Node 24.15.0 安装目录含 npm.cmd"
     }
     $npmPath = Get-CommandInvocationPath $npmCmd
     if ([string]::IsNullOrWhiteSpace($npmPath)) { Fail "无法解析 npm 可执行文件路径" }

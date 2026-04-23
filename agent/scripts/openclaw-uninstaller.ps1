@@ -160,7 +160,7 @@ function Remove-OpenClawStateDirectories {
 
 function Remove-OpenClawNode {
     Write-Step "7/8 卸载随安装包装的 Node.js（可选）"
-    $nodeDir = Join-Path $env:LOCALAPPDATA "node-v22.22.2"
+    $nodeDir = Join-Path $env:LOCALAPPDATA "node-v24.15.0"
     if (-not (Test-Path -LiteralPath $nodeDir)) {
         Write-Ok "未检测到随安装包装的 Node ($nodeDir)，跳过"
         return

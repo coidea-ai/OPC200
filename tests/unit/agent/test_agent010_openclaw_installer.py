@@ -52,9 +52,9 @@ def test_openclaw_installer_ps1_has_expected_steps():
     assert "Get-NodeVersionLine" in s
     assert "Test-NodeMatchesPinned" in s
     assert "Install-NodeFromOfflineBundle" in s
-    assert "node-v22.22.2" in s
-    assert "node-v22.22.2-win-x64.zip" in s
-    assert "node-v22.22.2-win-x86.zip" in s
+    assert "node-v24.15.0" in s
+    assert "node-v24.15.0-win-x64.zip" in s
+    assert "node-v24.15.0-win-x86.zip" in s
     assert "openclaw.ai" in s
     assert "Get-NetTCPConnection" in s
     assert "Try-ReleaseLocalPort" in s
@@ -174,9 +174,9 @@ def test_openclaw_release_pack_script_present():
     assert "OpenClawUninstaller.exe" in s
     assert "openclaw-npm-cache" in s
     assert "openclaw-templates" in s
-    assert "node-v22.22.2" in s
-    assert "node-v22.22.2-win-x64.zip" in s
-    assert "node-v22.22.2-win-x86.zip" in s
+    assert "node-v24.15.0" in s
+    assert "node-v24.15.0-win-x64.zip" in s
+    assert "node-v24.15.0-win-x86.zip" in s
 
 
 def test_openclaw_installer_win_local_release_script_present():
@@ -206,5 +206,5 @@ def test_openclaw_mac_release_pack_script_present():
     assert "openclaw-installer.sh" in s
     assert "openclaw-npm-cache" in s
     assert "openclaw-templates" in s
-    assert "node-v22.22.2-darwin-arm64.tar.gz" in s
-    assert "node-v22.22.2-darwin-x64.tar.gz" in s
+    assert "node-v24.15.0-darwin-arm64.tar.gz" in s
+    assert "node-v24.15.0-darwin-x64.tar.gz" in s

@@ -192,14 +192,14 @@
 #### 2.10.3 硬检测与离线 Node
 
 - [x] 安装前硬检测（失败即中止）：
-  - Node 版本（>=22）
+  - Node 版本（>=24）
   - 网关端口占用
   - 安装目录可写
   - 网络可达（`openclaw.ai:443`）
   - OpenClaw 可执行性（安装后强校验）
 - [x] Node 离线兜底：
-  - 若未安装或 `<22`，从 `agent/scripts/node-v22.22.2` 选择本地包安装。
-  - Windows 使用 `node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip` 自动按架构选择。
+  - 若未安装或 `<24`，从 `agent/scripts/node-v24.15.0` 选择本地包安装。
+  - Windows 使用 `node-v24.15.0-win-x64.zip` / `node-v24.15.0-win-x86.zip` 自动按架构选择。
 
 #### 2.10.4 桌面入口与 dashboard token
 
@@ -222,7 +222,7 @@
   - `OpenClawInstaller.exe`
   - `OpenClawUninstaller.exe`
 - [x] 单包交付：
-  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v22.22.2（win-x64/x86 zip）`
+  - `OpenClawInstaller-win-YYYY.M.D.zip` 内含 `installer/uninstaller exe + openclaw-npm-cache + openclaw-templates + node-v24.15.0（win-x64/x86 zip）`
 - [x] 发布标签：
   - `openclaw-installer-v2026.4.15`
 - [x] 资产覆盖更新：

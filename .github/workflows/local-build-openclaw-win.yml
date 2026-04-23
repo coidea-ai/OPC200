@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.22.2"
+          node-version: "24.15.0"
 
       - name: Restore openclaw npm cache
         id: openclaw-cache
@@ -33,13 +33,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path $cache | Out-Null
           npm install -g openclaw@2026.4.15 --cache $cache --registry https://registry.npmjs.org/
 
-      - name: Download Node 22.22.2 offline bundles
+      - name: Download Node 24.15.0 offline bundles
         shell: pwsh
         run: |
-          $d = "agent/scripts/node-v22.22.2"
+          $d = "agent/scripts/node-v24.15.0"
           New-Item -ItemType Directory -Force -Path $d | Out-Null
-          $base = "https://nodejs.org/dist/v22.22.2"
-          foreach ($name in @("node-v22.22.2-win-x64.zip", "node-v22.22.2-win-x86.zip")) {
+          $base = "https://nodejs.org/dist/v24.15.0"
+          foreach ($name in @("node-v24.15.0-win-x64.zip", "node-v24.15.0-win-x86.zip")) {
             $out = Join-Path $d $name
             Invoke-WebRequest -Uri "$base/$name" -OutFile $out -UseBasicParsing
           }

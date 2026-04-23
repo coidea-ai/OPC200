@@ -3,7 +3,7 @@
 ## 版本约定（固定）
 
 - **产品锁定：OpenClaw 2026.4.15 稳定版**（npm 侧使用 **`openclaw@2026.4.15`**；灌 cache 与安装器内须写同一版本号）。
-- **Node 锁定：22.22.2（LTS）**：灌 cache、离线安装、安装器内置离线包均与此一致（见 `agent/scripts/node-v22.22.2/`）。
+- **Node 锁定：24.15.0**：灌 cache、离线安装、安装器内置离线包均与此一致（见 `agent/scripts/node-v24.15.0/`）。
 - 构建、灌 cache、离线安装、验收均以 **同一版本约束** 为准；升级大版本时另开变更。
 
 ---
@@ -23,7 +23,7 @@
 **原则**
 
 - **官方语义对齐**：离线机上的结果应等价于在同一环境下执行 `npm install -g openclaw@2026.4.15`。
-- **平台一致**：生成 cache 的机器与安装目标机 **同为 Windows、同 CPU 架构、Node 均为 22.22.2**（与安装器离线 Node 包一致）。
+- **平台一致**：生成 cache 的机器与安装目标机 **同为 Windows、同 CPU 架构、Node 均为 24.15.0**（与安装器离线 Node 包一致）。
 
 ---
 
@@ -55,7 +55,7 @@
 | 项 | 要求 |
 |----|------|
 | **openclaw 版本** | **固定 2026.4.15 稳定版**：灌 cache 与离线安装均使用 `openclaw@2026.4.15`；发布前可用 `npm view openclaw@2026.4.15 version` 核对。 |
-| **Node** | **22.22.2 LTS**，与 `node-v22.22.2` 离线包及安装器行为一致。 |
+| **Node** | **24.15.0**，与 `node-v24.15.0` 离线包及安装器行为一致。 |
 | **架构** | Windows **x64** 为主；若需 x86，需单独灌一套 cache。 |
 
 ---
@@ -64,7 +64,7 @@
 
 ### 阶段 A：构建侧（CI 或发布机）
 
-1. **环境**：Windows runner 或固定构建机，预装 **Node 22.22.2**（与产物一致）。
+1. **环境**：Windows runner 或固定构建机，预装 **Node 24.15.0**（与产物一致）。
 2. **灌 cache**（示例）：
    - 设置 `npm cache` 为仓库内固定目录，例如 `agent/scripts/openclaw-npm-cache/`（或 `dist/openclaw-npm-cache`）。
    - 执行：`npm install -g openclaw@2026.4.15 --cache <上述绝对路径>`。
@@ -78,7 +78,7 @@
 1. **移除或替换**依赖错误制品的逻辑：不再假设 `openclaw-releases/OpenClaw-*.zip` 为 Windows 可执行 CLI（该 zip 为 macOS `.app` 场景）。
 2. **新增流程**（顺序建议）：
    - 现有硬检测（Node、端口、磁盘、网络策略按产品决定是否保留「联网检测」）。
-   - 确保 Node 为 **22.22.2**（沿用现有离线 Node 解压逻辑，不足则装）。
+   - 确保 Node 为 **24.15.0**（沿用现有离线 Node 解压逻辑，不足则装）。
    - 将内置 **npm cache** 解压/复制到 `%LOCALAPPDATA%\OpenClaw\npm-cache`（或固定路径）。
    - `npm config set cache <路径>`（进程级或用户级，需验证不污染用户全局 npm）。
    - `npm install -g openclaw@2026.4.15 --offline --prefer-offline`。
@@ -104,7 +104,7 @@
 
 | 风险 | 缓解 |
 |------|------|
-| npm 依赖含 **postinstall / 原生模块**，离线装失败 | 灌 cache 时使用与目标机相同 **Node 22.22.2** / OS；失败时查 `npm-debug.log`。 |
+| npm 依赖含 **postinstall / 原生模块**，离线装失败 | 灌 cache 时使用与目标机相同 **Node 24.15.0** / OS；失败时查 `npm-debug.log`。 |
 | **全局 bin 路径** 未进 PATH | 安装器在安装后显式 `Refresh` env 或把 `npm prefix -g` 下 `bin` 写入用户 PATH。 |
 | **用户本机已有全局 npm** | `npm config set cache` 作用域限定为子进程或临时 `NPM_CONFIG_CACHE`，避免覆盖用户全局配置（需具体实现）。 |
 | cache **体积过大** | 仅打包 `npm install -g openclaw` 所需依赖；或按版本增量更新策略（后续）。 |
@@ -114,7 +114,7 @@
 ## 6. 文档与配置
 
 - 更新 `agent/README.md`「离线安装」小节，指向本计划与最终实现。
-- 在代码或 `manifest` 中 **单一来源** 锁定 **`OPENCLAW_NPM_VERSION=2026.4.15`**、**`NODE_VERSION=22.22.2`**（与灌 cache、安装器参数一致）。
+- 在代码或 `manifest` 中 **单一来源** 锁定 **`OPENCLAW_NPM_VERSION=2026.4.15`**、**`NODE_VERSION=24.15.0`**（与灌 cache、安装器参数一致）。
 
 ---
 

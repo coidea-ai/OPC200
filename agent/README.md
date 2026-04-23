@@ -483,7 +483,7 @@ sudo ./uninstall.sh
 
 - OpenClaw 独立安装器相关：
   - `agent/scripts/openclaw-installer.ps1`  
-    Windows 安装主流程（环境检测、离线 Node 22.22.2、`openclaw-npm-cache` 离线装 `openclaw@2026.4.15`、onboard、轻预装、网关、桌面快捷方式与完成提示）。
+    Windows 安装主流程（环境检测、离线 Node 24.15.0、`openclaw-npm-cache` 离线装 `openclaw@2026.4.15`、onboard、轻预装、网关、桌面快捷方式与完成提示）。
   - `agent/scripts/openclaw-uninstaller.ps1`  
     卸载 OpenClaw（尝试停 gateway、执行官方 `openclaw uninstall` 等）。
   - `agent/scripts/build-openclaw-installer-exe.ps1`  
@@ -491,13 +491,13 @@ sudo ./uninstall.sh
   - `agent/scripts/build-openclaw-uninstaller-exe.ps1`  
     用 ps2exe 将 `openclaw-uninstaller.ps1` 打成 `dist/OpenClawUninstaller.exe`。
   - `agent/scripts/pack-openclaw-installer-release.ps1`  
-    将 exe、`openclaw-npm-cache`、`openclaw-templates`、`node-v22.22.2` 等打成 `dist/OpenClawInstaller.zip`。
+    将 exe、`openclaw-npm-cache`、`openclaw-templates`、`node-v24.15.0` 等打成 `dist/OpenClawInstaller.zip`。
   - `agent/scripts/fetch-openclaw-npm-cache.ps1`  
     联网执行，灌满 `openclaw-npm-cache`（供打包与离线 `npm install -g`）。
   - `agent/scripts/openclaw-npm-cache/`  
     npm 离线缓存目录（**不提交**；本地由上一脚本生成，Release 由 CI 生成）。
-  - `agent/scripts/node-v22.22.2/`  
-    内置 Node 22.22.2 Windows zip（x64/x86），安装器在无/非 22.22.2 Node 时离线解压使用。
+  - `agent/scripts/node-v24.15.0/`  
+    内置 Node 24.15.0 Windows zip（x64/x86），安装器在无/非 24.15.0 Node 时离线解压使用。
   - `agent/scripts/openclaw-templates/`  
     安装时拷贝到用户 OpenClaw 配置目录的模板（如 `AGENTS.md` 等）。
 - OPC200 安装链路（保留）：
@@ -508,13 +508,13 @@ sudo ./uninstall.sh
 
 ### 离线安装的实现原理
 
-**版本**：当前产品固定 **OpenClaw 2026.4.15 稳定版**（npm：`openclaw@2026.4.15`）；**Node 固定 22.22.2（LTS）**，与 `node-v22.22.2` 离线包一致。
+**版本**：当前产品固定 **OpenClaw 2026.4.15 稳定版**（npm：`openclaw@2026.4.15`）；**Node 固定 24.15.0**，与 `node-v24.15.0` 离线包一致。
 
 **背景**：OpenClaw 官方目前没有提供可以离线安装的 Windows 应用包。在 GitHub Release 中的 `OpenClaw-<版本>.zip` / `.dmg` 主要为 **macOS**（含 `OpenClaw.app`），**不是** Windows 下解压即用的 CLI。Windows 侧官方推荐 **`npm install -g openclaw@2026.4.15`**（需联网）或官方 `install.ps1`。要在 **完全离线** 环境部署 CLI，采用 **npm 缓存 + 离线全局安装**，而不是把 Mac 的 zip 解压进 PATH。
 
 **推荐方案（两台电脑可以不同，但须同平台）**
 
-1. **在有网的 Windows 上**（Node **22.22.2** 与目标机一致；架构一致，如均为 x64）：
+1. **在有网的 Windows 上**（Node **24.15.0** 与目标机一致；架构一致，如均为 x64）：
    - 使用独立目录作为 npm cache，例如：  
      `npm install -g openclaw@2026.4.15 --cache <绝对路径>\npm-cache-openclaw`  
    - 将 **`npm-cache-openclaw` 整目录**作为离线资源打包（zip 等），随安装器或内网分发。
@@ -525,12 +525,12 @@ sudo ./uninstall.sh
      `npm install -g openclaw@2026.4.15 --offline --prefer-offline`  
    - 安装完成后应能使用 `openclaw` 命令（并确保全局 `bin` 在 PATH 中）。
 
-**平台约束**：联网机与离线机须 **同一操作系统、同一 CPU 架构**（如均为 Windows x64）；**Node 须均为 22.22.2**。跨系统（如 Win / Linux）或跨架构共用同一 cache 不可靠。
+**平台约束**：联网机与离线机须 **同一操作系统、同一 CPU 架构**（如均为 Windows x64）；**Node 须均为 24.15.0**。跨系统（如 Win / Linux）或跨架构共用同一 cache 不可靠。
 
 **如何生成 `openclaw-npm-cache`（本地实践）**
 
 - **何时需要**：在本机调试 **`openclaw-installer.ps1`**，或在**不经过** GitHub Actions 的情况下执行 **`pack-openclaw-installer-release.ps1`** 时，必须先有非空的 **`agent/scripts/openclaw-npm-cache/`**。若仅通过 **打 `v*` tag、走 `release-opc-agent.yml`** 出 Release，流水线里会联网灌 cache，**一般不必**在本地先跑。
-- **环境**：Windows；本机已安装 **Node 22.22.2**（与安装器、离线 Node 包一致）；能访问 **npm registry**。
+- **环境**：Windows；本机已安装 **Node 24.15.0**（与安装器、离线 Node 包一致）；能访问 **npm registry**。
 - **命令**（联网执行一次即可）：
 
 ```powershell
@@ -578,11 +578,11 @@ powershell -ExecutionPolicy Bypass -File .\pack-openclaw-installer-release.ps1
 - `OpenClawUninstaller.exe`
 - `openclaw-npm-cache/`（`npm install -g openclaw@2026.4.15` 所需离线缓存）
 - `openclaw-templates/`
-- `node-v22.22.2/`（`node-v22.22.2-win-x64.zip` / `node-v22.22.2-win-x86.zip`，离线安装 Node 22.22.2 用）
+- `node-v24.15.0/`（`node-v24.15.0-win-x64.zip` / `node-v24.15.0-win-x86.zip`，离线安装 Node 24.15.0 用）
 
 4) 用户安装行为（当前实现）：
 
-- 安装器先做硬检测：Node 须为 **22.22.2 LTS**（否则用离线包对齐）、端口、目录可写；**网络不可达时仅警告**，不阻断离线装 OpenClaw。
+- 安装器先做硬检测：Node 须为 **24.15.0**（否则用离线包对齐）、端口、目录可写；**网络不可达时仅警告**，不阻断离线装 OpenClaw。
 - 网关可用后执行 `openclaw dashboard`，解析带 token 的 Dashboard URL。
 - 点击安装成功弹框后打开带 token URL。
 - 创建桌面快捷方式：

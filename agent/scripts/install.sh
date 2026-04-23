@@ -13,7 +13,7 @@ DOWNLOAD_BASE="https://github.com/coidea-ai/OPC200/releases/download/v${AGENT_VE
 SERVICE_NAME="opc200-agent"
 DEFAULT_URL="http://opc200.meerkatai.cn:9091"
 OPENCLAW_DEFAULT_INSTALL_URL="https://openclaw.ai/install.sh"
-OPENCLAW_MIN_NODE_MAJOR=22
+OPENCLAW_MIN_NODE_MAJOR=24
 OPENCLAW_DEFAULT_NPM_REGISTRY="https://repo.huaweicloud.com/repository/npm/"
 OPENCLAW_INSTALL_TIMEOUT_SEC=900
 OPENCLAW_NET_CHECK_HOSTS=("openclaw.ai" "repo.huaweicloud.com" "github.com")
@@ -325,9 +325,9 @@ install_node_linux_from_official() {
         *) fail $E002 "E002: Node 官方包不支持当前架构: $(uname -m)" ;;
     esac
 
-    # 使用 index.json 选取最新 v22.x（含 linux-${arch} 制品），避免目录页 HTML / 镜像格式差异导致 sed 匹配失败
+    # 使用 index.json 选取最新 v24.x（含 linux-${arch} 制品），避免目录页 HTML / 镜像格式差异导致 sed 匹配失败
     local json tarball ver_tag url tmpdir extracted
-    json="$(curl -fsSL "https://nodejs.org/dist/index.json" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 22）"
+    json="$(curl -fsSL "https://nodejs.org/dist/index.json" 2>/dev/null)" || fail $E002 "E002: 无法访问 nodejs.org（下载 Node 24）"
     tarball="$(printf '%s\n' "$json" | python3 -c '
 import json, re, sys
 arch = sys.argv[1]
@@ -335,7 +335,7 @@ linux_key = "linux-" + arch
 j = json.load(sys.stdin)
 for row in j:
     v = row.get("version") or ""
-    if not re.match(r"^v22\.", v):
+    if not re.match(r"^v24\.", v):
         continue
     if linux_key not in (row.get("files") or []):
         continue
@@ -343,7 +343,7 @@ for row in j:
     sys.exit(0)
 sys.exit(1)
 ' "$node_arch")" || true
-    [[ -n "$tarball" ]] || fail $E002 "E002: 未找到 Node 22 Linux 安装包（架构 ${node_arch}）"
+    [[ -n "$tarball" ]] || fail $E002 "E002: 未找到 Node 24 Linux 安装包（架构 ${node_arch}）"
     ver_tag="${tarball#node-}"
     ver_tag="${ver_tag%-linux-*}"
     url="https://nodejs.org/dist/${ver_tag}/${tarball}"
@@ -351,10 +351,10 @@ sys.exit(1)
     tmpdir="$(mktemp -d)"
     register_rollback "rm -rf '${tmpdir}'"
     ok "下载 Node.js: $url"
-    curl -fsSL "$url" -o "${tmpdir}/node.tar.xz" || fail $E002 "E002: 下载 Node 22 失败"
-    tar -xJf "${tmpdir}/node.tar.xz" -C "$tmpdir" || fail $E002 "E002: 解压 Node 22 失败"
-    extracted="$(ls -d "${tmpdir}"/node-v22* 2>/dev/null | head -n1)"
-    [[ -n "$extracted" ]] || fail $E002 "E002: Node 22 解压目录异常"
+    curl -fsSL "$url" -o "${tmpdir}/node.tar.xz" || fail $E002 "E002: 下载 Node 24 失败"
+    tar -xJf "${tmpdir}/node.tar.xz" -C "$tmpdir" || fail $E002 "E002: 解压 Node 24 失败"
+    extracted="$(ls -d "${tmpdir}"/node-v24* 2>/dev/null | head -n1)"
+    [[ -n "$extracted" ]] || fail $E002 "E002: Node 24 解压目录异常"
 
     cp -f "${extracted}/bin/node" /usr/local/bin/node || fail $E002 "E002: 安装 node 失败"
     cp -f "${extracted}/bin/npm" /usr/local/bin/npm || true
@@ -362,7 +362,7 @@ sys.exit(1)
     rm -rf /usr/local/lib/node_modules
     mkdir -p /usr/local/lib/node_modules
     cp -a "${extracted}/lib/node_modules/." /usr/local/lib/node_modules/ || fail $E002 "E002: 安装 node_modules 失败"
-    ok "Node.js 22 已安装到 /usr/local/bin"
+    ok "Node.js 24 已安装到 /usr/local/bin"
 }
 
 step_prepare_node_runtime() {
@@ -392,9 +392,9 @@ step_prepare_node_runtime() {
     fi
 
     if [[ "$major" -gt 0 ]]; then
-        warn "当前 Node.js 主版本 ${major}，需要 ${OPENCLAW_MIN_NODE_MAJOR}+，将自动安装 Node 22"
+        warn "当前 Node.js 主版本 ${major}，需要 ${OPENCLAW_MIN_NODE_MAJOR}+，将自动安装 Node 24"
     else
-        warn "未检测到 Node.js，将自动安装 Node 22"
+        warn "未检测到 Node.js，将自动安装 Node 24"
     fi
 
     install_node_linux_from_official

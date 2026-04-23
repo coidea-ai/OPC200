@@ -20,9 +20,9 @@ if (-not $NoZip) {
 $installerExe = Join-Path $distDir "OpenClawInstaller.exe"
 $uninstallerExe = Join-Path $distDir "OpenClawUninstaller.exe"
 $templatesDir = Join-Path $scriptDir "openclaw-templates"
-$nodeOfflineDir = Join-Path $scriptDir "node-v22.22.2"
-$nodeZip64 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x64.zip"
-$nodeZip86 = Join-Path $nodeOfflineDir "node-v22.22.2-win-x86.zip"
+$nodeOfflineDir = Join-Path $scriptDir "node-v24.15.0"
+$nodeZip64 = Join-Path $nodeOfflineDir "node-v24.15.0-win-x64.zip"
+$nodeZip86 = Join-Path $nodeOfflineDir "node-v24.15.0-win-x86.zip"
 $npmCacheDir = Join-Path $scriptDir "openclaw-npm-cache"
 $skillsDir = Join-Path $scriptDir "openclaw-skills"
 
@@ -46,10 +46,10 @@ New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 Copy-Item -LiteralPath $installerExe -Destination (Join-Path $stageDir "OpenClawInstaller.exe") -Force
 Copy-Item -LiteralPath $uninstallerExe -Destination (Join-Path $stageDir "OpenClawUninstaller.exe") -Force
 Copy-Item -LiteralPath $templatesDir -Destination (Join-Path $stageDir "openclaw-templates") -Recurse -Force
-$stageNodeDir = Join-Path $stageDir "node-v22.22.2"
+$stageNodeDir = Join-Path $stageDir "node-v24.15.0"
 New-Item -ItemType Directory -Path $stageNodeDir -Force | Out-Null
-Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x64.zip") -Force
-Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v22.22.2-win-x86.zip") -Force
+Copy-Item -LiteralPath $nodeZip64 -Destination (Join-Path $stageNodeDir "node-v24.15.0-win-x64.zip") -Force
+Copy-Item -LiteralPath $nodeZip86 -Destination (Join-Path $stageNodeDir "node-v24.15.0-win-x86.zip") -Force
 Copy-Item -LiteralPath $npmCacheDir -Destination (Join-Path $stageDir "openclaw-npm-cache") -Recurse -Force
 Copy-Item -LiteralPath $skillsDir -Destination (Join-Path $stageDir "openclaw-skills") -Recurse -Force
 
