@@ -50,7 +50,7 @@ function Get-OpenClawCmd {
 }
 
 function Stop-GatewayIfPossible {
-    Write-Step "1/7 停止 OpenClaw 网关"
+    Write-Step "1/8 停止 OpenClaw 网关"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
         Write-Warn "未找到 openclaw 命令，跳过网关停止"
@@ -65,7 +65,7 @@ function Stop-GatewayIfPossible {
 }
 
 function Uninstall-OpenClawCore {
-    Write-Step "2/7 官方卸载（openclaw uninstall）"
+    Write-Step "2/8 官方卸载（openclaw uninstall）"
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
         Write-Warn "未找到 openclaw 命令，跳过官方卸载"
@@ -80,7 +80,7 @@ function Uninstall-OpenClawCore {
 }
 
 function Uninstall-OpenClawNpmGlobal {
-    Write-Step "3/7 npm 全局卸载 openclaw"
+    Write-Step "3/8 npm 全局卸载 openclaw"
     $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $npmCmd) { $npmCmd = Get-Command npm -ErrorAction SilentlyContinue }
     if (-not $npmCmd) {
@@ -121,7 +121,7 @@ function Remove-InstallerDesktopArtifacts {
 }
 
 function Cleanup-InstallerArtifacts {
-    Write-Step "4/7 清理安装器落盘（快捷方式、安装器脚本）"
+    Write-Step "4/8 清理安装器落盘（快捷方式、安装器脚本）"
     Remove-InstallerDesktopArtifacts
     if ($KeepUserFiles) {
         Write-Warn "KeepUserFiles 已启用，下一步将保留 ~/.openclaw（或 OPENCLAW_PROFILE_DIR）"
@@ -130,7 +130,7 @@ function Cleanup-InstallerArtifacts {
 }
 
 function Remove-OpenClawEnvVars {
-    Write-Step "5/6 清理环境变量"
+    Write-Step "5/8 清理环境变量"
     foreach ($varName in @("MOONSHOT_API_KEY", "OPENCLAW_MOONSHOT_REGION")) {
         $val = [Environment]::GetEnvironmentVariable($varName, "User")
         if ($null -ne $val) {
@@ -141,7 +141,7 @@ function Remove-OpenClawEnvVars {
 }
 
 function Remove-OpenClawStateDirectories {
-    Write-Step "6/7 删除 OpenClaw 状态目录"
+    Write-Step "6/8 删除 OpenClaw 状态目录"
     $localProbe = Join-Path $env:LOCALAPPDATA "OpenClaw"
     if (Test-Path -LiteralPath $localProbe) {
         Remove-Item -LiteralPath $localProbe -Recurse -Force -ErrorAction SilentlyContinue
@@ -158,8 +158,92 @@ function Remove-OpenClawStateDirectories {
     }
 }
 
+function Remove-OpenClawNode {
+    Write-Step "7/8 卸载随安装包装的 Node.js（可选）"
+    $nodeDir = Join-Path $env:LOCALAPPDATA "node-v22.22.2"
+    if (-not (Test-Path -LiteralPath $nodeDir)) {
+        Write-Ok "未检测到随安装包装的 Node ($nodeDir)，跳过"
+        return
+    }
+    if ($Silent) {
+        Write-Warn "静默模式，跳过 Node 卸载（若需卸载请手动删除 $nodeDir 并清理 User PATH）"
+        return
+    }
+    $a = Read-Host "是否卸载随安装包装的 Node.js 及其 PATH？目录：$nodeDir [y/N]"
+    $ans = "$a".Trim().ToLowerInvariant()
+    if ($ans -ne "y" -and $ans -ne "yes") {
+        Write-Ok "已跳过 Node 卸载"
+        return
+    }
+
+    $nodeDirLower = $nodeDir.ToLowerInvariant()
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($userPath) {
+        $entries = $userPath -split ";" | Where-Object {
+            $t = "$_".Trim()
+            if ([string]::IsNullOrWhiteSpace($t)) { return $false }
+            return -not ($t.ToLowerInvariant().StartsWith($nodeDirLower))
+        }
+        $newUserPath = ($entries -join ";")
+        if ($newUserPath -ne $userPath) {
+            [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+            Write-Ok "已从用户 PATH 移除 Node 路径"
+        }
+    }
+
+    $npmGlobalBin = Join-Path $env:APPDATA "npm"
+    if (Test-Path -LiteralPath $npmGlobalBin) {
+        Remove-Item -LiteralPath $npmGlobalBin -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Ok "已删除 npm 全局目录: $npmGlobalBin"
+    }
+    foreach ($cacheDir in @(
+        (Join-Path $env:APPDATA "npm-cache"),
+        (Join-Path $env:LOCALAPPDATA "npm-cache")
+    )) {
+        if (Test-Path -LiteralPath $cacheDir) {
+            Remove-Item -LiteralPath $cacheDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Ok "已删除 npm 缓存目录: $cacheDir"
+        }
+    }
+
+    $tempOpenClaw = Join-Path $env:LOCALAPPDATA "Temp\openclaw"
+    if (Test-Path -LiteralPath $tempOpenClaw) {
+        Remove-Item -LiteralPath $tempOpenClaw -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Ok "已删除 openclaw 日志目录: $tempOpenClaw"
+    }
+
+    $npmrc = Join-Path $env:USERPROFILE ".npmrc"
+    if (Test-Path -LiteralPath $npmrc) {
+        try {
+            $lines = [System.IO.File]::ReadAllLines($npmrc)
+            $newLines = $lines | Where-Object {
+                $t = "$_".Trim()
+                -not ($t -match '^\s*registry\s*=\s*https?://registry\.npmmirror\.com/?\s*$')
+            }
+            if ($newLines.Count -eq 0) {
+                Remove-Item -LiteralPath $npmrc -Force -ErrorAction SilentlyContinue
+                Write-Ok "已删除空的 .npmrc: $npmrc"
+            } elseif ($newLines.Count -ne $lines.Count) {
+                [System.IO.File]::WriteAllLines($npmrc, $newLines, (New-Object System.Text.UTF8Encoding $false))
+                Write-Ok "已从 .npmrc 移除安装脚本写入的淘宝源设置"
+            } else {
+                Write-Warn ".npmrc 存在其他内容，已保留: $npmrc"
+            }
+        } catch {
+            Write-Warn "处理 .npmrc 失败: $_"
+        }
+    }
+
+    try {
+        Remove-Item -LiteralPath $nodeDir -Recurse -Force -ErrorAction Stop
+        Write-Ok "已删除 Node 目录: $nodeDir"
+    } catch {
+        Write-Warn "删除 Node 目录失败: $_"
+    }
+}
+
 function Remove-ReleaseBundleArtifacts {
-    Write-Step "7/7 删除安装包 zip 与解压目录（OpenClawInstaller）"
+    Write-Step "8/8 删除安装包 zip 与解压目录（OpenClawInstaller）"
     $zipName = "OpenClawInstaller.zip"
     foreach ($zd in @(
         (Join-Path ([Environment]::GetFolderPath("UserProfile")) "Downloads"),
@@ -215,4 +299,5 @@ Uninstall-OpenClawNpmGlobal
 Cleanup-InstallerArtifacts
 Remove-OpenClawEnvVars
 Remove-OpenClawStateDirectories
+Remove-OpenClawNode
 Remove-ReleaseBundleArtifacts
