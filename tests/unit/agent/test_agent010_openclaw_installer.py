@@ -148,7 +148,9 @@ def test_openclaw_installer_exe_build_script_present():
 
 def test_openclaw_uninstaller_scripts_present():
     s = _uninstall_ps1()
-    assert "uninstall --all --yes --non-interactive" in s
+    assert "Invoke-OpenClawNative" in s
+    assert "Set-NativeCommandStderrNoThrow" in s
+    assert '@("uninstall", "--all", "--yes", "--non-interactive")' in s
     assert "gateway stop" in s
     assert "npm uninstall -g openclaw" in s
     assert "Uninstall-OpenClawNpmGlobal" in s

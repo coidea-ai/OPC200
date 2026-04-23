@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param(
     [switch]$Silent,
     [switch]$KeepUserFiles
@@ -6,6 +6,30 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+function Set-NativeCommandStderrNoThrow {
+    try { $global:PSNativeCommandUseErrorActionPreference = $false } catch { }
+    try { $PSNativeCommandUseErrorActionPreference = $false } catch { }
+}
+Set-NativeCommandStderrNoThrow
+
+function Invoke-OpenClawNative {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$ArgumentList
+    )
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Set-NativeCommandStderrNoThrow
+        $null = & $FilePath @ArgumentList 2>$null
+        if ($null -eq $LASTEXITCODE) { return 0 }
+        return [int]$LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
 
 function Write-Step([string]$m) { Write-Host "[STEP] $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m) { Write-Host "  [OK] $m" -ForegroundColor Green }
@@ -25,8 +49,8 @@ function Stop-GatewayIfPossible {
         Write-Warn "未找到 openclaw 命令，跳过网关停止"
         return
     }
-    & $cmd gateway stop
-    if ($LASTEXITCODE -ne 0) {
+    $gs = Invoke-OpenClawNative -FilePath $cmd -ArgumentList @("gateway", "stop")
+    if ($gs -ne 0) {
         Write-Warn "gateway stop 返回非零，继续卸载"
     } else {
         Write-Ok "gateway 已停止"
@@ -40,8 +64,8 @@ function Uninstall-OpenClawCore {
         Write-Warn "未找到 openclaw 命令，跳过官方卸载"
         return
     }
-    & $cmd uninstall --all --yes --non-interactive
-    if ($LASTEXITCODE -ne 0) {
+    $uc = Invoke-OpenClawNative -FilePath $cmd -ArgumentList @("uninstall", "--all", "--yes", "--non-interactive")
+    if ($uc -ne 0) {
         Fail "openclaw uninstall 失败"
     }
     Write-Ok "官方卸载完成"
@@ -55,8 +79,17 @@ function Uninstall-OpenClawNpmGlobal {
         Write-Warn "未找到 npm，跳过 npm uninstall -g openclaw"
         return
     }
-    & $npmCmd.Source uninstall -g openclaw
-    if ($LASTEXITCODE -ne 0) {
+    $nc = 0
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        Set-NativeCommandStderrNoThrow
+        $null = & $npmCmd.Source @("uninstall", "-g", "openclaw") 2>$null
+        if ($null -eq $LASTEXITCODE) { $nc = 0 } else { $nc = [int]$LASTEXITCODE }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    if ($nc -ne 0) {
         Write-Warn "npm uninstall -g openclaw 返回非零，继续后续清理"
     } else {
         Write-Ok "npm 全局包 openclaw 已移除"
