@@ -216,9 +216,17 @@ function Invoke-NpmProcess {
         }
         Write-Host "`r                                                          `r" -NoNewline
         Write-Progress -Id $id -Activity "OpenClaw npm 安装" -Completed -ErrorAction SilentlyContinue
-        if ($p.ExitCode -is [int]) { return $p.ExitCode }
-        if ($null -ne $p.ExitCode) { return [int]$p.ExitCode }
-        return 0
+        $ec = 0
+        if ($p.ExitCode -is [int]) { $ec = $p.ExitCode }
+        elseif ($null -ne $p.ExitCode) { $ec = [int]$p.ExitCode }
+        if ($ec -ne 0) {
+            $outTxt = ""; $errTxt = ""
+            try { $outTxt = [System.IO.File]::ReadAllText($outFile) } catch {}
+            try { $errTxt = [System.IO.File]::ReadAllText($errFile) } catch {}
+            Write-OpenClawCliBlob -Title "npm stdout" -Text $outTxt
+            Write-OpenClawCliBlob -Title "npm stderr" -Text $errTxt
+        }
+        return $ec
     } finally {
         $ErrorActionPreference = $prevEap
         Write-Progress -Id 91 -Activity "OpenClaw npm 离线安装" -Completed -ErrorAction SilentlyContinue
@@ -634,6 +642,10 @@ function Install-OpenClawFromOfflineNpm {
     $cmd = Get-OpenClawCmd
     if (-not $cmd) {
         $binsSummary = if ($npmGlobalBins.Count -gt 0) { $npmGlobalBins -join "; " } else { "(未查询到)" }
+        $diagPrefix = Invoke-NativeText -FilePath $npmPath -ArgumentList @("config", "get", "prefix")
+        $diagLs = Invoke-NativeText -FilePath $npmPath -ArgumentList @("ls", "-g", "--depth=0")
+        Write-OpenClawCliBlob -Title "npm config get prefix" -Text ("$($diagPrefix.Output)")
+        Write-OpenClawCliBlob -Title "npm ls -g --depth=0" -Text ("$($diagLs.Output)")
         Fail "未找到 openclaw 命令。已尝试的 npm 全局目录: $binsSummary"
     }
     Write-Ok "openclaw 命令可用: $cmd"
